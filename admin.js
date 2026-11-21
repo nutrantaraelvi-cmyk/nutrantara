@@ -1,0 +1,331 @@
+/*
+ * Panel kendali guru NUTRANTARA.
+ * Tersambung ke server kelas lewat /ws memakai PIN admin.
+ */
+(() => {
+  const W = window.NUTRANTARA_WORLD;
+  const MISSIONS = window.NUTRANTARA_MISSIONS || [];
+  const PIN_KEY = 'nutrantara-admin-pin';
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pad = (n) => String(n).padStart(2, '0');
+
+  let ws = null;
+  let authed = false;
+  let pin = sessionStorage.getItem(PIN_KEY) || '';
+  let snapshot = null;
+  const positions = new Map();
+  let selected = null; // id pemain yang dipilih untuk dipindahkan
+  let toastTimer;
+
+  function toast(message) {
+    const el = $('#toast');
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+  }
+
+  function setConn(state, text) { const el = $('#admin-conn'); el.dataset.state = state; el.textContent = text; }
+
+  function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); else toast('Belum tersambung ke server.'); }
+  const command = (action, extra = {}) => send({ type: 'admin', action, ...extra });
+
+  function connect() {
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+    ws.addEventListener('open', () => { setConn('wait', '◌ TERSAMBUNG — MASUKKAN PIN'); if (pin) send({ type: 'admin-auth', pin }); });
+    ws.addEventListener('message', (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } handle(m); });
+    ws.addEventListener('close', () => { authed = false; setConn('off', '● TERPUTUS — MENYAMBUNG ULANG…'); setTimeout(connect, 2000); });
+  }
+
+  function handle(m) {
+    switch (m.type) {
+      case 'admin-welcome':
+        authed = true;
+        sessionStorage.setItem(PIN_KEY, pin);
+        $('#login-view').hidden = true;
+        $('#admin-view').hidden = false;
+        setConn('on', '● TERSAMBUNG SEBAGAI GURU');
+        renderChat(m.chat || []);
+        requestAnimationFrame(drawMap);
+        break;
+      case 'admin-error':
+        if (!authed) {
+          sessionStorage.removeItem(PIN_KEY);
+          pin = '';
+          const err = $('#login-error');
+          err.hidden = false;
+          err.textContent = m.message;
+        } else toast(m.message);
+        break;
+      case 'admin-ok': toast(m.message); break;
+      case 'admin-state': snapshot = m; render(); break;
+      case 'positions': m.list.forEach(([id, x, y]) => positions.set(id, { x, y })); break;
+      case 'chat': appendChat(m.entry); break;
+      case 'chat-cleared': renderChat([]); break;
+      case 'chat-deleted': { const li = $(`#admin-chat [data-id="${CSS.escape(m.id)}"]`); if (li) li.remove(); break; }
+      case 'admin-detail': showDetail(m.player); break;
+      case 'admin-export': exportData(m.data); break;
+      default: break;
+    }
+  }
+
+  $('#login-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    pin = $('#pin').value.trim();
+    $('#login-error').hidden = true;
+    send({ type: 'admin-auth', pin });
+  });
+
+  // ---------- Render ----------
+
+  function render() {
+    const { settings, players } = snapshot;
+    const online = players.filter((p) => p.online);
+    const finished = players.filter((p) => p.finishedAt).length;
+    const avg = players.length ? Math.round(players.reduce((s, p) => s + p.score, 0) / players.length) : 0;
+    const flagged = players.filter((p) => p.flags.length).length;
+    $('#admin-stats').innerHTML = [
+      ['DARING', `${online.length} <small>/ ${players.length}</small>`],
+      ['SELESAI 6 POS', `${finished}`],
+      ['RATA-RATA SKOR', `${avg} <small>/ 420</small>`],
+      ['STATUS', settings.paused ? '<span class="warn">Dijeda</span>' : 'Berjalan'],
+      ['PERLU DICEK', flagged ? `<span class="warn">⚠ ${flagged}</span>` : '0']
+    ].map(([k, v]) => `<div><span>${k}</span><strong>${v}</strong></div>`).join('');
+    $('#server-time').textContent = `DIPERBARUI ${new Date(snapshot.serverTime).toLocaleTimeString('id-ID')}`;
+
+    toggleBtn('#btn-pause', settings.paused, '▶ Lanjutkan permainan', '❚❚ Jeda semua pemain');
+    toggleBtn('#btn-move', settings.movementLocked, '↔ Bebaskan gerak', '⌑ Bekukan gerak');
+    toggleBtn('#btn-chat', !settings.chatEnabled, '✉ Nyalakan obrolan', '✕ Matikan obrolan');
+
+    $('#post-toggles').innerHTML = MISSIONS.map((m) => {
+      const open = settings.openPosts.includes(m.id);
+      const reached = players.filter((p) => p.posts[m.id - 1] && p.posts[m.id - 1].sealed).length;
+      return `<button type="button" class="post-toggle" data-post="${m.id}" aria-pressed="${open}"><b>POS ${pad(m.id)}</b><span>${esc(m.title)} ${esc(m.titleEm)}</span><i>${open ? '● DIBUKA' : '⌑ DITUTUP'} · ${reached} segel</i></button>`;
+    }).join('');
+
+    $('#ann-current').textContent = settings.announcement ? `Pengumuman aktif: “${settings.announcement}”` : 'Tidak ada pengumuman aktif.';
+    renderPlayers();
+  }
+
+  function toggleBtn(sel, active, onText, offText) {
+    const b = $(sel);
+    b.textContent = active ? onText : offText;
+    b.classList.toggle('button-primary', active);
+    b.classList.toggle('button-secondary', !active);
+    b.setAttribute('aria-pressed', String(active));
+  }
+
+  function ago(iso) {
+    if (!iso) return '—';
+    const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+    if (s < 60) return `${s} dtk lalu`;
+    if (s < 3600) return `${Math.round(s / 60)} mnt lalu`;
+    return new Date(iso).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  const SCREEN_LABEL = { world: 'Dunia', map: 'Peta', mission: 'Misi', kitchen: 'Dapur', passport: 'Paspor', leaderboard: 'Peringkat', welcome: 'Sambutan' };
+
+  function renderPlayers() {
+    if (!snapshot) return;
+    // Jangan menggambar ulang saat menu aksi sedang terbuka.
+    if ($('#players-body details[open]')) return;
+    const q = $('#player-filter').value.trim().toLocaleLowerCase('id');
+    const rows = snapshot.players.filter((p) => !q || p.alias.toLocaleLowerCase('id').includes(q));
+    if (!rows.length) { $('#players-body').innerHTML = `<tr><td colspan="8">${snapshot.players.length ? 'Tidak ada yang cocok.' : 'Belum ada siswa yang bergabung. Bagikan alamat server kepada siswa.'}</td></tr>`; return; }
+    $('#players-body').innerHTML = rows.map((p) => {
+      const cells = p.posts.map((s) => {
+        const cls = s.sealed ? 'sealed' : s.started ? 'started' : '';
+        const txt = s.sealed ? '✓' : s.started ? (s.total ? `${s.done}/${s.total}` : (s.step || '…').slice(0, 3)) : '·';
+        return `<span class="pcell ${cls}" title="Pos ${s.id}: ${s.sealed ? 'tersegel' : s.started ? 'dalam proses' : 'belum dimulai'}${s.attempts ? `, ${s.attempts} percobaan` : ''}">${esc(txt)}</span>`;
+      }).join('');
+      const attempts = p.posts.reduce((n, s) => n + s.attempts, 0);
+      const flags = p.flags.length ? ` <span class="warn" title="${esc(p.flags.join('\n'))}">⚠</span>` : '';
+      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.bound ? ' <span class="tag">alias dilepas</span>' : ''}`;
+      return `<tr data-id="${p.id}"${selected === p.id ? ' class="selected"' : ''}>
+        <th scope="row"><span class="roster-dot" style="background:${esc(p.color)}"></span> ${esc(p.alias)} <small class="${p.online ? 'on' : 'off'}">${p.online ? '● daring' : '○ luring'}</small>${flags}${tags}</th>
+        <td>${p.score}</td><td>${p.seals} / 6</td><td class="pcells">${cells}</td><td>${attempts}</td>
+        <td>${esc(SCREEN_LABEL[p.screen] || p.screen || '—')}${p.activePos ? ` · Pos ${p.activePos}` : ''}</td><td>${p.online ? 'sekarang' : ago(p.lastSeen)}</td>
+        <td class="row-actions">
+          <button type="button" class="admin-small button button-secondary" data-act="select">${selected === p.id ? 'Batal pilih' : 'Pindahkan'}</button>
+          <button type="button" class="admin-small button button-secondary" data-act="detail">Detail</button>
+          <details class="more"><summary class="admin-small button button-secondary">Lainnya</summary><div class="more-menu">
+            <button type="button" data-act="message">Kirim pesan pribadi</button>
+            <button type="button" data-act="mute">${p.muted ? 'Izinkan mengobrol' : 'Bisukan obrolan'}</button>
+            <button type="button" data-act="spawn">Pindahkan ke Nara</button>
+            <button type="button" data-act="release">Lepas alias (ganti perangkat)</button>
+            <button type="button" data-act="reset" class="danger">Atur ulang progres</button>
+            <button type="button" data-act="${p.blocked ? 'unblock' : 'kick'}" class="${p.blocked ? '' : 'danger'}">${p.blocked ? 'Izinkan bergabung kembali' : 'Keluarkan dari sesi'}</button>
+            <button type="button" data-act="delete" class="danger">Hapus data penjelajah</button>
+          </div></details>
+        </td></tr>`;
+    }).join('');
+  }
+
+  $('#player-filter').addEventListener('input', renderPlayers);
+
+  $('#players-body').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const row = btn.closest('tr');
+    const id = row.dataset.id;
+    const p = snapshot.players.find((x) => x.id === id);
+    if (!p) return;
+    const act = btn.dataset.act;
+    const details = btn.closest('details');
+    if (details) details.open = false;
+    switch (act) {
+      case 'select': selected = selected === id ? null : id; renderPlayers(); updateMapMode(); break;
+      case 'detail': command('detail', { playerId: id }); break;
+      case 'message': { const text = prompt(`Pesan pribadi untuk ${p.alias}:`); if (text && text.trim()) command('message', { playerId: id, text }); break; }
+      case 'mute': command('mute', { playerId: id, value: !p.muted }); break;
+      case 'spawn': command('teleport', { playerId: id, x: W.spawn.x, y: W.spawn.y }); break;
+      case 'release': if (confirm(`Lepas alias ${p.alias}? Perangkat berikutnya yang masuk dengan alias ini akan melanjutkan progresnya. Gunakan saat siswa berganti laptop.`)) command('release', { playerId: id }); break;
+      case 'reset': if (confirm(`Atur ulang SELURUH progres ${p.alias}? Tindakan ini tidak dapat dibatalkan. Ekspor data terlebih dahulu bila perlu.`)) command('reset', { playerId: id }); break;
+      case 'kick': if (confirm(`Keluarkan ${p.alias} dari sesi? Siswa tidak bisa bergabung lagi sampai diizinkan kembali.`)) command('kick', { playerId: id }); break;
+      case 'unblock': command('unblock', { playerId: id }); break;
+      case 'delete': if (confirm(`Hapus permanen data ${p.alias} dari server kelas? Ekspor data terlebih dahulu bila perlu.`)) command('delete', { playerId: id }); break;
+      default: break;
+    }
+  });
+
+  // ---------- Kendali ----------
+
+  $('#btn-pause').addEventListener('click', () => command('set-paused', { value: !snapshot.settings.paused }));
+  $('#btn-move').addEventListener('click', () => command('set-movement', { value: !snapshot.settings.movementLocked }));
+  $('#btn-chat').addEventListener('click', () => command('set-chat', { value: !snapshot.settings.chatEnabled }));
+  $('#btn-gather').addEventListener('click', () => command('teleport', { playerId: 'all', x: W.nara.x + 30, y: W.nara.y + 30 }));
+  $('#post-toggles').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-post]');
+    if (b) command('set-post', { pos: Number(b.dataset.post), open: b.getAttribute('aria-pressed') !== 'true' });
+  });
+  $('#btn-open-all').addEventListener('click', () => command('set-posts', { posts: MISSIONS.map((m) => m.id) }));
+  $('#btn-only-first').addEventListener('click', () => command('set-posts', { posts: [1] }));
+  $('#btn-announce').addEventListener('click', () => {
+    const text = $('#ann-text').value.trim();
+    if (!text) { toast('Tulis pengumuman terlebih dahulu.'); return; }
+    command('announce', { text });
+    $('#ann-text').value = '';
+  });
+  $('#btn-clear-ann').addEventListener('click', () => command('announce', { text: '' }));
+  $('#btn-clear-chat').addEventListener('click', () => { if (confirm('Bersihkan seluruh obrolan kelas?')) command('clear-chat'); });
+  $('#btn-export-json').addEventListener('click', () => { exportFormat = 'json'; command('export'); });
+  $('#btn-export-csv').addEventListener('click', () => { exportFormat = 'csv'; command('export'); });
+
+  // ---------- Obrolan ----------
+
+  function chatItem(e) {
+    const li = document.createElement('li');
+    li.dataset.id = e.id;
+    li.innerHTML = `<span class="chat-time">${esc(new Date(e.at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }))}</span> <b style="color:${esc(e.color)}">${esc(e.from)}</b> ${esc(e.text)} <button type="button" class="icon-button" data-del="${esc(e.id)}" aria-label="Hapus pesan dari ${esc(e.from)}">×</button>`;
+    return li;
+  }
+  function renderChat(list) { const ol = $('#admin-chat'); ol.innerHTML = ''; list.forEach((e) => ol.append(chatItem(e))); ol.scrollTop = ol.scrollHeight; }
+  function appendChat(e) { const ol = $('#admin-chat'); ol.append(chatItem(e)); ol.scrollTop = ol.scrollHeight; }
+  $('#admin-chat').addEventListener('click', (e) => { const b = e.target.closest('[data-del]'); if (b) command('delete-chat', { id: b.dataset.del }); });
+
+  // ---------- Peta langsung ----------
+
+  const map = $('#admin-map');
+  const mctx = map.getContext('2d');
+
+  function updateMapMode() {
+    const p = selected && snapshot && snapshot.players.find((x) => x.id === selected);
+    $('#map-mode').textContent = p ? `KLIK PETA UNTUK MEMINDAHKAN ${p.alias.toUpperCase()}` : 'KLIK PEMAIN DI TABEL, LALU KLIK PETA UNTUK MEMINDAHKAN';
+    map.classList.toggle('targeting', Boolean(p));
+  }
+
+  map.addEventListener('click', (e) => {
+    if (!selected) return;
+    const r = map.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * W.width;
+    const y = ((e.clientY - r.top) / r.height) * W.height;
+    command('teleport', { playerId: selected, x, y });
+    selected = null;
+    renderPlayers();
+    updateMapMode();
+  });
+
+  function drawMap() {
+    if (!authed) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.round(map.getBoundingClientRect().width * dpr);
+    const h = Math.round((w * W.height) / W.width);
+    if (map.width !== w || map.height !== h) { map.width = w; map.height = h; }
+    const s = w / W.width;
+    mctx.setTransform(s, 0, 0, s, 0, 0);
+    mctx.fillStyle = '#04161a'; mctx.fillRect(0, 0, W.width, W.height);
+    const { cx, cy, rx, ry } = W.island;
+    mctx.fillStyle = '#1d5a42'; mctx.beginPath(); mctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); mctx.fill();
+    mctx.strokeStyle = 'rgba(255,209,124,.4)'; mctx.lineWidth = 3; mctx.beginPath();
+    [W.spawn, ...W.stations].forEach((p, i) => (i ? mctx.lineTo(p.x, p.y) : mctx.moveTo(p.x, p.y))); mctx.stroke();
+    const openPosts = snapshot ? snapshot.settings.openPosts : [];
+    mctx.textAlign = 'center';
+    W.stations.forEach((st) => {
+      const open = openPosts.includes(st.id);
+      mctx.fillStyle = open ? '#68dce7' : '#6c7f79';
+      mctx.beginPath(); mctx.arc(st.x, st.y, 16, 0, Math.PI * 2); mctx.fill();
+      mctx.fillStyle = '#071516'; mctx.font = '700 13px Manrope, sans-serif'; mctx.fillText(open ? String(st.id) : '⌑', st.x, st.y + 5);
+      mctx.fillStyle = '#ebfff6'; mctx.font = '500 11px "DM Mono", monospace'; mctx.fillText(`POS ${st.id}`, st.x, st.y + 32);
+    });
+    mctx.fillStyle = '#d9fff0'; mctx.beginPath(); mctx.arc(W.nara.x, W.nara.y, 8, 0, Math.PI * 2); mctx.fill();
+    mctx.fillStyle = '#78f4bd'; mctx.font = '600 11px "DM Sans", sans-serif'; mctx.fillText('NARA', W.nara.x, W.nara.y - 14);
+    if (snapshot) snapshot.players.filter((p) => p.online).forEach((p) => {
+      const pos = positions.get(p.id) || p;
+      mctx.fillStyle = p.color; mctx.beginPath(); mctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2); mctx.fill();
+      if (selected === p.id) { mctx.strokeStyle = '#ffd17c'; mctx.lineWidth = 3; mctx.beginPath(); mctx.arc(pos.x, pos.y, 13, 0, Math.PI * 2); mctx.stroke(); }
+      mctx.fillStyle = '#ebfff6'; mctx.font = '600 11px "DM Sans", sans-serif'; mctx.fillText(p.alias, pos.x, pos.y - 13);
+    });
+    requestAnimationFrame(drawMap);
+  }
+
+  // ---------- Detail & ekspor ----------
+
+  function showDetail(p) {
+    const prog = p.progress;
+    const posts = prog ? MISSIONS.map((m) => {
+      const s = prog.posts[m.id] || {};
+      if (m.type === 'project') {
+        const d = s.revision && s.revision.savedAt ? s.revision : s.initial || {};
+        return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2><p><b>Menu:</b> ${esc(d.menuName || '—')} · <b>Sasaran:</b> ${esc(d.target || '—')}</p><p><b>Alasan:</b> ${esc(d.rationale || '—')}</p><p><b>Telaah:</b> ${esc((s.review && s.review.notes) || '—')}</p><p><b>Refleksi:</b> ${esc((s.reflection && s.reflection.learned) || '—')}</p></article>`;
+      }
+      const ch = (s.challenges || []).map((c, i) => `<li>Tantangan ${i + 1}: ${c.complete ? '✓' : '…'} · ${c.attempts || 0} percobaan · ${c.points || 0} poin</li>`).join('');
+      return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2><ul>${ch}</ul><p><b>Alasan:</b> ${esc(s.reason || '—')}</p></article>`;
+    }).join('') : '<p>Belum ada progres.</p>';
+    const flags = p.flags.length ? `<div class="feedback"><b>Catatan validasi server:</b><ul>${p.flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : '';
+    $('#detail-title').textContent = `DETAIL · ${p.alias.toUpperCase()} · ${p.score} POIN · ${p.seals}/6 SEGEL`;
+    $('#detail-body').innerHTML = `${flags}${posts}`;
+    $('#detail-dialog').showModal();
+  }
+  $('#detail-close').addEventListener('click', () => $('#detail-dialog').close());
+
+  let exportFormat = 'json';
+  function download(name, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportData(data) {
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    if (exportFormat === 'json') { download(`nutrantara-kelas-${stamp}.json`, JSON.stringify(data, null, 2), 'application/json'); toast('Data kelas diekspor (JSON).'); return; }
+    const cell = (v) => { const s = String(v ?? ''); return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const head = ['alias', 'skor', 'segel', 'selesai', ...MISSIONS.flatMap((m) => [`pos${m.id}_segel`, `pos${m.id}_percobaan`, `pos${m.id}_alasan`]), 'catatan_validasi', 'dibuat', 'terakhir_aktif'];
+    const lines = data.players.map((p) => {
+      const posts = (p.progress && p.progress.posts) || {};
+      const per = MISSIONS.flatMap((m) => {
+        const s = posts[m.id] || {};
+        const attempts = (s.challenges || []).reduce((n, c) => n + (Number(c.attempts) || 0), 0);
+        const reason = m.type === 'project' ? ((s.reflection && s.reflection.learned) || '') : (s.reason || '');
+        return [s.sealed ? 'ya' : 'tidak', attempts, reason];
+      });
+      return [p.alias, p.score, p.seals, p.finishedAt || '', ...per, (p.flags || []).join(' | '), p.createdAt, p.lastSeen].map(cell).join(',');
+    });
+    download(`nutrantara-kelas-${stamp}.csv`, `﻿${[head.join(','), ...lines].join('\n')}`, 'text/csv');
+    toast('Data kelas diekspor (CSV).');
+  }
+
+  setInterval(() => { if (authed) renderPlayers(); }, 15000);
+  connect();
+})();

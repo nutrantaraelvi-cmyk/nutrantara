@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>NUTRANTARA — Panel Guru</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="admin.css" />
+    <script src="missions.js" defer></script>
+    <script src="world-data.js" defer></script>
+    <script src="admin.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="wordmark" href="/" aria-label="Buka permainan">
+          <span class="wordmark-mark" aria-hidden="true">N</span>
+          <span><strong>NUTRANTARA</strong><small>PANEL KENDALI GURU</small></span>
+        </a>
+        <div class="admin-conn" id="admin-conn" data-state="off">● TERPUTUS</div>
+      </header>
+
+      <main>
+        <section class="admin-login" id="login-view" aria-labelledby="login-title">
+          <div class="eyebrow"><span class="eyebrow-line"></span> AKSES ADMIN</div>
+          <h1 id="login-title">Panel <em>guru.</em></h1>
+          <p class="lede">Masukkan PIN admin yang tampil di jendela server saat <code>npm start</code> dijalankan.</p>
+          <form id="login-form" class="start-form">
+            <label for="pin">PIN admin</label>
+            <div class="input-row"><input id="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="64" required /><button class="button button-primary" type="submit">Masuk <span aria-hidden="true">↗</span></button></div>
+            <p class="feedback" id="login-error" role="alert" hidden></p>
+          </form>
+        </section>
+
+        <div id="admin-view" hidden>
+          <div class="admin-stats" id="admin-stats"></div>
+
+          <section class="admin-section" aria-labelledby="ctl-title">
+            <div class="panel-heading"><span id="ctl-title">KENDALI SESI</span><span class="panel-id" id="server-time"></span></div>
+            <div class="admin-controls">
+              <button type="button" class="button" id="btn-pause"></button>
+              <button type="button" class="button" id="btn-move"></button>
+              <button type="button" class="button" id="btn-chat"></button>
+              <button type="button" class="button button-secondary" id="btn-gather">Kumpulkan semua di Nara</button>
+              <button type="button" class="button button-secondary" id="btn-export-json">Ekspor JSON ↓</button>
+              <button type="button" class="button button-secondary" id="btn-export-csv">Ekspor CSV ↓</button>
+            </div>
+          </section>
+
+          <div class="admin-grid">
+            <section class="admin-section" aria-labelledby="posts-title">
+              <div class="panel-heading"><span id="posts-title">AKSES POS</span><span class="panel-id">GERBANG KELAS</span></div>
+              <p class="field-hint">Pos yang ditutup tidak bisa dimasuki walaupun pos sebelumnya sudah disegel. Pos yang sudah disegel siswa tetap bisa ditinjau.</p>
+              <div class="post-toggles" id="post-toggles"></div>
+              <div class="admin-controls"><button type="button" class="button button-secondary" id="btn-open-all">Buka semua</button><button type="button" class="button button-secondary" id="btn-only-first">Hanya Pos 1</button></div>
+            </section>
+
+            <section class="admin-section" aria-labelledby="ann-title">
+              <div class="panel-heading"><span id="ann-title">PENGUMUMAN</span><span class="panel-id">SEMUA PEMAIN</span></div>
+              <label class="field-label" for="ann-text">Pesan yang muncul di layar semua siswa</label>
+              <textarea id="ann-text" rows="3" maxlength="280" placeholder="Contoh: 5 menit lagi kita diskusi kelas di Pos 3."></textarea>
+              <div class="admin-controls"><button type="button" class="button button-primary" id="btn-announce">Kirim pengumuman</button><button type="button" class="button button-secondary" id="btn-clear-ann">Hapus pengumuman</button></div>
+              <p class="field-hint" id="ann-current"></p>
+            </section>
+          </div>
+
+          <section class="admin-section" aria-labelledby="map-title">
+            <div class="panel-heading"><span id="map-title">PETA LANGSUNG</span><span class="panel-id" id="map-mode">KLIK PEMAIN DI TABEL, LALU KLIK PETA UNTUK MEMINDAHKAN</span></div>
+            <canvas id="admin-map" aria-label="Peta posisi pemain secara langsung"></canvas>
+          </section>
+
+          <section class="admin-section" aria-labelledby="players-title">
+            <div class="panel-heading"><span id="players-title">PENJELAJAH</span><span class="panel-id"><label>Cari <input id="player-filter" class="text-input admin-filter" maxlength="24" autocomplete="off" /></label></span></div>
+            <div class="table-scroll"><table class="admin-table" id="players-table">
+              <thead><tr><th scope="col">Penjelajah</th><th scope="col">Skor</th><th scope="col">Segel</th><th scope="col">Pos 1–6</th><th scope="col">Percobaan</th><th scope="col">Layar</th><th scope="col">Terakhir aktif</th><th scope="col">Aksi</th></tr></thead>
+              <tbody id="players-body"></tbody>
+            </table></div>
+          </section>
+
+          <section class="admin-section" aria-labelledby="chat-admin-title">
+            <div class="panel-heading"><span id="chat-admin-title">OBROLAN KELAS</span><button type="button" class="button button-secondary admin-small" id="btn-clear-chat">Bersihkan obrolan</button></div>
+            <ol class="chat-log admin-chat" id="admin-chat"></ol>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <dialog id="detail-dialog" class="admin-dialog" aria-labelledby="detail-title">
+      <div class="panel-heading"><span id="detail-title">DETAIL PENJELAJAH</span><button type="button" class="icon-button" id="detail-close" aria-label="Tutup">×</button></div>
+      <div id="detail-body"></div>
+    </dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
