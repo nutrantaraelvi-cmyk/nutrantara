@@ -100,7 +100,7 @@ function renderGfxBar() {
   });
   keysHelp.innerHTML = gfx === '2d'
     ? '<kbd>W A S D</kbd> berjalan · <kbd>E</kbd> berinteraksi · klik/sentuh untuk berjalan · Papan ketik saja? Gunakan <button type="button" class="link-button" data-screen="map">Peta</button>.'
-    : '<kbd>W A S D</kbd> berjalan · <kbd>Spasi</kbd> lompat · <kbd>E</kbd> interaksi · <kbd>1–4</kbd> emote · seret mouse memutar kamera · gulir zoom · Papan ketik saja? <button type="button" class="link-button" data-screen="map">Peta</button>';
+    : '<kbd>W A S D</kbd> berjalan · <kbd>← →</kbd> memutar arah hadap · <kbd>↑ ↓</kbd> maju/mundur · kursor = arah hadap, klik tanah = jalan ke sana · <kbd>Spasi</kbd> lompat · <kbd>E</kbd> interaksi · <kbd>1–4</kbd> emote · seret = putar kamera · gulir = zoom · <button type="button" class="link-button" data-screen="map">Peta</button>';
 }
 
 // ---------- Three.js ----------
@@ -612,6 +612,25 @@ async function prepare(onProgress = () => {}) {
       selectRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 6, 60), new THREE.MeshBasicMaterial({ color: PALETTE.gold, transparent: true, opacity: 0.9 }));
       selectRing.rotation.x = Math.PI / 2;
       scene.add(selectRing);
+      // Tanda panah arah hadap (di tanah, di depan penjelajah)
+      const arrowShape = new THREE.Shape();
+      arrowShape.moveTo(0, 0.55); arrowShape.lineTo(0.42, 0.05); arrowShape.lineTo(0.16, 0.05); arrowShape.lineTo(0.16, -0.35); arrowShape.lineTo(-0.16, -0.35); arrowShape.lineTo(-0.16, 0.05); arrowShape.lineTo(-0.42, 0.05); arrowShape.closePath();
+      facingArrow = new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color: '#ffc93c', transparent: true, opacity: 0.95, depthWrite: false }));
+      const arrowEdge = new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color: '#7a3f1c', transparent: true, opacity: 0.85, depthWrite: false }));
+      arrowEdge.scale.setScalar(1.22); arrowEdge.position.set(0, -0.03, -0.005); arrowEdge.renderOrder = 1;
+      facingArrow.add(arrowEdge);
+      facingArrow.scale.setScalar(1.5);
+      facingArrow.rotation.order = 'YXZ';
+      facingArrow.renderOrder = 2;
+      scene.add(facingArrow);
+      aimRing = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.4, 28), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+      aimRing.rotation.x = -Math.PI / 2;
+      aimRing.renderOrder = 2;
+      scene.add(aimRing);
+      walkMarker = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.55, 4), new THREE.MeshBasicMaterial({ color: '#f5b72b', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+      walkMarker.rotation.x = -Math.PI / 2;
+      walkMarker.renderOrder = 2;
+      scene.add(walkMarker);
       self.obj = createExplorer(net && net.me ? net.me.color : PALETTE.cyan);
       add(self.obj);
     }
@@ -672,7 +691,12 @@ function sealed(id, res) {
 
 // ---------- Interaksi ----------
 const keys = new Set();
-const KEYMAP = { ArrowUp: 'f', KeyW: 'f', ArrowDown: 'b', KeyS: 'b', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
+const KEYMAP = { KeyW: 'f', KeyS: 'b', KeyA: 'l', KeyD: 'r', ArrowUp: 'af', ArrowDown: 'ab', ArrowLeft: 'tl', ArrowRight: 'tr' };
+const TURN_SPEED = 2.6; // radian per detik
+const aim = { point: null, active: false, lastMove: 0 }; // titik tanah di bawah kursor
+const walkTo = { point: null };
+let facingArrow; let aimRing; let walkMarker;
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const stick = { x: 0, y: 0, id: null };
 let jumpQueued = false;
 const typing = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
@@ -692,6 +716,16 @@ window.addEventListener('keyup', (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP
 window.addEventListener('blur', () => keys.clear());
 
 const raycaster = new THREE.Raycaster();
+function groundPoint(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  const p = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(p, camera);
+  const hit = raycaster.intersectObjects(islandTops, false)[0];
+  if (hit) return new THREE.Vector3(hit.point.x, 0, hit.point.z);
+  groundPlane.constant = 0;
+  const out = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(groundPlane, out) ? out.setY(0) : null;
+}
 function pickIsland(e) {
   const r = renderer.domElement.getBoundingClientRect();
   const p = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -705,6 +739,7 @@ function bindInput(el) {
   el.addEventListener('pointerdown', (e) => { el.focus(); drag = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: 0 }; el.setPointerCapture(e.pointerId); });
   el.addEventListener('pointermove', (e) => {
     if (mode === 'overview' && !drag) { const id = pickIsland(e); el.style.cursor = id !== null ? 'pointer' : 'grab'; overview.hover = id; }
+    if (mode === 'play' && (!drag || drag.moved < 6) && e.pointerType === 'mouse') { const p = groundPoint(e); aim.point = p; aim.active = Boolean(p); aim.lastMove = performance.now(); }
     if (!drag || drag.id !== e.pointerId) return;
     const dx = e.clientX - drag.x; const dy = e.clientY - drag.y;
     drag.moved += Math.abs(dx) + Math.abs(dy);
@@ -714,9 +749,11 @@ function bindInput(el) {
   });
   el.addEventListener('pointerup', (e) => {
     if (mode === 'overview' && drag && drag.moved < 6) { const id = pickIsland(e); if (id !== null) selectIsland(id); }
+    if (mode === 'play' && drag && drag.moved < 6 && !panelOpen) { const p = groundPoint(e); if (p) { const c = W.clamp(toPx(p.x), toPy(p.z), allowedSet()); walkTo.point = new THREE.Vector3(toX(c.x), 0, toZ(c.y)); fx.ring({ x: walkTo.point.x, y: 0, z: walkTo.point.z }, { color: '#f5b72b', from: 0.2, to: 1.4, life: 0.45 }); } }
     drag = null;
   });
   el.addEventListener('pointercancel', () => { drag = null; });
+  el.addEventListener('pointerleave', () => { aim.active = false; });
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (mode === 'overview') overview.dist = Math.min(120, Math.max(40, overview.dist + e.deltaY * 0.05));
@@ -929,6 +966,7 @@ function updateDrop(dt) {
     document.getElementById('w3-drophint').hidden = true;
     if (net) net.sendMove(toPx(self.x), toPy(self.z), 0);
     arrive(drop.island, true);
+    if (!sessionStorage.getItem('nutrantara-tip-arah')) { try { sessionStorage.setItem('nutrantara-tip-arah', '1'); } catch { /* abaikan */ } setTimeout(() => game.showToast('Tip: ← → memutar arah hadap, ↑ ↓ maju/mundur. Arahkan kursor untuk menoleh, klik tanah untuk berjalan.'), 2500); }
   }
   self.obj.position.set(self.x, self.h, self.z);
   self.obj.rotation.y = self.face;
@@ -962,28 +1000,57 @@ function arrive(id, fromDrop) {
 // ---------- Simulasi bermain ----------
 function updatePlay(dt) {
   let ix = 0; let iz = 0;
+  let turn = 0; let ahead = 0;
   if (canMove()) {
     if (keys.has('f')) iz -= 1;
     if (keys.has('b')) iz += 1;
     if (keys.has('l')) ix -= 1;
     if (keys.has('r')) ix += 1;
+    if (keys.has('tl')) turn += 1;
+    if (keys.has('tr')) turn -= 1;
+    if (keys.has('af')) ahead += 1;
+    if (keys.has('ab')) ahead -= 1;
     ix += stick.x; iz += stick.y;
+  }
+  // Tombol panah ←/→: memutar arah hadap; kamera ikut berputar ke belakang penjelajah.
+  if (turn) {
+    self.face += turn * TURN_SPEED * dt;
+    let d = (self.face + Math.PI) - cam.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+    cam.yaw += d * Math.min(1, dt * 5);
+    walkTo.point = null;
   }
   const len = Math.hypot(ix, iz);
   if (len > 1) { ix /= len; iz /= len; }
   const sin = Math.sin(cam.yaw); const cos = Math.cos(cam.yaw);
-  const mx = ix * cos + iz * sin;
-  const mz = -ix * sin + iz * cos;
+  let mx = ix * cos + iz * sin;
+  let mz = -ix * sin + iz * cos;
+  let faceMove = true;
+  // Tombol panah ↑/↓: maju/mundur searah hadap (mundur tanpa berbalik badan).
+  if (ahead) { mx += Math.sin(self.face) * ahead; mz += Math.cos(self.face) * ahead; if (ahead < 0 && !len) faceMove = false; walkTo.point = null; }
+  // Klik tanah: berjalan ke titik tujuan.
+  if (!len && !ahead && walkTo.point) {
+    const dx = walkTo.point.x - self.x; const dz = walkTo.point.z - self.z; const d = Math.hypot(dx, dz);
+    if (d < 0.35 || !canMove()) walkTo.point = null; else { mx = dx / d; mz = dz / d; }
+  } else if (len) walkTo.point = null;
+  const mlen = Math.hypot(mx, mz);
+  if (mlen > 1) { mx /= mlen; mz /= mlen; }
   const moving = Math.hypot(mx, mz) > 0.05;
   const allowed = allowedSet();
   if (moving) {
     const c = W.clamp(toPx(self.x + mx * SPEED * dt), toPy(self.z + mz * SPEED * dt), allowed);
     self.x = toX(c.x); self.z = toZ(c.y);
-    let diff = Math.atan2(mx, mz) - self.face;
-    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    self.face += diff * Math.min(1, dt * 12);
+    if (faceMove && !turn) {
+      let diff = Math.atan2(mx, mz) - self.face;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      self.face += diff * Math.min(1, dt * 12);
+    }
+  } else if (aim.active && aim.point && performance.now() - aim.lastMove < 4000 && !panelOpen && !turn) {
+    // Diam: penjelajah menoleh ke arah kursor.
+    const dx = aim.point.x - self.x; const dz = aim.point.z - self.z;
+    if (Math.hypot(dx, dz) > 0.6) { let diff = Math.atan2(dx, dz) - self.face; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); self.face += diff * Math.min(1, dt * 8); }
   }
-  self.speed += ((moving ? Math.min(1, len) : 0) - self.speed) * Math.min(1, dt * 10);
+  updateFacingMarkers(moving);
+  self.speed += ((moving ? Math.min(1, Math.max(len, Math.hypot(mx, mz))) : 0) - self.speed) * Math.min(1, dt * 10);
   if (jumpQueued && self.grounded && canMove()) { self.vy = JUMP; self.grounded = false; }
   jumpQueued = false;
   const prevH = self.h;
@@ -1025,6 +1092,21 @@ function updatePlay(dt) {
   updateShards(dt);
   updateNearby();
   updateCamera(dt);
+}
+
+function updateFacingMarkers(moving) {
+  if (!facingArrow) return;
+  const t = clock.elapsedTime;
+  const dist = 1.75 + (moving ? 0.2 : Math.sin(t * 4) * 0.1);
+  facingArrow.visible = mode === 'play';
+  facingArrow.position.set(self.x + Math.sin(self.face) * dist, self.h + 0.06, self.z + Math.cos(self.face) * dist);
+  facingArrow.rotation.set(-Math.PI / 2, self.face, 0);
+  facingArrow.material.opacity = 0.75 + Math.sin(t * 4) * 0.15;
+  const showAim = mode === 'play' && aim.active && aim.point && performance.now() - aim.lastMove < 4000 && !panelOpen;
+  aimRing.visible = Boolean(showAim);
+  if (showAim) { aimRing.position.set(aim.point.x, 0.06, aim.point.z); aimRing.scale.setScalar(1 + Math.sin(t * 6) * 0.08); }
+  walkMarker.visible = Boolean(walkTo.point) && mode === 'play';
+  if (walkTo.point) { walkMarker.position.set(walkTo.point.x, 0.07, walkTo.point.z); walkMarker.rotation.z = t * 2; }
 }
 
 function updateShards(dt) {
@@ -1238,7 +1320,7 @@ function start() {
   requestAnimationFrame(frameLoop);
 }
 
-function stop() { running = false; keys.clear(); stick.x = stick.y = 0; nearby = null; if (quests) quests.closePanel(true); panelOpen = false; }
+function stop() { running = false; keys.clear(); stick.x = stick.y = 0; nearby = null; walkTo.point = null; aim.active = false; if (quests) quests.closePanel(true); panelOpen = false; }
 
 function applyMode(prev) {
   const is3d = gfx !== '2d';
