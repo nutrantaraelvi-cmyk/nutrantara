@@ -125,12 +125,15 @@ async function adminProbe() {
     const pos = await b.wait((m) => m.type === 'positions' && m.list.some(([id, x]) => id === wa.you.id && x > sp.x + 20));
     ok(pos.list.find(([id]) => id === wa.you.id)[6] === 1, 'gerak A tersiar ke B (zona dunia)');
 
-    // Coba berjalan menyeberang laut ke Pulau Pos 3 yang masih terkunci.
+    // Coba berjalan ke timur menyeberangi celah ke Wilayah Pos 3 yang masih terkunci (tanpa jembatan di jalur ini).
+    const pos3 = W.islands.find((i) => i.id === 3);
+    ok(W.islands.find((i) => i.id === 1).rx * 0.2 >= 1000 && pos3.rx * 0.2 >= 1000, 'wilayah pos dunia terbuka berukuran ±1000 × 650 m');
     let cur = { x: sp.x + 30, y: sp.y };
-    for (let i = 0; i < 25; i += 1) { cur = { x: cur.x + 40, y: cur.y - 2 }; a.send({ type: 'move', x: cur.x, y: cur.y }); await sleep(20); }
-    await sleep(200);
+    const steps = Math.ceil((pos3.cx - cur.x) / 58);
+    for (let i = 0; i < steps; i += 1) { cur = { x: cur.x + 58, y: cur.y }; a.send({ type: 'move', x: cur.x, y: cur.y }); await sleep(30); } // di bawah batas ~40 pesan/detik
+    await sleep(1100); // tunggu jatah pesan per detik pulih
     const meA = (await adminProbe()).players.find((p) => p.alias === 'Penjelajah07');
-    ok(![3, 4].includes(W.islandAt(meA.x, meA.y)) && Math.abs(W.clamp(meA.x, meA.y, W.allowedIslands([], [1])).x - meA.x) < 2, 'pemain tidak bisa berjalan ke pulau yang belum terbuka');
+    ok(W.islandAt(meA.x, meA.y) === 1 && meA.x > sp.x + 3000 && Math.abs(W.clamp(meA.x, meA.y, W.allowedIslands([], [1])).x - meA.x) < 2, 'pemain bisa menjelajah wilayah pos tetapi tidak bisa berjalan ke pos yang belum terbuka');
 
     a.send({ type: 'emote', emote: 'wave' });
     ok((await b.wait(type('emote'))).emote === 'wave', 'emote tersiar');

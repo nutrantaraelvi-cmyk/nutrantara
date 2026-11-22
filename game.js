@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.7';
+  const APP_VERSION = '0.9';
   const STORAGE_PREFIX = 'nutrantara-save-v2:';
   let userKey = '';
   const saveKey = () => STORAGE_PREFIX + userKey;

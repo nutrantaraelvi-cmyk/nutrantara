@@ -22,13 +22,17 @@ document.getElementById('pos-grid').innerHTML = MISSIONS.map((m, i) => `
 // ---------- Peta SVG dari world-data ----------
 (function drawMap() {
   const COL = { 0: '#78f4bd', 1: '#ff9f91', 2: '#ffd17c', 3: '#f59e5b', 4: '#68dce7', 5: '#c58cf0', 6: '#ffd17c' };
-  const clouds = Array.from({ length: 16 }, (_, k) => `<ellipse cx="${(k * 137) % W.width}" cy="${40 + ((k * 89) % 540)}" rx="${50 + (k % 4) * 14}" ry="16" fill="#fff" opacity=".7"/>`).join('');
-  const bridges = W.bridges.map((br) => `<line x1="${br.a[0]}" y1="${br.a[1]}" x2="${br.b[0]}" y2="${br.b[1]}" stroke="#68dce7" stroke-width="${br.w * 0.8}" stroke-linecap="round" opacity=".85"/><line x1="${br.a[0]}" y1="${br.a[1]}" x2="${br.b[0]}" y2="${br.b[1]}" stroke="#fff" stroke-width="3" stroke-dasharray="8 10" class="m-route"/>`).join('');
+  const K = W.width / 2400; // peta 0.9 jauh lebih luas: ikon, teks, dan awan ikut diskalakan
+  const clouds = Array.from({ length: 16 }, (_, k) => `<ellipse cx="${((k * 137 * K) % W.width).toFixed(0)}" cy="${((40 + ((k * 89) % 540)) * K).toFixed(0)}" rx="${(50 + (k % 4) * 14) * K}" ry="${16 * K}" fill="#fff" opacity=".7"/>`).join('');
+  const bridges = W.bridges.map((br) => `<line x1="${br.a[0]}" y1="${br.a[1]}" x2="${br.b[0]}" y2="${br.b[1]}" stroke="#68dce7" stroke-width="${Math.max(br.w * 0.8, 10 * K)}" stroke-linecap="round" opacity=".85"/><line x1="${br.a[0]}" y1="${br.a[1]}" x2="${br.b[0]}" y2="${br.b[1]}" stroke="#fff" stroke-width="${3 * K}" stroke-dasharray="${8 * K} ${10 * K}" class="m-route"/>`).join('');
   const islands = W.islands.map((isl) => {
     const m = MISSIONS.find((mm) => mm.id === isl.id);
-    return `<g><ellipse cx="${isl.cx}" cy="${isl.cy + 16}" rx="${isl.rx * 0.8}" ry="${isl.ry * 0.9}" fill="#6f5a48"/><ellipse cx="${isl.cx}" cy="${isl.cy}" rx="${isl.rx + 6}" ry="${isl.ry + 6}" fill="#ecd8a0"/><ellipse cx="${isl.cx}" cy="${isl.cy}" rx="${isl.rx}" ry="${isl.ry}" fill="url(#g-grass)"/>
-      ${isl.id ? `<g transform="translate(${isl.cx} ${isl.cy - 6})"><circle r="22" fill="#0e2426" stroke="${COL[isl.id]}" stroke-width="4"/><text y="7" text-anchor="middle" class="m-num" style="fill:${COL[isl.id]}">${isl.id}</text></g>` : ''}
-      <text x="${isl.cx}" y="${isl.cy + (isl.id ? 34 : 6)}" text-anchor="middle" class="m-lbl">${esc(m ? `${m.title} ${m.titleEm}` : isl.name).toUpperCase()}</text></g>`;
+    const isBig = isl.rx > 1000;
+    const s = Math.max(isl.rx, 40 * K) / isl.rx; // pulau kecil tetap terlihat di samping wilayah pos yang luas
+    const rx = isl.rx * s; const ry = isl.ry * s;
+    return `<g><ellipse cx="${isl.cx}" cy="${isl.cy + 16 * K}" rx="${rx * 0.8}" ry="${ry * 0.9}" fill="#6f5a48"/><ellipse cx="${isl.cx}" cy="${isl.cy}" rx="${rx + 6 * K}" ry="${ry + 6 * K}" fill="#ecd8a0"/><ellipse cx="${isl.cx}" cy="${isl.cy}" rx="${rx}" ry="${ry}" fill="url(#g-grass)"/>
+      <g transform="translate(${isl.cx} ${isl.cy}) scale(${isBig ? K * 3 : K * 1.6})">${isl.id ? `<g transform="translate(0 -6)"><circle r="22" fill="#0e2426" stroke="${COL[isl.id]}" stroke-width="4"/><text y="7" text-anchor="middle" class="m-num" style="fill:${COL[isl.id]}">${isl.id}</text></g>` : ''}
+      <text y="${isl.id ? 34 : 6}" text-anchor="middle" class="m-lbl">${esc(m ? `${m.title} ${m.titleEm}` : isl.name).toUpperCase()}</text></g></g>`;
   }).join('');
   document.getElementById('map-svg').innerHTML = `
     <svg viewBox="0 0 ${W.width} ${W.height}" aria-hidden="true">
@@ -36,7 +40,7 @@ document.getElementById('pos-grid').innerHTML = MISSIONS.map((m, i) => `
       <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fdbe6"/><stop offset="1" stop-color="#e8f7fa"/></linearGradient></defs>
       <rect width="${W.width}" height="${W.height}" fill="url(#g-sky)"/>
       ${clouds}${bridges}${islands}
-      <g transform="translate(${W.nara.x} ${W.nara.y})"><circle r="11" fill="#f2fff8"/><rect x="-7" y="-4" width="14" height="6" rx="2" fill="#0b1f21"/><text y="-18" text-anchor="middle" class="m-nara">NARA</text></g>
+      <g transform="translate(${W.nara.x} ${W.nara.y}) scale(${K * 1.6})"><circle r="11" fill="#f2fff8"/><rect x="-7" y="-4" width="14" height="6" rx="2" fill="#0b1f21"/><text y="-18" text-anchor="middle" class="m-nara">NARA</text></g>
     </svg>`;
 })();
 

@@ -185,7 +185,9 @@ export function createQuests(ctx) {
   game.missions.forEach((m) => {
     const f = islandFrame(m.id);
     if (!f) return;
-    const P = (lx, lz) => ({ x: f.x + lx * f.rx, z: f.z + lz * f.rz });
+    // Wilayah pos sangat luas: objek misi tersebar di inti wilayah (±220 × 140 m), sisanya untuk jelajah bebas.
+    const sx = Math.min(f.rx, 220); const sz = Math.min(f.rz, 140);
+    const P = (lx, lz) => ({ x: f.x + lx * sx, z: f.z + lz * sz });
     if (m.type === 'project') {
       const p = P(0, 0.05);
       const t = buildKitchenTable(p.x, p.z);

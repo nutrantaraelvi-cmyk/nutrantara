@@ -9,7 +9,7 @@
   const net = window.NutraNet;
   if (!W || !game) return;
 
-  const POS_KEY = 'nutrantara-world-pos-v2'; // v2: peta 2400×1500
+  const POS_KEY = 'nutrantara-world-pos-v3'; // v3: peta 32400×15200 (wilayah pos dunia terbuka)
   const canvas = document.getElementById('world-canvas');
   const ctx = canvas.getContext('2d');
   const promptEl = document.getElementById('world-prompt');
@@ -246,7 +246,7 @@
       ctx.font = '700 11px "DM Mono", monospace';
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(7,21,22,.8)';
-      ctx.fillText(W.isPost(isl.id) ? `POS ${isl.id} · ${isl.name.toUpperCase()}` : isl.kind === 'wild' ? `◆ ${isl.name.toUpperCase()}` : isl.name.toUpperCase(), isl.cx, isl.cy - isl.ry + 18);
+      ctx.fillText(W.isPost(isl.id) ? `POS ${isl.id} · ${isl.name.toUpperCase()}` : isl.kind === 'wild' ? `◆ ${isl.name.toUpperCase()}` : isl.name.toUpperCase(), isl.cx, W.isPost(isl.id) ? isl.cy + Math.min(isl.ry * 0.25, 300) - 150 : isl.cy - isl.ry + 18);
     });
 
     // Pohon

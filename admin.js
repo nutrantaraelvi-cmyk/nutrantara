@@ -260,10 +260,11 @@
     mctx.setTransform(s, 0, 0, s, 0, 0);
     mctx.fillStyle = '#04161a'; mctx.fillRect(0, 0, W.width, W.height);
     mctx.fillStyle = '#a8e3f0'; mctx.fillRect(0, 0, W.width, W.height);
-    W.bridges.forEach((br) => { mctx.strokeStyle = 'rgba(104,220,231,.9)'; mctx.lineWidth = br.w * 0.7; mctx.lineCap = 'round'; mctx.beginPath(); mctx.moveTo(br.a[0], br.a[1]); mctx.lineTo(br.b[0], br.b[1]); mctx.stroke(); });
-    W.islands.forEach((isl) => { mctx.fillStyle = '#e6d29b'; mctx.beginPath(); mctx.ellipse(isl.cx, isl.cy, isl.rx + 5, isl.ry + 5, 0, 0, Math.PI * 2); mctx.fill(); mctx.fillStyle = '#4fae66'; mctx.beginPath(); mctx.ellipse(isl.cx, isl.cy, isl.rx, isl.ry, 0, 0, Math.PI * 2); mctx.fill(); });
-    const openPosts = snapshot ? snapshot.settings.openPosts : [];
     const k = W.width / 960; // ikon & teks ikut diskalakan agar tetap terbaca di peta yang lebih luas
+    W.bridges.forEach((br) => { mctx.strokeStyle = 'rgba(104,220,231,.9)'; mctx.lineWidth = Math.max(br.w * 0.7, 4 * k); mctx.lineCap = 'round'; mctx.beginPath(); mctx.moveTo(br.a[0], br.a[1]); mctx.lineTo(br.b[0], br.b[1]); mctx.stroke(); });
+    const openPosts = snapshot ? snapshot.settings.openPosts : [];
+    // Pulau kecil diberi ukuran minimum; wilayah pos tampil sesuai ukuran aslinya.
+    W.islands.forEach((isl) => { const m = Math.max(isl.rx, 7 * k) / isl.rx; mctx.fillStyle = '#e6d29b'; mctx.beginPath(); mctx.ellipse(isl.cx, isl.cy, isl.rx * m + 5, isl.ry * m + 5, 0, 0, Math.PI * 2); mctx.fill(); mctx.fillStyle = '#4fae66'; mctx.beginPath(); mctx.ellipse(isl.cx, isl.cy, isl.rx * m, isl.ry * m, 0, 0, Math.PI * 2); mctx.fill(); });
     const font = (wt, px, fam) => `${wt} ${Math.round(px * k)}px ${fam}`;
     mctx.textAlign = 'center';
     W.islands.filter((isl) => isl.kind === 'wild').forEach((isl) => {

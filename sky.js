@@ -199,7 +199,8 @@ export function createCloudSea({ radius = 460, y = -15, quality = 'high', render
   const used = quality === 'high' ? layers : layers.slice(0, 2);
   const scrolls = used.map((L, k) => {
     const tex = k === 0 ? solidTex : k === 1 ? puffTex : puffTex.clone();
-    tex.repeat.set(L.rep, L.rep);
+    const dens = radius / 460; // kepadatan awan tetap sama walau lautan awan diperluas
+    tex.repeat.set(L.rep * dens, L.rep * dens);
     tex.offset.set(k * 0.37, k * 0.61);
     const m = new THREE.MeshBasicMaterial({ map: tex, color: L.color, transparent: L.transparent, opacity: L.opacity ?? 1, depthWrite: !L.transparent });
     const mesh = new THREE.Mesh(geo, m);
