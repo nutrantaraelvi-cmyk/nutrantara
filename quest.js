@@ -202,7 +202,8 @@ export function createQuests(ctx) {
       const k = rows.length === 1 ? 0 : i / (rows.length - 1);
       const lx = -0.5 + k * 1.0;
       const p = P(lx, -0.08 + Math.abs(lx) * 0.25);
-      const t = buildTerminal(m.id, i, row.label, p.x, p.z, -lx * 0.5);
+      // Pos bervarian: indikatornya berganti per siswa, jadi layar terminal memakai nomor arsip.
+      const t = buildTerminal(m.id, i, m.variants ? `ARSIP ${i + 1}` : row.label, p.x, p.z, -lx * 0.5);
       items.push({ kind: 'terminal', pos: m.id, row: i, x: p.x, z: p.z, label: row.label, ...t });
     });
     const b = P(-0.62, 0.42);
@@ -274,7 +275,7 @@ export function createQuests(ctx) {
     if (it.kind === 'stage') return p.sealed ? 'Panggung Presentasi — tekan E untuk mempresentasikan kartu menumu!' : 'Panggung Presentasi — terbuka setelah Dapur Juara disegel.';
     if (it.kind === 'station') return `${it.st.label} — ${act.stations[it.st.id] ? 'selesai ✓' : 'tekan E untuk mengerjakan misi'}`;
     if (it.kind === 'terminal' && it.distractor) return `Terminal Arsip · ${it.label} — ${act.rejected ? 'ditandai pengalih ✓' : 'tekan E untuk memindai'}`;
-    if (it.kind === 'terminal') return `Terminal Arsip · ${it.label} — ${evidenceOf(it.pos).includes(it.row) ? 'sudah dipindai ✓' : 'tekan E untuk memindai'}`;
+    if (it.kind === 'terminal') return `Terminal Arsip · ${m.stimulus.rows[it.row].label} — ${evidenceOf(it.pos).includes(it.row) ? 'sudah dipindai ✓' : 'tekan E untuk memindai'}`;
     if (it.kind === 'board') {
       if (p.sealed) return 'Papan Laporan — semua tantangan selesai ✓ (tekan E untuk meninjau)';
       if (!activityOk(it.pos)) return `Papan Laporan terkunci — selesaikan misi "${m.activity.title}" dulu.`;

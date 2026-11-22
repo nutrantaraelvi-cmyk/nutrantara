@@ -299,7 +299,8 @@
         return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2><p><b>Menu:</b> ${esc(d.menuName || '—')} · <b>Sasaran:</b> ${esc(d.target || '—')}</p><p><b>Alasan:</b> ${esc(d.rationale || '—')}</p><p><b>Telaah:</b> ${esc((s.review && s.review.notes) || '—')}</p><p><b>Refleksi:</b> ${esc((s.reflection && s.reflection.learned) || '—')}</p></article>`;
       }
       const ch = (s.challenges || []).map((c, i) => `<li>Tantangan ${i + 1}: ${c.complete ? '✓' : '…'} · ${c.attempts || 0} percobaan · ${c.points || 0} poin</li>`).join('');
-      return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2><ul>${ch}</ul><p><b>Alasan:</b> ${esc(s.reason || '—')}</p></article>`;
+      const kasus = m.variants ? `<p><b>Kasus:</b> varian ${(Number.isInteger(s.variant) ? s.variant : 0) + 1}/${m.variants.length} · ${esc((m.variants[s.variant] || m.variants[0]).mission.stimulus.columns.slice(1).join(' vs '))}</p>` : '';
+      return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2>${kasus}<ul>${ch}</ul><p><b>Alasan:</b> ${esc(s.reason || '—')}</p></article>`;
     }).join('') : '<p>Belum ada progres.</p>';
     const flags = p.flags.length ? `<div class="feedback"><b>Catatan validasi server:</b><ul>${p.flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : '';
     $('#detail-title').textContent = `DETAIL · ${p.alias.toUpperCase()} · ${p.score} POIN · ${p.seals}/6 SEGEL`;

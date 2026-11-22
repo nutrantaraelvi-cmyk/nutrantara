@@ -171,6 +171,17 @@ function isCorrect(def, response) {
   return false;
 }
 
+// Pos bervarian (Pos 1): kunci jawaban diambil dari varian milik siswa. Progres lama tanpa nomor = varian 0.
+function challengesFor(m, p, flags) {
+  if (!m.variants) return m.challenges;
+  if (p.variant === undefined) return m.variants[0].mission.challenges;
+  if (!Number.isInteger(p.variant) || !m.variants[p.variant]) {
+    flags.push(`Pos ${m.id}: nomor varian tidak sah, dikembalikan ke varian 1`);
+    p.variant = 0;
+  }
+  return m.variants[p.variant].mission.challenges;
+}
+
 function validateProgress(state) {
   const flags = [];
   let score = 0;
@@ -183,7 +194,7 @@ function validateProgress(state) {
     if (m.type === 'analysis') {
       const list = Array.isArray(p.challenges) ? p.challenges : [];
       let allDone = true;
-      m.challenges.forEach((def, i) => {
+      challengesFor(m, p, flags).forEach((def, i) => {
         const c = list[i];
         if (!c || typeof c !== 'object' || !c.complete) { allDone = false; return; }
         // Satu jawaban per tantangan: benar = poin, salah = 0 poin (tetap dianggap selesai).

@@ -473,3 +473,202 @@ window.NUTRANTARA_MISSIONS = [
   };
   window.NUTRANTARA_MISSIONS.forEach((m) => { if (ACTIVITIES[m.id]) m.activity = ACTIVITIES[m.id]; });
 })();
+
+/*
+ * Pos 1 "Detektif Menu": 100 varian kasus (varian 0 = kasus asli Menu A/B).
+ * Setiap siswa mendapat satu varian acak yang tersimpan di progresnya (posts[1].variant),
+ * sehingga teman sebangku memeriksa pasangan menu dan bukti yang berbeda.
+ * Varian dibuat deterministik (PRNG berbenih tetap), jadi browser dan server selalu
+ * menghasilkan kunci jawaban yang sama. Jangan ubah benih/urutan daftar tanpa alasan:
+ * progres siswa yang sudah berjalan akan menunjuk ke kasus yang berbeda.
+ * Semua angka adalah data simulasi, bukan rekomendasi gizi.
+ * Struktur tetap: 3 baris arsip (Energi + 2 indikator) dan 2 tantangan, agar terminal 3D dan skor tidak berubah.
+ */
+(function () {
+  const m1 = window.NUTRANTARA_MISSIONS.find((m) => m.id === 1);
+  if (!m1) return;
+  const COUNT = 100;
+  let seed = 20261122;
+  const rand = () => { // mulberry32
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  const shuffle = (list) => {
+    const a = list.slice();
+    for (let i = a.length - 1; i > 0; i -= 1) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  };
+  const lower = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+  const joinAnd = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} dan ${list[list.length - 1]}` : list[0]);
+  // Format rupiah manual (tidak bergantung pada data lokal Intl di server).
+  const rupiah = (n) => `Rp${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+
+  // Kadar per tingkat (rendah, sedang, tinggi) per porsi — simulasi.
+  const IND = [
+    { key: 'protein', label: 'Protein', unit: 'g', lv: [10, 17, 26] },
+    { key: 'fiber', label: 'Serat', unit: 'g', lv: [2, 5, 9] },
+    { key: 'fat', label: 'Lemak', unit: 'g', lv: [9, 17, 27] },
+    { key: 'sugar', label: 'Gula', unit: 'g', lv: [4, 11, 24] },
+    { key: 'sodium', label: 'Natrium', unit: 'mg', lv: [350, 800, 1450], step: 10 },
+    { key: 'calcium', label: 'Kalsium', unit: 'mg', lv: [70, 160, 310], step: 5 },
+    { key: 'iron', label: 'Zat besi', unit: 'mg', lv: [2, 4, 7] },
+    { key: 'vitc', label: 'Vitamin C', unit: 'mg', lv: [3, 15, 40] }
+  ];
+  // Profil tingkat menu kantin: [protein, serat, lemak, gula, natrium, kalsium, zat besi, vitamin C].
+  const DISHES = [
+    ['Nasi uduk telur', [1, 0, 2, 0, 1, 0, 1, 0]],
+    ['Gado-gado', [1, 2, 1, 1, 1, 1, 1, 1]],
+    ['Pecel tempe', [1, 2, 1, 1, 1, 1, 2, 1]],
+    ['Mi goreng', [0, 0, 2, 0, 2, 0, 0, 0]],
+    ['Soto ayam', [2, 0, 1, 0, 2, 0, 1, 0]],
+    ['Pempek cuko', [1, 0, 1, 2, 1, 1, 0, 0]],
+    ['Ikan + sayur asem', [2, 1, 0, 0, 1, 1, 1, 2]],
+    ['Nasi goreng', [1, 0, 2, 0, 2, 0, 1, 0]],
+    ['Bubur tinutuan', [0, 2, 0, 0, 1, 1, 2, 2]],
+    ['Papeda kuah kuning', [2, 0, 0, 0, 1, 1, 1, 1]],
+    ['Nasi jagung urap', [0, 2, 1, 0, 0, 1, 1, 1]],
+    ['Martabak manis', [0, 0, 2, 2, 0, 1, 0, 0]],
+    ['Nasi rendang', [2, 1, 2, 0, 1, 1, 2, 1]],
+    ['Ketoprak', [1, 1, 1, 1, 1, 1, 1, 0]],
+    ['Sate lontong', [2, 0, 1, 1, 1, 0, 1, 0]],
+    ['Pecel lele', [2, 1, 2, 0, 1, 1, 1, 1]],
+    ['Lontong sayur', [1, 1, 1, 0, 2, 1, 1, 0]]
+  ];
+  const PACKS = ['kotak kertas', 'daun pisang', 'mangkuk', 'besek bambu', 'kertas nasi', 'rantang', 'piring rotan'];
+  const ENERGY = [450, 480, 500, 520, 550, 600];
+  const value = (ind, level) => {
+    const step = ind.step || 1;
+    return Math.max(1, Math.round((ind.lv[level] * (0.88 + rand() * 0.24)) / step) * step);
+  };
+
+  const pairs = [];
+  DISHES.forEach((a, i) => DISHES.forEach((b, j) => { if (i < j) pairs.push([a, b]); }));
+
+  function build(n, [dishA, dishB]) {
+    const [A, B] = rand() < 0.5 ? [dishA, dishB] : [dishB, dishA];
+    const a = A[0]; const b = B[0];
+    const E = pick(ENERGY);
+    const diff = IND.filter((ind, k) => A[1][k] !== B[1][k]);
+    const same = IND.filter((ind, k) => A[1][k] === B[1][k]);
+    const chosen = same.length && (diff.length === 1 || rand() < 0.45)
+      ? [{ ind: pick(diff), differs: true }, { ind: pick(same), differs: false }]
+      : shuffle(diff).slice(0, 2).map((ind) => ({ ind, differs: true }));
+    const rows = shuffle(chosen).map(({ ind, differs }) => {
+      const k = IND.indexOf(ind);
+      const va = value(ind, A[1][k]);
+      const vb = differs ? value(ind, B[1][k]) : va;
+      return { ind, differs, va, vb };
+    });
+    const diffRows = rows.filter((r) => r.differs);
+    const sameRow = rows.find((r) => !r.differs);
+    const diffNames = diffRows.map((r) => r.ind.label);
+    const top = diffRows[0].va > diffRows[0].vb ? a : b;
+
+    const priceA = 8000 + Math.floor(rand() * 21) * 500;
+    let priceB = 8000 + Math.floor(rand() * 21) * 500;
+    if (priceA === priceB) priceB += 1500;
+    const packA = pick(PACKS);
+    const packB = pick(PACKS.filter((p) => p !== packA));
+    const cheaper = priceA < priceB ? a : b;
+
+    const stimulus = {
+      title: 'ARSIP MENU',
+      ref: `REF. 01–${String(n + 1).padStart(3, '0')}`,
+      columns: ['INDIKATOR', a.toUpperCase(), b.toUpperCase()],
+      rows: [{ label: 'Energi', values: [[String(E), 'kkal'], [String(E), 'kkal']] }].concat(rows.map((r) => {
+        const row = { label: r.ind.label, values: [[String(r.va), r.ind.unit], [String(r.vb), r.ind.unit]] };
+        if (r.differs) row.highlight = [r.va > r.vb ? 0 : 1];
+        return row;
+      })),
+      insight: pick([
+        'Energi setara belum tentu berarti semua zat gizi setara.',
+        'Angka energi yang sama bisa menyembunyikan komposisi zat gizi yang berbeda.',
+        'Bandingkan setiap baris: satu indikator yang sama tidak membuat semua indikator sama.'
+      ])
+    };
+
+    const q1 = pick([
+      { question: `Energi ${a} dan ${b} sama-sama ${E} kkal. Apa yang bisa kamu simpulkan?`,
+        options: [
+          { value: 'same', text: 'Komposisi kedua menu pasti sama.' },
+          { value: 'different', text: 'Energinya sama, tetapi komposisi zat gizinya dapat berbeda.' },
+          { value: 'healthy', text: 'Menu dengan energi sama pasti sama sehatnya.' }
+        ] },
+      { question: `Petugas kantin berkata, “${a} dan ${b} sama saja, energinya kan sama-sama ${E} kkal.” Bagaimana tanggapanmu berdasarkan arsip?`,
+        options: [
+          { value: 'same', text: 'Setuju. Energi yang sama berarti kandungan gizinya juga sama.' },
+          { value: 'different', text: 'Belum tentu. Energinya sama, tetapi zat gizi lain di arsip perlu dibandingkan dan bisa berbeda.' },
+          { value: 'healthy', text: 'Setuju. Karena energinya sama, keduanya pasti sama sehatnya.' }
+        ] },
+      { question: `Kesimpulan mana yang paling didukung arsip ${a} dan ${b}?`,
+        options: [
+          { value: 'healthy', text: `${top} pasti lebih sehat untuk semua siswa.` },
+          { value: 'same', text: 'Karena energinya sama, semua zat gizinya pasti sama.' },
+          { value: 'different', text: `Energi kedua menu sama (${E} kkal), tetapi komposisi zat gizinya berbeda.` }
+        ] }
+    ]);
+    const challenge1 = {
+      type: 'single',
+      label: 'POLA DATA',
+      question: q1.question,
+      options: shuffle(q1.options),
+      correct: 'different',
+      hints: [
+        `Belum tepat. Energi hanya menunjukkan satu bagian dari komposisi. Bandingkan juga data ${joinAnd(rows.map((r) => lower(r.ind.label)))}.`,
+        'Periksa lagi: energi sama tidak otomatis membuat semua zat gizi sama.'
+      ],
+      success: `Tepat. Energi sama (${E} kkal) tidak menjamin ${joinAnd(diffNames.map(lower))} sama.`
+    };
+
+    const claim = pick([
+      { text: `${top} pasti paling sehat untuk semua siswa.`, why: 'tabel tidak cukup untuk menyatakan menu mana yang paling sehat bagi semua siswa' },
+      { text: `${cheaper} lebih murah, jadi gizinya pasti lebih rendah.`, why: 'harga tidak menunjukkan kandungan zat gizi' },
+      { text: `Menu yang dibungkus ${packA} pasti lebih bergizi.`, why: 'kemasan tidak menunjukkan kandungan zat gizi' }
+    ]);
+    const challenge2 = {
+      type: 'multi',
+      label: 'PILIH BUKTI',
+      question: `Data mana yang membuktikan komposisi ${a} dan ${b} berbeda? Pilih semua yang mendukung.`,
+      options: shuffle([
+        { value: 'energy', text: `Energi kedua menu sama-sama ${E} kkal.` },
+        ...rows.map((r) => ({ value: r.ind.key, text: `${r.ind.label}: ${a} ${r.va} ${r.ind.unit}, ${b} ${r.vb} ${r.ind.unit}.` })),
+        { value: 'claim', text: claim.text }
+      ]),
+      correct: diffRows.map((r) => r.ind.key),
+      hints: [
+        'Belum tepat. Cari indikator yang nilainya berbeda, dan hindari klaim yang tidak dibuktikan oleh tabel.',
+        'Pilih hanya data yang nilainya berbeda antara kedua menu. Nilai yang sama bukan bukti perbedaan.'
+      ],
+      success: `Tepat. ${joinAnd(diffNames.map((x, i) => (i ? lower(x) : x)))} berbeda, jadi komposisinya berbeda.${sameRow ? ` ${sameRow.ind.label} bernilai sama (${sameRow.va} ${sameRow.ind.unit}), jadi bukan bukti perbedaan.` : ''} Energi yang sama juga bukan bukti, dan ${claim.why}.`
+    };
+
+    return {
+      mission: {
+        description: `${a} dan ${b}, energi yang sama. Temukan bukti yang mengungkap perbedaan komposisinya.`,
+        nara: {
+          intro: `${a} dan ${b} sama-sama ${E} kkal. Apakah itu berarti komposisinya juga sama? Mari periksa arsipnya.`,
+          afterOne: m1.nara.afterOne,
+          afterTwo: m1.nara.afterTwo
+        },
+        stimulus,
+        challenges: [challenge1, challenge2],
+        passport: {
+          prompt: `Apa yang kamu pelajari dari perbandingan ${a} dan ${b}?`,
+          placeholder: 'Contoh: Energi kedua menu sama, tetapi data … menunjukkan bahwa…'
+        }
+      },
+      distractorValues: [[rupiah(priceA), packA], [rupiah(priceB), packB]]
+    };
+  }
+
+  m1.stimulus.ref = 'REF. 01–001';
+  const variants = [{
+    mission: { description: m1.description, nara: m1.nara, stimulus: m1.stimulus, challenges: m1.challenges, passport: m1.passport },
+    distractorValues: m1.activity ? m1.activity.distractor.values : null
+  }];
+  shuffle(pairs).slice(0, COUNT - 1).forEach((pair, i) => variants.push(build(i + 1, pair)));
+  m1.variants = variants;
+})();

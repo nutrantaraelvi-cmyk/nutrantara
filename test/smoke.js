@@ -171,6 +171,16 @@ async function adminProbe() {
     const wb2 = await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.seals === 1));
     ok(wb2.leaderboard.find((r) => r.alias === 'TimTempe').score === 20, 'jawaban salah = 0 poin, segel tetap sah (klaim "benar" dari klien diabaikan)');
 
+    // Pos 1 punya 100 varian kasus; server menilai dengan kunci varian milik siswa.
+    const V = MISSIONS[0].variants;
+    ok(V.length === 100 && new Set(V.map((v) => v.mission.stimulus.columns.join('|'))).size === 100, 'Pos 1 punya 100 varian dengan pasangan menu berbeda');
+    const k = V.findIndex((v, i) => i > 0 && JSON.stringify(v.mission.challenges[1].correct) !== JSON.stringify(V[0].mission.challenges[1].correct));
+    const variantState = (keys) => { const st = fakeState(); st.posts[1].variant = k; st.posts[1].challenges = keys.map((r) => ({ complete: true, attempts: 1, response: r, log: [] })); return st; };
+    b.send({ type: 'progress', state: variantState(V[k].mission.challenges.map((c) => c.correct)) });
+    ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 80))), `jawaban benar varian ${k + 1} = 80 poin`);
+    b.send({ type: 'progress', state: variantState(V[0].mission.challenges.map((c) => c.correct)) });
+    ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 50))), 'kunci kasus asli tidak berlaku untuk varian lain');
+
     const forged = fakeState({ 2: { started: true, sealed: true, reason: 'aaaaaaaaaaaaaaaaaaaaaaaaa', challenges: [{ complete: false, attempts: 0 }, { complete: false, attempts: 0 }] } });
     b.send({ type: 'progress', state: forged });
     const sync = await b.wait(type('progress-sync'));

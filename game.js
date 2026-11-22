@@ -38,8 +38,25 @@
 
   function freshState() {
     const posts = {};
-    MISSIONS.forEach((m) => { posts[m.id] = m.type === 'project' ? freshProject() : freshAnalysis(); });
+    MISSIONS.forEach((m) => {
+      posts[m.id] = m.type === 'project' ? freshProject() : freshAnalysis();
+      if (m.variants) posts[m.id].variant = randomVariant(m);
+    });
     return { schemaVersion: SCHEMA_VERSION, appVersion: APP_VERSION, alias: '', currentScreen: 'welcome', activePos: 1, leaderboardRecorded: false, posts };
+  }
+
+  // Pos bervarian (Pos 1: 100 kasus menu). Nomor varian tersimpan di progres siswa; isinya dipasang
+  // ke objek misi agar semua modul (layar misi, quest.js, world3d.js) membaca kasus yang sama.
+  const randomVariant = (m) => Math.floor(Math.random() * m.variants.length);
+  const validVariant = (m, v) => Number.isInteger(v) && v >= 0 && v < m.variants.length;
+  function applyVariants() {
+    MISSIONS.forEach((m) => {
+      if (!m.variants) return;
+      const p = state.posts[m.id];
+      const v = m.variants[p && validVariant(m, p.variant) ? p.variant : 0];
+      Object.assign(m, v.mission);
+      if (m.activity && m.activity.distractor && v.distractorValues) m.activity.distractor.values = v.distractorValues;
+    });
   }
 
   // Satu jawaban per tantangan. Jawaban salah tidak menghentikan siswa: tantangan dianggap selesai (0 poin)
@@ -85,6 +102,7 @@
     });
     if (old.evidence && old.evidence.length) p1.challenges[1].response = old.evidence;
     if (p1.challenges[0].complete) p1.challenges[0].response = 'different';
+    p1.variant = 0; // simpanan v1 memakai kasus asli Menu A/B
     next.currentScreen = next.alias ? 'map' : 'welcome';
     return next;
   }
@@ -111,6 +129,8 @@
         if (!stored) return;
         if (m.type === 'project') base.posts[m.id] = { ...base.posts[m.id], ...stored, review: { ...base.posts[m.id].review, ...stored.review }, reflection: { ...base.posts[m.id].reflection, ...stored.reflection } };
         else base.posts[m.id] = { ...base.posts[m.id], ...stored, challenges: base.posts[m.id].challenges.map((c, i) => ({ ...c, ...(stored.challenges || [])[i] })) };
+        // Progres lama tanpa nomor varian yang sudah berjalan memakai kasus asli (varian 0).
+        if (m.variants && !validVariant(m, stored.variant)) base.posts[m.id].variant = stored.started ? 0 : randomVariant(m);
       });
       return { ...base, ...saved, posts: base.posts, appVersion: APP_VERSION };
     } catch {
@@ -119,6 +139,7 @@
   }
 
   let state = freshState();
+  applyVariants();
   let toastTimer;
   let selectedPos = null;
   let challengeView = 0;
@@ -127,6 +148,7 @@
   const net = window.NutraNet || null;
 
   function saveState() {
+    applyVariants();
     state.updatedAt = new Date().toISOString();
     if (net && state.alias) net.pushProgress(state, state.currentScreen);
     try {
