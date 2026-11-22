@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.6';
+  const APP_VERSION = '0.7';
   const STORAGE_PREFIX = 'nutrantara-save-v2:';
   let userKey = '';
   const saveKey = () => STORAGE_PREFIX + userKey;
@@ -21,7 +21,7 @@
     { key: 'fiber', label: 'Serat', unit: 'g' }
   ];
   const NODE_CLASSES = ['node-one', 'node-two', 'node-three', 'node-four', 'node-five', 'node-six'];
-  const screens = ['world', 'map', 'mission', 'kitchen', 'passport', 'leaderboard'];
+  const screens = ['world', 'map', 'mission', 'kitchen', 'passport', 'report', 'leaderboard'];
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -40,6 +40,31 @@
     const posts = {};
     MISSIONS.forEach((m) => { posts[m.id] = m.type === 'project' ? freshProject() : freshAnalysis(); });
     return { schemaVersion: SCHEMA_VERSION, appVersion: APP_VERSION, alias: '', currentScreen: 'welcome', activePos: 1, leaderboardRecorded: false, posts };
+  }
+
+  // Satu jawaban per tantangan. Jawaban salah tidak menghentikan siswa: tantangan dianggap selesai (0 poin)
+  // dan Nara menunjukkan jawaban yang tepat beserta penjelasannya.
+  const explanation = (def) => String(def.success || '').replace(/^Tepat\.\s*/, '');
+  function gradeChallenge(m, index, response) {
+    const def = m.challenges[index];
+    const c = post(m.id).challenges[index];
+    c.attempts += 1;
+    const correct = isCorrect(def, response);
+    c.response = response;
+    c.draft = null;
+    c.correct = correct;
+    c.complete = true;
+    c.points = correct ? awardForAttempt(c.attempts) : 0;
+    c.log.push({ attempt: c.attempts, response, correct, at: new Date().toISOString() });
+    post(m.id).started = true;
+    return { correct, points: c.points, attempts: c.attempts, success: def.success, explanation: explanation(def), correctText: responseText(def, def.correct), yourText: responseText(def, response) };
+  }
+  const isRight = (c) => c.complete && c.correct !== false;
+  function markClass(def, value, selected, done) {
+    if (!done) return '';
+    const right = Array.isArray(def.correct) ? def.correct.includes(value) : def.correct === value;
+    if (right) return ' is-correct';
+    return selected.includes(value) ? ' is-wrong' : '';
   }
 
   function awardForAttempt(attempts) { return Math.max(10, 30 - 5 * Math.max(0, attempts - 1)); }
@@ -205,6 +230,7 @@
     if (screen === 'kitchen') startKitchen();
     if (screen === 'passport') renderPassport();
     if (screen === 'leaderboard') renderLeaderboard();
+    if (screen === 'report') renderReport();
     updatePlayerChip();
     document.dispatchEvent(new CustomEvent('nutra:screen', { detail: screen }));
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -433,7 +459,7 @@
     if (def.type === 'single' || def.type === 'multi') {
       const inputType = def.type === 'single' ? 'radio' : 'checkbox';
       const selected = def.type === 'single' ? [c.draft ?? c.response].filter(Boolean) : (c.draft ?? c.response ?? []);
-      body = `<fieldset class="choice-list"><legend class="sr-only">${def.type === 'single' ? 'Pilih satu jawaban' : 'Pilih semua yang sesuai'}</legend>${def.options.map((o, i) => `<label class="choice-card"><input type="${inputType}" name="answer" value="${escapeHtml(o.value)}"${selected.includes(o.value) ? ' checked' : ''}${disabled} /><span class="choice-marker">${def.type === 'single' ? String.fromCharCode(65 + i) : '✓'}</span><span>${escapeHtml(o.text)}</span></label>`).join('')}</fieldset>`;
+      body = `<fieldset class="choice-list"><legend class="sr-only">${def.type === 'single' ? 'Pilih satu jawaban' : 'Pilih semua yang sesuai'}</legend>${def.options.map((o, i) => `<label class="choice-card${markClass(def, o.value, selected, done)}"><input type="${inputType}" name="answer" value="${escapeHtml(o.value)}"${selected.includes(o.value) ? ' checked' : ''}${disabled} /><span class="choice-marker">${def.type === 'single' ? String.fromCharCode(65 + i) : '✓'}</span><span>${escapeHtml(o.text)}</span></label>`).join('')}</fieldset>`;
       if (def.type === 'multi') body = `<p class="field-hint">Boleh memilih lebih dari satu.</p>${body}`;
     }
 
@@ -453,7 +479,11 @@
     const action = done
       ? `<button class="button button-primary full-width" type="button" id="challenge-next">${index + 1 < m.challenges.length ? 'Lanjut ke tantangan berikutnya' : 'Lanjut ke Paspor'} <span aria-hidden="true">↗</span></button>`
       : `<button class="button button-primary full-width" type="submit">Kirim keputusan <span aria-hidden="true">↗</span></button>`;
-    const feedback = done ? `<div class="feedback success" role="status" aria-live="polite">✓ ${escapeHtml(def.success)} <b>+${c.points} poin</b></div>` : '<div class="feedback" id="challenge-feedback" role="status" aria-live="polite" hidden></div>';
+    const feedback = done
+      ? (isRight(c)
+        ? `<div class="feedback success" role="status" aria-live="polite">✓ ${escapeHtml(def.success)} <b>+${c.points} poin</b></div>`
+        : `<div class="feedback wrong" role="status" aria-live="polite"><b>Belum tepat — tidak apa-apa, lanjutkan!</b> Jawaban yang tepat: <i>${escapeHtml(responseText(def, def.correct))}</i>. ${escapeHtml(explanation(def))} <b>0 poin</b></div>`)
+      : '<div class="feedback" id="challenge-feedback" role="status" aria-live="polite" hidden></div>';
 
     $('#challenge-area').innerHTML = `<div class="challenge"><p class="challenge-label">TANTANGAN ${pad(index + 1)} <span>· ${escapeHtml(def.label)}</span></p><h2>${escapeHtml(def.question)}</h2><form id="challenge-form" novalidate>${body}${action}</form>${feedback}</div>`;
   }
@@ -499,26 +529,12 @@
     if (!def || c.complete) return;
     const response = readResponse(def, event.target);
     if (!response) { showToast(EMPTY_PROMPT[def.type]); return; }
-    c.attempts += 1;
-    const correct = isCorrect(def, response);
-    c.response = response;
-    c.draft = null;
-    c.log.push({ attempt: c.attempts, response, correct, at: new Date().toISOString() });
-    if (correct) {
-      c.complete = true;
-      c.points = awardForAttempt(c.attempts);
-      saveState();
-      renderChallenge(m, challengeView);
-      $('#nara-message').textContent = challengeView === 0 ? m.nara.afterOne : m.nara.afterTwo;
-      updatePlayerChip();
-      $('#challenge-next').focus();
-      return;
-    }
+    const res = gradeChallenge(m, challengeView, response);
     saveState();
-    const feedback = $('#challenge-feedback');
-    feedback.className = 'feedback';
-    feedback.hidden = false;
-    feedback.innerHTML = `<b>Petunjuk Nara:</b> ${escapeHtml(def.hints[Math.min(c.attempts, def.hints.length) - 1])}`;
+    renderChallenge(m, challengeView);
+    $('#nara-message').textContent = res.correct ? (challengeView === 0 ? m.nara.afterOne : m.nara.afterTwo) : 'Tidak apa-apa! Baca penjelasannya, lalu lanjut ke tugas berikutnya.';
+    updatePlayerChip();
+    $('#challenge-next').focus();
   });
 
   $('#challenge-area').addEventListener('change', (event) => {
@@ -880,7 +896,7 @@
     recordLeaderboard();
     selectedPos = null;
     showToast(sealCount() === MISSIONS.length ? `Ekspedisi selesai! Skor akhir ${computeScore()} poin.` : `Dapur Juara tersegel! +${SEAL_POINTS} poin.`);
-    goTo(sealCount() === MISSIONS.length ? 'leaderboard' : lastHub);
+    goTo(sealCount() === MISSIONS.length ? 'report' : lastHub);
   });
 
   // ---------- Paspor ----------
@@ -940,7 +956,7 @@
       } else {
         missions[m.id] = {
           id: m.id, title: `${m.title} ${m.titleEm}`, status: statusOf(m), sealed: p.sealed, sealedAt: p.sealedAt, reason: p.reason,
-          challenges: m.challenges.map((def, i) => ({ label: def.label, type: def.type, complete: p.challenges[i].complete, attempts: p.challenges[i].attempts, points: p.challenges[i].points, response: p.challenges[i].response, responseText: p.challenges[i].complete ? responseText(def, p.challenges[i].response) : null, log: p.challenges[i].log }))
+          challenges: m.challenges.map((def, i) => ({ label: def.label, type: def.type, complete: p.challenges[i].complete, correct: p.challenges[i].complete ? isRight(p.challenges[i]) : null, attempts: p.challenges[i].attempts, points: p.challenges[i].points, response: p.challenges[i].response, responseText: p.challenges[i].complete ? responseText(def, p.challenges[i].response) : null, log: p.challenges[i].log }))
         };
       }
     });
@@ -993,21 +1009,109 @@
     const def = m && m.challenges && m.challenges[index];
     const c = def && post(id).challenges[index];
     if (!def) return { error: true };
-    if (c.complete) return { correct: true, points: c.points, attempts: c.attempts, success: def.success, already: true };
+    if (c.complete) return { correct: isRight(c), points: c.points, attempts: c.attempts, success: def.success, explanation: explanation(def), correctText: responseText(def, def.correct), already: true };
     const empty = response === null || response === undefined || (Array.isArray(response) && !response.length) || (def.type === 'sort' && !Object.values(response || {}).every(Boolean));
     if (empty) return { empty: true, message: EMPTY_PROMPT[def.type] || 'Lengkapi jawabanmu terlebih dahulu.' };
-    c.attempts += 1;
-    const correct = isCorrect(def, response);
-    c.response = response;
-    c.draft = null;
-    c.log.push({ attempt: c.attempts, response, correct, at: new Date().toISOString(), where: 'dunia' });
-    if (correct) { c.complete = true; c.points = awardForAttempt(c.attempts); }
-    post(id).started = true;
+    const res = gradeChallenge(m, index, response);
     state.activePos = id;
     saveState();
     updatePlayerChip();
-    return { correct, points: c.points, attempts: c.attempts, success: def.success, hint: correct ? null : def.hints[Math.min(c.attempts, def.hints.length) - 1] };
+    return res;
   }
+
+  // ---------- Penilaian & evaluasi ----------
+
+  const SKILLS = {
+    1: 'Membandingkan data komposisi menu secara adil',
+    2: 'Menyusun jalur pencernaan protein dan mengenali gangguannya',
+    3: 'Membedakan pencernaan (pemecahan) dan penyerapan (perpindahan)',
+    4: 'Menalar sebab-akibat dan memilih data pendukung',
+    5: 'Memilah data, kesimpulan, dan asumsi untuk mengaudit klaim',
+    6: 'Merancang, menelaah, dan merevisi menu lokal berbasis bukti'
+  };
+
+  function predikat(pct) {
+    if (pct >= 90) return { grade: 'A', label: 'Sangat Baik', note: 'Luar biasa! Kamu konsisten memakai bukti untuk mengambil keputusan.' };
+    if (pct >= 75) return { grade: 'B', label: 'Baik', note: 'Bagus! Sebagian besar keputusanmu sudah didukung bukti.' };
+    if (pct >= 60) return { grade: 'C', label: 'Cukup', note: 'Sudah ada kemajuan. Ulangi pos yang masih kurang agar makin mantap.' };
+    return { grade: 'D', label: 'Perlu Bimbingan', note: 'Tidak apa-apa! Pelajari kembali penjelasan Nara dan diskusikan dengan guru.' };
+  }
+
+  function evaluatePost(id) {
+    const m = missionById(id);
+    const p = post(id);
+    if (m.type === 'project') {
+      const init = p.initial || {};
+      const rows = (init.ingredients || []).filter((x) => String(x.name || '').trim());
+      const checks = [
+        { ok: Boolean(init.savedAt), text: 'Rancangan awal disimpan (sasaran, waktu makan, bahan, porsi)' },
+        { ok: rows.length > 0 && rows.every((x) => String(x.source || '').trim()), text: 'Setiap bahan punya sumber data' },
+        { ok: Boolean(p.review && p.review.savedAt), text: 'Rancangan ditelaah teman/guru' },
+        { ok: Boolean(p.revision && p.revision.savedAt), text: 'Rancangan direvisi berdasarkan masukan' },
+        { ok: String((p.reflection && p.reflection.learned) || '').trim().length >= MIN_REASON, text: 'Refleksi individual ditulis' }
+      ];
+      const done = checks.filter((x) => x.ok).length;
+      return { id, title: `${m.title} ${m.titleEm}`, skill: SKILLS[id], type: 'project', started: Boolean(p.started), sealed: p.sealed, score: p.sealed ? SEAL_POINTS : 0, max: maxPoints(m), checks, correct: done, total: checks.length, level: done === checks.length ? 'Tuntas' : done >= 3 ? 'Hampir tuntas' : 'Belum tuntas' };
+    }
+    const items = m.challenges.map((def, i) => {
+      const c = p.challenges[i];
+      return { label: def.label, question: def.question, answered: c.complete, correct: isRight(c), points: c.complete ? c.points : 0, yourText: c.complete ? responseText(def, c.response) : '—', correctText: responseText(def, def.correct), explanation: explanation(def) };
+    });
+    const correct = items.filter((x) => x.correct).length;
+    const score = items.reduce((n, x) => n + x.points, 0) + (p.sealed ? SEAL_POINTS : 0);
+    const answeredCount = items.filter((x) => x.answered).length;
+    const level = !answeredCount ? 'Belum dikerjakan' : correct === items.length ? 'Menguasai' : correct > 0 ? 'Sebagian menguasai' : 'Perlu diulang';
+    const advice = correct === items.length ? 'Pertahankan! Kamu sudah memakai bukti dengan tepat.' : `Baca lagi insight Nara: “${m.stimulus.insight}” lalu bandingkan dengan penjelasan setiap tantangan.`;
+    return { id, title: `${m.title} ${m.titleEm}`, skill: SKILLS[id], type: 'analysis', sealed: p.sealed, score, max: maxPoints(m), items, correct, total: items.length, answered: answeredCount, level, advice, started: answeredCount > 0 || p.sealed };
+  }
+
+  function evaluateAll() {
+    const posts = MISSIONS.map((m) => evaluatePost(m.id));
+    const score = computeScore();
+    const max = MISSIONS.reduce((n, m) => n + maxPoints(m), 0);
+    const finished = sealCount() === MISSIONS.length;
+    // Rapor sementara menilai pos yang sudah dikerjakan; rapor akhir menilai seluruh ekspedisi.
+    const attemptedMax = posts.filter((x) => x.started).reduce((n, x) => n + x.max, 0);
+    const base = finished ? max : Math.max(attemptedMax, 1);
+    const pct = Math.min(100, Math.round((score / base) * 100));
+    const answered = posts.filter((x) => x.type === 'analysis').reduce((n, x) => n + x.items.filter((i) => i.answered).length, 0);
+    const correct = posts.filter((x) => x.type === 'analysis').reduce((n, x) => n + x.correct, 0);
+    const totalQ = posts.filter((x) => x.type === 'analysis').reduce((n, x) => n + x.total, 0);
+    return { score, max, pct, answered, correct, totalQ, seals: sealCount(), posts, predikat: predikat(pct), strengths: posts.filter((x) => (x.type === 'analysis' ? x.correct === x.total : x.level === 'Tuntas') && x.sealed), improve: posts.filter((x) => x.started && (x.type === 'analysis' ? x.correct < x.total : x.level !== 'Tuntas')), finished, base };
+  }
+
+  function renderReport() {
+    const ev = evaluateAll();
+    const finished = ev.seals === MISSIONS.length;
+    const stars = Math.max(1, Math.round(ev.pct / 20));
+    $('#report-body').innerHTML = `
+      <div class="report-hero">
+        <div class="report-grade grade-${ev.predikat.grade}" aria-label="Predikat ${ev.predikat.grade}"><b>${ev.predikat.grade}</b><span>${escapeHtml(ev.predikat.label)}</span></div>
+        <div>
+          <p class="report-kicker">${finished ? 'RAPOR AKHIR EKSPEDISI' : 'RAPOR SEMENTARA'} · ${escapeHtml(state.alias)}</p>
+          <h2>${ev.score} <small>/ ${ev.max} poin</small> <span class="report-stars" aria-label="${stars} dari 5 bintang">${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}</span></h2>
+          <p>${escapeHtml(ev.predikat.note)}</p>
+          <ul class="report-stats"><li><b>${ev.correct}/${ev.totalQ}</b> jawaban benar</li><li><b>${ev.seals}/${MISSIONS.length}</b> pos tersegel</li><li><b>${ev.pct}%</b> capaian${ev.finished ? '' : ' dari pos yang sudah dikerjakan'}</li></ul>
+        </div>
+      </div>
+      <h3 class="report-h">Penilaian per pos</h3>
+      <div class="report-posts">${ev.posts.map((x) => `
+        <article class="report-post ${x.sealed ? 'sealed' : ''}">
+          <header><span>POS ${pad(x.id)}</span><b class="lvl lvl-${x.level.replace(/\s+/g, '-').toLowerCase()}">${escapeHtml(x.level)}</b></header>
+          <h4>${escapeHtml(x.title)}</h4>
+          <p class="report-skill">${escapeHtml(x.skill)}</p>
+          <div class="report-bar" aria-label="${x.score} dari ${x.max} poin"><i style="width:${Math.round((x.score / x.max) * 100)}%"></i></div>
+          <p class="report-score">${x.score}/${x.max} poin · ${x.type === 'analysis' ? `${x.correct}/${x.total} benar` : `${x.correct}/${x.total} langkah proyek`}${x.sealed ? ' · ✦ tersegel' : ''}</p>
+          ${x.type === 'analysis' ? `<ul class="report-items">${x.items.map((it) => `<li class="${it.answered ? (it.correct ? 'ok' : 'no') : 'skip'}"><b>${it.answered ? (it.correct ? '✓' : '✗') : '·'} ${escapeHtml(it.label)}</b>${it.answered && !it.correct ? `<span>Jawabanmu: ${escapeHtml(it.yourText)}</span><span>Jawaban tepat: ${escapeHtml(it.correctText)}</span>` : ''}${it.answered ? `<em>${escapeHtml(it.explanation)}</em>` : '<span>Belum dijawab</span>'}</li>`).join('')}</ul>` : `<ul class="report-items">${x.checks.map((c) => `<li class="${c.ok ? 'ok' : 'no'}"><b>${c.ok ? '✓' : '○'} ${escapeHtml(c.text)}</b></li>`).join('')}</ul>`}
+        </article>`).join('')}</div>
+      <div class="report-eval">
+        <section><h3 class="report-h">Kekuatanmu</h3>${ev.strengths.length ? `<ul>${ev.strengths.map((x) => `<li><b>${escapeHtml(x.skill)}</b> (Pos ${x.id})</li>`).join('')}</ul>` : '<p>Selesaikan pos dengan jawaban tepat untuk melihat kekuatanmu di sini.</p>'}</section>
+        <section><h3 class="report-h">Yang perlu ditingkatkan</h3>${ev.improve.length ? `<ul>${ev.improve.map((x) => `<li><b>${escapeHtml(x.skill)}</b> (Pos ${x.id})${x.advice ? ` — ${escapeHtml(x.advice)}` : ''}</li>`).join('')}</ul>` : '<p>Tidak ada catatan. Hebat!</p>'}</section>
+      </div>
+      <p class="report-note">${ev.finished ? '' : 'Ini rapor sementara: predikat dihitung dari pos yang sudah kamu kerjakan. Rapor akhir muncul setelah keenam pos disegel. '}Skor: jawaban benar 30 poin, jawaban belum tepat 0 poin (tetap lanjut), segel pos 20 poin, maksimal ${ev.max} poin. Angka pada Pos 1–5 adalah data simulasi.</p>`;
+  }
+
+  $('#report-print').addEventListener('click', () => window.print());
 
   function sealPost(id, reason) {
     const m = missionById(id);
@@ -1028,7 +1132,7 @@
   }
 
   window.NutraGame = {
-    begin, end, openPos, isUnlocked, posStatus, showToast, goTo, renderPassport,
+    begin, end, openPos, isUnlocked, posStatus, showToast, goTo, renderPassport, evaluatePost, evaluateAll,
     computeScore, sealCount, missionById, scanEvidence, submitAnswer, sealPost, responseText, lockMessage,
     missions: MISSIONS,
     get state() { return state; },

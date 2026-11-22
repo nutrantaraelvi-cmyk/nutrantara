@@ -116,9 +116,15 @@ Jawaban salah memunculkan petunjuk bertahap dari Nara. Tidak ada nyawa, dan pema
 
 ### Skor
 
-- Jawaban benar: 30 poin pada percobaan pertama, berkurang 5 poin di setiap percobaan berikutnya, minimal 10 poin.
+- **Satu jawaban per tantangan.** Jawaban benar mendapat 30 poin. Jawaban belum tepat **tidak apa-apa**: tantangan dianggap selesai dengan 0 poin, Nara langsung menunjukkan jawaban yang tepat beserta penjelasannya, lalu siswa lanjut ke tugas berikutnya. Kebenaran jawaban selalu dihitung ulang oleh server dari kunci.
 - Segel: 20 poin dan satu lencana per pos.
 - Pos 1 maksimal 80 poin (2 × 30 + 20). Target keseluruhan enam pos adalah 420 poin.
+
+### Penilaian & evaluasi
+
+- **Hasil Pos**: setelah pos disegel, muncul kartu berisi bintang, skor, jawaban benar, dan untuk setiap tantangan: jawaban siswa, jawaban tepat, penjelasan, serta saran belajar.
+- **Rapor** (menu *Rapor* atau tombol di lobi; terbuka otomatis setelah segel terakhir): predikat A (≥90%) / B (≥75%) / C (≥60%) / D (Perlu Bimbingan), skor, jumlah jawaban benar, penilaian per pos dan kemampuan yang diuji, daftar **kekuatan** dan **yang perlu ditingkatkan**, serta evaluasi proyek Dapur Juara (rancangan, sumber data, telaah, revisi, refleksi). Rapor sementara menilai pos yang sudah dikerjakan. Rapor bisa dicetak atau disimpan sebagai PDF.
+- Panel guru menampilkan jumlah **benar / dijawab** per siswa, dan ekspor CSV memuat kolom `posN_benar`.
 
 ## Data dan privasi
 

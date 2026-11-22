@@ -141,10 +141,17 @@ async function adminProbe() {
     a.send({ type: 'spawn', island: 2 });
     ok((await a.wait(type('spawned'))).island === 2, 'segel Pos 1 membuka Pulau Pos 2');
 
-    const forged = fakeState({ 2: { started: true, sealed: true, reason: 'aaaaaaaaaaaaaaaaaaaaaaaaa', challenges: [{ complete: true, attempts: 1, response: 'salah' }, { complete: true, attempts: 1, response: ['salah'] }] } });
+    // Jawaban salah tetap sah (0 poin) dan pos boleh disegel.
+    const wrongState = fakeState();
+    wrongState.posts[1].challenges = [{ complete: true, attempts: 1, response: 'salah-total', correct: true }, { complete: true, attempts: 1, response: ['x'], correct: true }];
+    b.send({ type: 'progress', state: wrongState });
+    const wb2 = await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.seals === 1));
+    ok(wb2.leaderboard.find((r) => r.alias === 'TimTempe').score === 20, 'jawaban salah = 0 poin, segel tetap sah (klaim "benar" dari klien diabaikan)');
+
+    const forged = fakeState({ 2: { started: true, sealed: true, reason: 'aaaaaaaaaaaaaaaaaaaaaaaaa', challenges: [{ complete: false, attempts: 0 }, { complete: false, attempts: 0 }] } });
     b.send({ type: 'progress', state: forged });
     const sync = await b.wait(type('progress-sync'));
-    ok(sync.progress.posts[2].sealed === false, 'progres palsu dikoreksi server');
+    ok(sync.progress.posts[2].sealed === false, 'segel tanpa menjawab semua tantangan dibatalkan server');
 
     // ---------- Admin ----------
     const adm = client(); await adm.open();

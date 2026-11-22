@@ -138,15 +138,16 @@
     $('#players-body').innerHTML = rows.map((p) => {
       const cells = p.posts.map((s) => {
         const cls = s.sealed ? 'sealed' : s.started ? 'started' : '';
-        const txt = s.sealed ? '✓' : s.started ? (s.total ? `${s.done}/${s.total}` : (s.step || '…').slice(0, 3)) : '·';
+        const txt = s.started || s.sealed ? (s.total ? `${s.correct ?? s.done}/${s.total}` : s.sealed ? '✓' : (s.step || '…').slice(0, 3)) : '·';
         return `<span class="pcell ${cls}" title="Pos ${s.id}: ${s.sealed ? 'tersegel' : s.started ? 'dalam proses' : 'belum dimulai'}${s.attempts ? `, ${s.attempts} percobaan` : ''}">${esc(txt)}</span>`;
       }).join('');
-      const attempts = p.posts.reduce((n, s) => n + s.attempts, 0);
+      const answered = p.posts.reduce((n, s) => n + (s.total ? s.done : 0), 0);
+      const right = p.posts.reduce((n, s) => n + (s.total ? (s.correct ?? s.done) : 0), 0);
       const flags = p.flags.length ? ` <span class="warn" title="${esc(p.flags.join('\n'))}">⚠</span>` : '';
       const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}`;
       return `<tr data-id="${p.id}"${selected === p.id ? ' class="selected"' : ''}>
         <th scope="row"><span class="roster-dot" style="background:${esc(p.color)}"></span> ${esc(p.alias)} <small class="${p.online ? 'on' : 'off'}">${p.online ? '● daring' : '○ luring'}</small>${flags}${tags}</th>
-        <td>${p.score}</td><td>${p.seals} / 6</td><td class="pcells">${cells}</td><td>${attempts}</td>
+        <td>${p.score}</td><td>${p.seals} / 6</td><td class="pcells">${cells}</td><td>${right}/${answered}</td>
         <td>${p.online ? (p.zone === 'world' ? `Dunia · ${W.islandAt(p.x, p.y) > 0 ? `Pulau ${W.islandAt(p.x, p.y)}` : W.islandAt(p.x, p.y) === 0 ? 'Alun-alun' : 'jembatan'}` : 'Lobi') : '—'}</td><td>${p.online ? 'sekarang' : ago(p.lastSeen)}</td>
         <td class="row-actions">
           <button type="button" class="admin-small button button-secondary" data-act="select">${selected === p.id ? 'Batal pilih' : 'Pindahkan'}</button>
@@ -313,14 +314,14 @@
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     if (exportFormat === 'json') { download(`nutrantara-kelas-${stamp}.json`, JSON.stringify(data, null, 2), 'application/json'); toast('Data kelas diekspor (JSON).'); return; }
     const cell = (v) => { const s = String(v ?? ''); return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const head = ['alias', 'skor', 'segel', 'selesai', ...MISSIONS.flatMap((m) => [`pos${m.id}_segel`, `pos${m.id}_percobaan`, `pos${m.id}_alasan`]), 'catatan_validasi', 'dibuat', 'terakhir_aktif'];
+    const head = ['alias', 'skor', 'segel', 'selesai', ...MISSIONS.flatMap((m) => [`pos${m.id}_segel`, `pos${m.id}_benar`, `pos${m.id}_alasan`]), 'catatan_validasi', 'dibuat', 'terakhir_aktif'];
     const lines = data.players.map((p) => {
       const posts = (p.progress && p.progress.posts) || {};
       const per = MISSIONS.flatMap((m) => {
         const s = posts[m.id] || {};
-        const attempts = (s.challenges || []).reduce((n, c) => n + (Number(c.attempts) || 0), 0);
+        const benar = (s.challenges || []).filter((c) => c.complete && c.correct !== false).length;
         const reason = m.type === 'project' ? ((s.reflection && s.reflection.learned) || '') : (s.reason || '');
-        return [s.sealed ? 'ya' : 'tidak', attempts, reason];
+        return [s.sealed ? 'ya' : 'tidak', m.type === 'analysis' ? `${benar}/${m.challenges.length}` : '-', reason];
       });
       return [p.alias, p.score, p.seals, p.finishedAt || '', ...per, (p.flags || []).join(' | '), p.createdAt, p.lastSeen].map(cell).join(',');
     });

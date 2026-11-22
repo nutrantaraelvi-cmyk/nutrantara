@@ -91,6 +91,7 @@
       <nav class="lobby-actions" aria-label="Menu lobi">
         <button type="button" class="lobby-btn" data-go="passport">Paspor</button>
         <button type="button" class="lobby-play" id="lobby-play"><span>MAIN</span><small>Pilih map &amp; terjun</small></button>
+        <button type="button" class="lobby-btn" data-go="report">Rapor</button>
         <button type="button" class="lobby-btn" data-go="leaderboard">Peringkat</button>
       </nav>
     </div>
@@ -106,6 +107,7 @@
           <button class="nav-link active" data-screen="world">Dunia</button>
           <button class="nav-link" data-screen="map">Peta</button>
           <button class="nav-link" data-screen="passport">Paspor</button>
+          <button class="nav-link" data-screen="report">Rapor</button>
           <button class="nav-link" data-screen="leaderboard">Peringkat</button>
         </nav>
         <div class="player-chip" id="player-chip" hidden><span class="online-dot"></span><span id="player-name"></span><span class="chip-score" id="player-score"></span></div>
@@ -229,6 +231,12 @@
           <div class="passport-summary"><div><span>PENJELAJAH</span><strong id="passport-alias">—</strong></div><div><span>SKOR</span><strong id="passport-score">0 <small>POIN</small></strong></div><div><span>LENCANA</span><strong id="passport-seals">0 <small>/ 6</small></strong></div><div><span>STATUS EKSPEDISI</span><strong id="passport-status">Belum dimulai</strong></div></div>
           <div id="passport-records" class="passport-records"></div>
           <button class="back-button passport-back" data-screen="map">← <span>Kembali ke peta</span></button>
+        </section>
+
+        <section class="screen report-screen" id="screen-report" hidden aria-labelledby="report-title">
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> HASIL PENILAIAN &amp; EVALUASI</div><h1 id="report-title">Rapor <em>ekspedisi.</em></h1></div><div class="report-actions"><button class="button button-secondary" id="report-print" type="button">Cetak / simpan PDF</button><button class="button button-secondary" data-screen="passport" type="button">Paspor &amp; unduh JSON</button></div></div>
+          <div id="report-body"></div>
+          <button class="back-button passport-back" data-screen="world">← <span>Kembali ke dunia</span></button>
         </section>
 
         <section class="screen leaderboard-screen" id="screen-leaderboard" hidden aria-labelledby="leaderboard-title">

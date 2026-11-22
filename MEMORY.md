@@ -62,6 +62,10 @@ Pengguna memberi konsep peta (kepulauan melayang di atas awan, 6 pos di pulau-pu
 
 Pengguna memberi poster judul (logo krem, papan kayu, tombol MULAI GAME toska-emas, Nara putih bermata cyan, pura/meru, jagung-tempe-pepaya) dan meminta warna lebih cerah dan ceria dengan budaya populer Indonesia, dengan prinsip ATM (amati-tiru-modifikasi), bukan salinan persis. Implementasi: konversi palet gelap→terang di CSS, `theme.css`, `culture.js`, Nara diperbarui.
 
+## Versi 0.7: penilaian sekali jawab & rapor (22 November 2026)
+
+Permintaan pengguna: jawaban salah tidak apa-apa, siswa lanjut ke tugas berikutnya, dan di akhir ada hasil penilaian serta evaluasi. Aturan baru: satu jawaban per tantangan (benar 30, salah 0 poin dengan penjelasan jawaban tepat); segel cukup jika semua tantangan sudah dijawab. Ada kartu Hasil Pos setelah segel dan layar Rapor (predikat A–D, kekuatan, yang perlu ditingkatkan, cetak PDF). Server menghitung ulang `correct` dari kunci. Ini menggantikan aturan coba-ulang dengan pengurangan 5 poin dari dokumen desain.
+
 ## Catatan saat melanjutkan
 
 Ada percakapan awal yang sempat membahas Godot, Supabase, login Google, multiplayer dan target 3.000 pengguna. Dokumen desain yang diberikan kemudian secara eksplisit menetapkan prototipe versi uji tanpa engine/backend/multiplayer. Jadikan dokumen tersebut acuan scope saat ini; jangan menganggap percakapan eksplorasi sebelumnya sebagai keputusan final. Jika pengguna mengubah scope, bahas implikasi platform, data peserta, beban operasional, dan biaya sebelum implementasi.

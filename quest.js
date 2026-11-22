@@ -268,11 +268,17 @@ export function createQuests(ctx) {
 
   // ---------- Papan Laporan: tantangan ----------
 
+  function mark(def, value, chosen, done) {
+    if (!done) return '';
+    const right = Array.isArray(def.correct) ? def.correct.includes(value) : def.correct === value;
+    return right ? ' is-correct' : chosen.includes(value) ? ' is-wrong' : '';
+  }
+
   function challengeBody(def, draft, done) {
     const dis = done ? ' disabled' : '';
     if (def.type === 'single' || def.type === 'multi') {
       const chosen = def.type === 'single' ? [draft].filter(Boolean) : (draft || []);
-      return `<fieldset class="holo-choices"><legend class="sr-only">${def.type === 'single' ? 'Pilih satu jawaban' : 'Pilih semua yang sesuai'}</legend>${def.options.map((o, i) => `<label class="holo-choice"><input type="${def.type === 'single' ? 'radio' : 'checkbox'}" name="q" value="${esc(o.value)}"${chosen.includes(o.value) ? ' checked' : ''}${dis} /><span class="mark">${def.type === 'single' ? String.fromCharCode(65 + i) : '✓'}</span><span>${esc(o.text)}</span></label>`).join('')}</fieldset>${def.type === 'multi' ? '<p class="holo-note">Boleh memilih lebih dari satu.</p>' : ''}`;
+      return `<fieldset class="holo-choices"><legend class="sr-only">${def.type === 'single' ? 'Pilih satu jawaban' : 'Pilih semua yang sesuai'}</legend>${def.options.map((o, i) => `<label class="holo-choice${mark(def, o.value, chosen, done)}"><input type="${def.type === 'single' ? 'radio' : 'checkbox'}" name="q" value="${esc(o.value)}"${chosen.includes(o.value) ? ' checked' : ''}${dis} /><span class="mark">${def.type === 'single' ? String.fromCharCode(65 + i) : '✓'}</span><span>${esc(o.text)}</span></label>`).join('')}</fieldset>${def.type === 'multi' ? '<p class="holo-note">Boleh memilih lebih dari satu.</p>' : ''}`;
     }
     if (def.type === 'order') {
       const order = Array.isArray(draft) && draft.length === def.items.length ? draft : def.items.map((x) => x.value);
@@ -309,7 +315,7 @@ export function createQuests(ctx) {
         <p class="holo-label">TANTANGAN ${pad(index + 1)} · ${esc(def.label)}</p>
         <h2>${esc(def.question)}</h2>
         <form class="holo-form" novalidate>${challengeBody(def, draft, done)}
-          <div class="holo-feedback" role="status" aria-live="polite">${done ? `<b class="ok">✓ ${esc(def.success)} +${c.points} poin</b>` : ''}</div>
+          <div class="holo-feedback" role="status" aria-live="polite">${done ? (c.correct !== false ? `<b class="ok">✓ ${esc(def.success)} +${c.points} poin</b>` : `<div class="holo-wrong"><b>Belum tepat — tidak apa-apa, lanjut ke tugas berikutnya!</b><span>Jawaban yang tepat: <i>${esc(game.responseText(def, def.correct))}</i></span><span>${esc(String(def.success || '').replace(/^Tepat\.\s*/, ''))}</span><small>0 poin untuk tantangan ini</small></div>`) : ''}</div>
           ${done ? `<button type="button" class="button button-primary" data-act="next" data-autofocus>${index + 1 < m.challenges.length ? 'Tantangan berikutnya →' : 'Menuju Altar Segel ✦'}</button>` : '<button type="submit" class="button button-primary">Kirim keputusan ↗</button>'}
         </form>`;
     };
@@ -357,8 +363,10 @@ export function createQuests(ctx) {
           return;
         }
         ctx.nara('shake');
-        shake(el);
-        fb.innerHTML = `<b class="warn">Petunjuk Nara (percobaan ${res.attempts}):</b> ${esc(res.hint)}`;
+        floatText('0 POIN · TETAP LANJUT', it.x, 3, it.z, '#ffffff');
+        ctx.say('Tidak apa-apa! Lihat jawaban yang tepat dan penjelasannya, lalu lanjut ke tugas berikutnya.', 'talk');
+        refresh();
+        rerender();
       });
     };
 
@@ -417,6 +425,24 @@ export function createQuests(ctx) {
     ctx.nara('celebrate');
     refresh();
     ctx.onSealed(it.pos, res);
+    setTimeout(() => openResult(it), 2900);
+  }
+
+  // Kartu "Hasil Pos": penilaian dan evaluasi setelah pos disegel
+  function openResult(it) {
+    const ev = game.evaluatePost(it.pos);
+    const pct = Math.round((ev.score / ev.max) * 100);
+    const stars = ev.correct === ev.total ? 3 : ev.correct > 0 ? 2 : 1;
+    openPanel(it, `
+      <p class="holo-kicker">POS ${pad(it.pos)} · HASIL PENILAIAN &amp; EVALUASI</p>
+      <h2>${esc(ev.title)}</h2>
+      <div class="result-head"><div class="result-stars" aria-label="${stars} dari 3 bintang">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</div><div><b>${ev.score}/${ev.max} poin</b><span>${ev.correct}/${ev.total} jawaban benar · ${esc(ev.level)}</span></div></div>
+      <div class="report-bar"><i style="width:${pct}%"></i></div>
+      <p class="holo-label">KEMAMPUAN: ${esc(ev.skill)}</p>
+      <ul class="result-items">${ev.items.map((x) => `<li class="${x.correct ? 'ok' : 'no'}"><b>${x.correct ? '✓' : '✗'} ${esc(x.label)} · ${x.points} poin</b>${x.correct ? '' : `<span>Jawabanmu: ${esc(x.yourText)}</span><span>Jawaban tepat: ${esc(x.correctText)}</span>`}<em>${esc(x.explanation)}</em></li>`).join('')}</ul>
+      <p class="holo-quote">${esc(ev.advice)}</p>
+      <button type="button" class="button button-primary" data-act="close" data-autofocus>Lanjut menjelajah ↗</button>`, (el) => el.querySelector('[data-act="close"]').addEventListener('click', () => closePanel()));
+    if (ev.correct === ev.total) fx.confetti({ x: it.x, y: 2.5, z: it.z });
   }
 
   function activate(it) {

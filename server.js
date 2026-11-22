@@ -186,15 +186,13 @@ function validateProgress(state) {
       m.challenges.forEach((def, i) => {
         const c = list[i];
         if (!c || typeof c !== 'object' || !c.complete) { allDone = false; return; }
-        if (!isCorrect(def, c.response)) {
-          flags.push(`Pos ${m.id} tantangan ${i + 1}: jawaban tersimpan tidak cocok dengan kunci`);
-          c.complete = false;
-          c.points = 0;
-          allDone = false;
-          return;
-        }
+        // Satu jawaban per tantangan: benar = poin, salah = 0 poin (tetap dianggap selesai).
+        // Kebenaran selalu dihitung ulang dari kunci, bukan dari klaim klien.
+        const empty = c.response === null || c.response === undefined || (Array.isArray(c.response) && !c.response.length);
+        if (empty) { flags.push(`Pos ${m.id} tantangan ${i + 1}: ditandai selesai tanpa jawaban`); c.complete = false; c.points = 0; allDone = false; return; }
         c.attempts = Math.max(1, Math.floor(Number(c.attempts)) || 1);
-        c.points = awardForAttempt(c.attempts);
+        c.correct = isCorrect(def, c.response);
+        c.points = c.correct ? awardForAttempt(c.attempts) : 0;
         score += c.points;
       });
       if (p.sealed && (!allDone || !prevSealed || String(p.reason || '').trim().length < MIN_REASON)) {
@@ -240,7 +238,8 @@ function postSummary(p) {
     const s = posts[m.id] || {};
     const attempts = Array.isArray(s.challenges) ? s.challenges.reduce((n, c) => n + (Number(c && c.attempts) || 0), 0) : 0;
     const done = Array.isArray(s.challenges) ? s.challenges.filter((c) => c && c.complete).length : 0;
-    return { id: m.id, started: Boolean(s.started), sealed: Boolean(s.sealed), attempts, done, total: m.type === 'analysis' ? m.challenges.length : 0, step: s.step || null };
+    const correct = Array.isArray(s.challenges) ? s.challenges.filter((c) => c && c.complete && c.correct !== false).length : 0;
+    return { id: m.id, started: Boolean(s.started), sealed: Boolean(s.sealed), attempts, done, correct, total: m.type === 'analysis' ? m.challenges.length : 0, step: s.step || null };
   });
 }
 
