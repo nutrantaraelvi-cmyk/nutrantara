@@ -38,7 +38,14 @@ docker run -d --name nutrantara -p 3000:3000 \
 - Data tersimpan di volume `/data`. Tanpa volume persisten, data hilang setiap kali kontainer diganti.
 - Cek kesehatan layanan di `GET /health`.
 
-**Render.com:** berkas `render.yaml` sudah tersedia (layanan Docker + disk 1 GB di `/data`). Isi `NUTRANTARA_ADMIN_PIN` di dasbor Render. Disk persisten membutuhkan paket berbayar.
+**Render.com:** berkas `render.yaml` sudah tersedia dan saat ini memakai paket **Free** untuk demo. Paket ini tidak punya disk, jadi data siswa hilang setiap kali server restart atau deploy, dan server tertidur setelah sekitar 15 menit sepi. Sebelum dipakai kelas, ganti ke `plan: starter` dan aktifkan blok `disk:` (1 GB di `/data`) di `render.yaml`.
+
+Langkah deploy:
+1. Masuk ke [dashboard.render.com](https://dashboard.render.com) dengan akun GitHub.
+2. Pilih **New → Blueprint**, lalu pilih repo ini. Render membaca `render.yaml`.
+3. Saat diminta, isi `NUTRANTARA_ADMIN_PIN` dengan PIN rahasia (6–64 karakter).
+4. Tunggu build selesai. Alamat game: `https://<nama-layanan>.onrender.com/play`, panel guru: `/admin`.
+5. Setiap push ke `main` akan men-deploy ulang secara otomatis.
 
 **Railway / Fly.io / VPS:** gunakan Dockerfile yang sama, lalu pasang volume ke `/data`.
 

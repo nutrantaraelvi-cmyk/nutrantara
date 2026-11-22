@@ -66,6 +66,14 @@ Pengguna memberi poster judul (logo krem, papan kayu, tombol MULAI GAME toska-em
 
 Permintaan pengguna: jawaban salah tidak apa-apa, siswa lanjut ke tugas berikutnya, dan di akhir ada hasil penilaian serta evaluasi. Aturan baru: satu jawaban per tantangan (benar 30, salah 0 poin dengan penjelasan jawaban tepat); segel cukup jika semua tantangan sudah dijawab. Ada kartu Hasil Pos setelah segel dan layar Rapor (predikat A–D, kekuatan, yang perlu ditingkatkan, cetak PDF). Server menghitung ulang `correct` dari kunci. Ini menggantikan aturan coba-ulang dengan pengurangan 5 poin dari dokumen desain.
 
+## Versi 0.8: dunia terbuka (22 November 2026)
+
+Permintaan pengguna: peta lebih luas dan terasa open world. Implementasi: peta logis 960×600 → 2400×1500; enam pulau jelajah bebas (`kind: 'wild'`, id 7–12: Bukit Sawah Terasering, Hutan Bambu, Danau Kawah, Pantai Kelapa, Bukit Layang-layang, Kebun Rempah) tanpa soal, selalu terbuka, berisi pijakan untuk dipanjat dan 12 kepingan arsip tambahan (total 24); jaringan jembatan bercabang; peta mini (M untuk memperbesar, pulau yang belum ditemukan tampil "?"); lari dengan Shift; mode 2D memakai kamera yang mengikuti pemain. Alur pos 1–6, penilaian, dan penguncian guru tidak berubah. Pulau jelajah di balik pos terkunci (Hutan Bambu, Pantai Kelapa) baru terjangkau lewat jembatan setelah pos tetangganya terbuka.
+
+Layar Peta (22 November 2026): pengguna meminta peta seperti ilustrasi konsep kepulauan miliknya, lebih animatif dan interaktif. Ilustrasi pengguna dipakai sebagai latar (`assets/peta-nusantara.webp`, versi 960 px untuk layar kecil). Di atasnya `map-art.js` memasang pin pos, jalur cahaya sesuai progres (emas = selesai, toska bergerak = jalur aktif), awan kunci yang tersibak saat pos terbuka, zoom ke pulau yang dipilih, parallax, awan, burung, dan balon Nara. Semua animasi mati bila `prefers-reduced-motion`.
+
+Regu mabar (22 November 2026): pengguna meminta kode undangan di lobi untuk mengajak teman main bareng. Implementasi: panel "Regu mabar" di lobi (buat kode 6 karakter, salin kode/tautan `?regu=KODE`, gabung dengan kode, daftar anggota dan statusnya, "Terjun ke dia" untuk mendarat di dekat teman). Regu hanya hidup di memori server (hilang saat server dinyalakan ulang, tidak menambah data siswa), maksimal 6 orang, dan guru melihat kode regu tiap siswa di panel guru. Teman satu regu ditandai 🤝 di dunia dan bercincin di peta mini. Mode tamu luring tidak bisa mabar.
+
 ## Catatan saat melanjutkan
 
 Ada percakapan awal yang sempat membahas Godot, Supabase, login Google, multiplayer dan target 3.000 pengguna. Dokumen desain yang diberikan kemudian secara eksplisit menetapkan prototipe versi uji tanpa engine/backend/multiplayer. Jadikan dokumen tersebut acuan scope saat ini; jangan menganggap percakapan eksplorasi sebelumnya sebagai keputusan final. Jika pengguna mengubah scope, bahas implikasi platform, data peserta, beban operasional, dan biaya sebelum implementasi.

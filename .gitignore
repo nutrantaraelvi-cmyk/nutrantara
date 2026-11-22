@@ -1,2 +1,8 @@
 node_modules/
 data/
+
+# Folder skill Claude Code lokal (bukan bagian game)
+anthropic-skills/
+blender-skills/
+ponytail/
+ui-ux-pro-max-skill/

@@ -144,11 +144,11 @@
       const answered = p.posts.reduce((n, s) => n + (s.total ? s.done : 0), 0);
       const right = p.posts.reduce((n, s) => n + (s.total ? (s.correct ?? s.done) : 0), 0);
       const flags = p.flags.length ? ` <span class="warn" title="${esc(p.flags.join('\n'))}">⚠</span>` : '';
-      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}`;
+      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}${p.party ? ` <span class="tag" title="Regu mabar">🤝 ${esc(p.party)}</span>` : ''}`;
       return `<tr data-id="${p.id}"${selected === p.id ? ' class="selected"' : ''}>
         <th scope="row"><span class="roster-dot" style="background:${esc(p.color)}"></span> ${esc(p.alias)} <small class="${p.online ? 'on' : 'off'}">${p.online ? '● daring' : '○ luring'}</small>${flags}${tags}</th>
         <td>${p.score}</td><td>${p.seals} / 6</td><td class="pcells">${cells}</td><td>${right}/${answered}</td>
-        <td>${p.online ? (p.zone === 'world' ? `Dunia · ${W.islandAt(p.x, p.y) > 0 ? `Pulau ${W.islandAt(p.x, p.y)}` : W.islandAt(p.x, p.y) === 0 ? 'Alun-alun' : 'jembatan'}` : 'Lobi') : '—'}</td><td>${p.online ? 'sekarang' : ago(p.lastSeen)}</td>
+        <td>${p.online ? (p.zone === 'world' ? `Dunia · ${(() => { const id = W.islandAt(p.x, p.y); return W.isPost(id) ? `Pos ${id}` : id >= 0 ? W.islands.find((i) => i.id === id).name : 'jembatan'; })()}` : 'Lobi') : '—'}</td><td>${p.online ? 'sekarang' : ago(p.lastSeen)}</td>
         <td class="row-actions">
           <button type="button" class="admin-small button button-secondary" data-act="select">${selected === p.id ? 'Batal pilih' : 'Pindahkan'}</button>
           <button type="button" class="admin-small button button-secondary" data-act="detail">Detail</button>
@@ -263,21 +263,26 @@
     W.bridges.forEach((br) => { mctx.strokeStyle = 'rgba(104,220,231,.9)'; mctx.lineWidth = br.w * 0.7; mctx.lineCap = 'round'; mctx.beginPath(); mctx.moveTo(br.a[0], br.a[1]); mctx.lineTo(br.b[0], br.b[1]); mctx.stroke(); });
     W.islands.forEach((isl) => { mctx.fillStyle = '#e6d29b'; mctx.beginPath(); mctx.ellipse(isl.cx, isl.cy, isl.rx + 5, isl.ry + 5, 0, 0, Math.PI * 2); mctx.fill(); mctx.fillStyle = '#4fae66'; mctx.beginPath(); mctx.ellipse(isl.cx, isl.cy, isl.rx, isl.ry, 0, 0, Math.PI * 2); mctx.fill(); });
     const openPosts = snapshot ? snapshot.settings.openPosts : [];
+    const k = W.width / 960; // ikon & teks ikut diskalakan agar tetap terbaca di peta yang lebih luas
+    const font = (wt, px, fam) => `${wt} ${Math.round(px * k)}px ${fam}`;
     mctx.textAlign = 'center';
+    W.islands.filter((isl) => isl.kind === 'wild').forEach((isl) => {
+      mctx.fillStyle = '#1f5a3a'; mctx.font = font(600, 10, '"DM Sans", sans-serif'); mctx.fillText(`◆ ${isl.name}`, isl.cx, isl.cy);
+    });
     W.stations.forEach((st) => {
       const open = openPosts.includes(st.id);
       mctx.fillStyle = open ? '#68dce7' : '#6c7f79';
-      mctx.beginPath(); mctx.arc(st.x, st.y - 30, 16, 0, Math.PI * 2); mctx.fill();
-      mctx.fillStyle = '#071516'; mctx.font = '700 13px Manrope, sans-serif'; mctx.fillText(open ? String(st.id) : '⌑', st.x, st.y - 25);
-      mctx.fillStyle = '#ebfff6'; mctx.font = '500 11px "DM Mono", monospace'; mctx.fillStyle = '#071516'; mctx.fillText(`POS ${st.id}`, st.x, st.y + 2);
+      mctx.beginPath(); mctx.arc(st.x, st.y - 30 * k, 16 * k, 0, Math.PI * 2); mctx.fill();
+      mctx.fillStyle = '#071516'; mctx.font = font(700, 13, 'Manrope, sans-serif'); mctx.fillText(open ? String(st.id) : '⌑', st.x, st.y - 25 * k);
+      mctx.font = font(500, 11, '"DM Mono", monospace'); mctx.fillText(`POS ${st.id}`, st.x, st.y + 2 * k);
     });
-    mctx.fillStyle = '#d9fff0'; mctx.beginPath(); mctx.arc(W.nara.x, W.nara.y, 8, 0, Math.PI * 2); mctx.fill();
-    mctx.fillStyle = '#78f4bd'; mctx.font = '600 11px "DM Sans", sans-serif'; mctx.fillText('NARA', W.nara.x, W.nara.y - 14);
+    mctx.fillStyle = '#d9fff0'; mctx.beginPath(); mctx.arc(W.nara.x, W.nara.y, 8 * k, 0, Math.PI * 2); mctx.fill();
+    mctx.fillStyle = '#1f7a4f'; mctx.font = font(600, 11, '"DM Sans", sans-serif'); mctx.fillText('NARA', W.nara.x, W.nara.y - 14 * k);
     if (snapshot) snapshot.players.filter((p) => p.online && p.zone === 'world').forEach((p) => {
       const pos = positions.get(p.id) || p;
-      mctx.fillStyle = p.color; mctx.beginPath(); mctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2); mctx.fill();
-      if (selected === p.id) { mctx.strokeStyle = '#ffd17c'; mctx.lineWidth = 3; mctx.beginPath(); mctx.arc(pos.x, pos.y, 13, 0, Math.PI * 2); mctx.stroke(); }
-      mctx.fillStyle = '#ebfff6'; mctx.font = '600 11px "DM Sans", sans-serif'; mctx.fillText(p.alias, pos.x, pos.y - 13);
+      mctx.fillStyle = p.color; mctx.beginPath(); mctx.arc(pos.x, pos.y, 8 * k, 0, Math.PI * 2); mctx.fill();
+      if (selected === p.id) { mctx.strokeStyle = '#ffd17c'; mctx.lineWidth = 3 * k; mctx.beginPath(); mctx.arc(pos.x, pos.y, 13 * k, 0, Math.PI * 2); mctx.stroke(); }
+      mctx.fillStyle = '#071516'; mctx.font = font(600, 11, '"DM Sans", sans-serif'); mctx.fillText(p.alias, pos.x, pos.y - 13 * k);
     });
     requestAnimationFrame(drawMap);
   }

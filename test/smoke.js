@@ -117,6 +117,7 @@ async function adminProbe() {
     a.send({ type: 'spawn', island: 1 });
     const sp = await a.wait(type('spawned'));
     ok(sp.island === 1 && W.islandAt(sp.x, sp.y) === 1, 'terjun ke Pulau Pos 1');
+    ok(W.islands.length === 13 && W.islands.filter((i) => i.kind === 'wild').every((i) => W.allowedIslands([], []).has(i.id)), 'pulau jelajah selalu terbuka');
     b.send({ type: 'spawn', island: 1 });
     await b.wait(type('spawned'));
 
@@ -129,10 +130,29 @@ async function adminProbe() {
     for (let i = 0; i < 25; i += 1) { cur = { x: cur.x + 40, y: cur.y - 2 }; a.send({ type: 'move', x: cur.x, y: cur.y }); await sleep(20); }
     await sleep(200);
     const meA = (await adminProbe()).players.find((p) => p.alias === 'Penjelajah07');
-    ok(![3, 4].includes(W.islandAt(meA.x, meA.y)) && Math.abs(W.clamp(meA.x, meA.y, new Set([0, 1])).x - meA.x) < 2, 'pemain tidak bisa berjalan ke pulau yang belum terbuka');
+    ok(![3, 4].includes(W.islandAt(meA.x, meA.y)) && Math.abs(W.clamp(meA.x, meA.y, W.allowedIslands([], [1])).x - meA.x) < 2, 'pemain tidak bisa berjalan ke pulau yang belum terbuka');
 
     a.send({ type: 'emote', emote: 'wave' });
     ok((await b.wait(type('emote'))).emote === 'wave', 'emote tersiar');
+
+    // Regu mabar: kode undangan, gabung, terjun ke teman, keluar.
+    a.send({ type: 'party', action: 'create' });
+    const partyA = (await a.wait((m) => m.type === 'party' && m.party)).party;
+    ok(/^[A-HJ-NP-Z2-9]{6}$/.test(partyA.code) && partyA.members.length === 1, 'membuat regu memberi kode undangan 6 karakter');
+    b.send({ type: 'party', action: 'join', code: 'ZZZZZZ' });
+    ok(/tidak ditemukan/.test((await b.wait(type('party-error'))).message), 'kode regu salah ditolak');
+    b.send({ type: 'party', action: 'join', code: partyA.code.toLowerCase() });
+    ok((await b.wait((m) => m.type === 'party' && m.party && m.party.members.length === 2)).party.code === partyA.code, 'teman bergabung dengan kode undangan');
+    ok((await b.wait(type('notice'))).message.includes(partyA.code), 'pemberitahuan bergabung regu');
+    ok((await a.wait((m) => m.type === 'party' && m.party && m.party.members.length === 2)).party.members.some((m) => m.alias === 'TimTempe'), 'pembuat regu melihat anggota baru');
+    ok((await adminProbe()).players.find((p) => p.alias === 'TimTempe').party === partyA.code, 'guru melihat regu siswa');
+    b.send({ type: 'spawn', to: wa.you.id });
+    const nearA = await b.wait((m) => m.type === 'spawned' && m.friend === wa.you.id);
+    ok(Number.isFinite(nearA.x) && W.islandAt(nearA.x, nearA.y) === nearA.island || nearA.island === 0, 'terjun ke dekat teman satu regu');
+    b.send({ type: 'party', action: 'leave' });
+    ok((await b.wait((m) => m.type === 'party' && m.party === null)).party === null && (await a.wait((m) => m.type === 'party' && m.party && m.party.members.length === 1)), 'keluar dari regu');
+    b.send({ type: 'spawn', to: wa.you.id });
+    ok(/bukan anggota/.test((await b.wait((m) => m.type === 'spawn-denied' && m.friend === wa.you.id)).message), 'tidak bisa terjun ke pemain di luar regu');
 
     // ---------- Progres ----------
     a.send({ type: 'progress', state: fakeState() });
@@ -180,8 +200,8 @@ async function adminProbe() {
     adm.send({ type: 'admin', action: 'announce', text: 'Kumpul di Pos 3' });
     ok((await b.wait(type('announce'))).text === 'Kumpul di Pos 3', 'pengumuman diterima pemain');
 
-    adm.send({ type: 'admin', action: 'teleport', playerId: pa.id, x: 470, y: 330 });
-    ok(Math.round((await a.wait(type('teleport'))).x) === 470, 'admin memindahkan pemain');
+    adm.send({ type: 'admin', action: 'teleport', playerId: pa.id, x: W.spawn.x, y: W.spawn.y });
+    ok(Math.round((await a.wait(type('teleport'))).x) === W.spawn.x, 'admin memindahkan pemain');
 
     b.send({ type: 'chat', text: 'Halo tim!' });
     ok((await a.wait(type('chat'))).entry.text === 'Halo tim!', 'obrolan tersiar');

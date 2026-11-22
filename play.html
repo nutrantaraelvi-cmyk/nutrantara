@@ -15,6 +15,7 @@
     <script src="net.js" defer></script>
     <script src="game.js" defer></script>
     <script src="world.js" defer></script>
+    <script src="map-art.js" defer></script>
     <script type="module" src="world3d.js"></script>
     <script type="module" src="app.js"></script>
   </head>
@@ -83,6 +84,24 @@
       </section>
       <section class="lobby-side" aria-label="Kelas">
         <div class="lobby-ann" id="lobby-ann" hidden></div>
+        <section class="lobby-party" id="lobby-party" aria-labelledby="party-title">
+          <p class="lobby-kicker" id="party-title">🤝 REGU MABAR</p>
+          <div id="party-none">
+            <p class="party-hint">Ajak teman main bareng: buat kode undangan, lalu bagikan kodenya.</p>
+            <button type="button" class="button button-primary party-create" id="party-create">Buat kode undangan</button>
+            <form class="party-join" id="party-join" autocomplete="off">
+              <label for="party-code">Punya kode dari teman?</label>
+              <div><input class="text-input" id="party-code" maxlength="7" placeholder="mis. K7RM2Q" inputmode="text" autocapitalize="characters" spellcheck="false" /><button type="submit" class="button button-secondary">Gabung</button></div>
+            </form>
+          </div>
+          <div id="party-in" hidden>
+            <div class="party-code-box"><span>KODE UNDANGAN</span><b id="party-code-text" aria-live="polite">——————</b></div>
+            <div class="party-share"><button type="button" class="button button-secondary" id="party-copy">Salin kode</button><button type="button" class="button button-secondary" id="party-link">Salin tautan</button></div>
+            <ul class="party-members" id="party-members"></ul>
+            <button type="button" class="link-button party-leave" id="party-leave">Keluar dari regu</button>
+          </div>
+          <p class="party-msg" id="party-msg" role="status" aria-live="polite"></p>
+        </section>
         <p class="lobby-kicker">TEMAN KELAS DARING <b id="lobby-count">0</b></p>
         <ul class="lobby-friends" id="lobby-friends"></ul>
         <p class="lobby-kicker">MISI BERIKUTNYA</p>
@@ -130,13 +149,29 @@
         </section>
 
         <section class="screen map-screen" id="screen-map" hidden aria-labelledby="map-title">
-          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> ATLAS EKSPEDISI</div><h1 id="map-title">Peta <em>dimensi.</em></h1></div><div class="progress-card"><span>PROGRES EKSPEDISI</span><strong id="map-progress">0 / 6 <small>segel</small></strong><div class="progress-track"><i id="map-progress-bar"></i></div></div></div>
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> ATLAS EKSPEDISI</div><h1 id="map-title">Peta <em>kepulauan.</em></h1></div><div class="progress-card"><span>PROGRES EKSPEDISI</span><strong id="map-progress">0 / 6 <small>segel</small></strong><div class="progress-track"><i id="map-progress-bar"></i></div></div></div>
           <div class="map-layout">
-            <div class="map-board">
-              <div class="map-grid"></div><div class="map-continent continent-a"></div><div class="map-continent continent-b"></div><div class="map-continent continent-c"></div>
-              <svg class="route-lines" viewBox="0 0 760 390" preserveAspectRatio="none" aria-hidden="true"><path d="M110 250 C190 180 225 160 285 190 S405 280 470 205 S570 140 650 110"/><path class="route-dash" d="M110 250 C190 180 225 160 285 190 S405 280 470 205 S570 140 650 110"/></svg>
-              <div id="map-nodes" class="map-nodes"></div>
-              <div class="map-compass">N <span>✳</span></div><div class="map-scale">PETA ARSIP // 001</div>
+            <div class="map-board map-art" id="map-art">
+              <div class="map-stage" id="map-stage">
+                <picture><source media="(max-width: 900px)" srcset="assets/peta-nusantara-960.webp" /><img class="map-image" src="assets/peta-nusantara.webp" alt="" width="1672" height="941" decoding="async" /></picture>
+                <div class="map-falls" aria-hidden="true"><i style="--x:17.6%;--y:23%;--h:9%"></i><i style="--x:8.4%;--y:53%;--h:12%"></i><i style="--x:21.6%;--y:66%;--h:11%"></i><i style="--x:58.4%;--y:19%;--h:10%"></i><i style="--x:82.8%;--y:33%;--h:9%"></i><i style="--x:64.6%;--y:89%;--h:10%"></i><i style="--x:84.4%;--y:92%;--h:8%"></i></div>
+                <svg class="map-route" viewBox="0 0 1672 941" aria-hidden="true">
+                  <path class="route-seg" data-seg="1" d="M373 238 C392 300 372 385 252 458" />
+                  <path class="route-seg" data-seg="2" d="M262 488 C420 502 560 442 700 362 S950 250 1108 252" />
+                  <path class="route-seg" data-seg="3" d="M1166 254 C1262 248 1380 298 1468 318" />
+                  <path class="route-seg" data-seg="4" d="M1500 348 C1470 402 1500 452 1442 524" />
+                  <path class="route-seg" data-seg="5" d="M1434 592 C1420 670 1350 748 1266 784" />
+                  <circle class="route-traveler" r="11"><animateMotion id="map-traveler-motion" dur="4s" repeatCount="indefinite" path="M373 238 C392 300 372 385 252 458" /></circle>
+                </svg>
+                <div class="map-spot" id="map-spot" aria-hidden="true"></div>
+                <div class="map-locks" id="map-locks" aria-hidden="true"></div>
+                <div id="map-nodes" class="map-nodes"></div>
+                <div class="map-twinkle" aria-hidden="true"><i style="--x:68.6%;--y:11%"></i><i style="--x:70.4%;--y:6%;--d:.8s"></i><i style="--x:91.2%;--y:72%;--d:.4s"></i><i style="--x:88.6%;--y:66%;--d:1.2s"></i><i style="--x:86%;--y:20%;--d:1.6s"></i><i style="--x:21%;--y:10%;--d:2s"></i></div>
+              </div>
+              <p class="map-nara" id="map-nara" aria-live="polite"><span id="map-nara-text">Halo! Klik pos di peta untuk melihat misinya.</span></p>
+              <div class="map-sky" aria-hidden="true"><i class="cloud c1"></i><i class="cloud c2"></i><i class="cloud c3"></i><i class="cloud c4"></i><i class="bird b1"></i><i class="bird b2"></i></div>
+              <div class="map-compass">U <span>✳</span></div><div class="map-scale">KEPULAUAN NUTRANTARA</div>
+              <button type="button" class="map-reset" id="map-reset" hidden>⤢ Lihat seluruh peta</button>
             </div>
             <aside class="mission-card" aria-live="polite">
               <div class="card-topline"><span class="status-tag" id="card-status"><i></i> POS AKTIF</span><span class="mission-number" id="card-number">MISI 01</span></div>

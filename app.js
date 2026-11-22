@@ -279,7 +279,7 @@ function renderLobby() {
   const friends = online ? [...net.players.values()] : [];
   $('#lobby-count').textContent = String(friends.length);
   $('#lobby-friends').innerHTML = friends.length
-    ? friends.map((p) => `<li><i style="background:${esc(p.color)}"></i><b>${esc(p.alias)}</b><span>${p.zone === 'world' ? (W.islandAt(p.tx ?? p.x, p.ty ?? p.y) > 0 ? `di Pos ${W.islandAt(p.tx ?? p.x, p.ty ?? p.y)}` : 'menjelajah') : 'di lobi'} · ✦${p.seals || 0}</span></li>`).join('')
+    ? friends.map((p) => `<li><i style="background:${esc(p.color)}"></i><b>${net.isTeammate(p.id) ? '🤝 ' : ''}${esc(p.alias)}</b><span>${p.zone === 'world' ? (W.isPost(W.islandAt(p.tx ?? p.x, p.ty ?? p.y)) ? `di Pos ${W.islandAt(p.tx ?? p.x, p.ty ?? p.y)}` : 'menjelajah') : 'di lobi'} · ✦${p.seals || 0}</span></li>`).join('')
     : `<li class="empty">${user && user.offline ? 'Main sendiri dalam mode tamu.' : 'Belum ada teman lain yang daring.'}</li>`;
   const ann = online && net.settings.announcement;
   $('#lobby-ann').hidden = !ann;
@@ -288,6 +288,7 @@ function renderLobby() {
   $('#lobby-next').innerHTML = next
     ? `<span>POS ${String(next.id).padStart(2, '0')} · ${esc(next.location)}</span><b>${esc(next.title)} ${esc(next.titleEm)}</b><small>${game.isUnlocked(next.id) ? 'Siap — tekan MAIN lalu terjun!' : esc(game.lockMessage(next.id))}</small>`
     : '<b>Ekspedisi selesai ✦</b><small>Semua segel aktif. Bantu temanmu!</small>';
+  renderParty();
 }
 
 function toLobby(isNew) {
@@ -298,6 +299,117 @@ function toLobby(isNew) {
   renderLobby();
   setTimeout(() => $('#lobby-play').focus(), 80);
   if (isNew) game.showToast(`Akun ${user.username} siap! Tekan MAIN untuk memilih map.`);
+}
+
+// ---------- Regu mabar (kode undangan) ----------
+// Tautan undangan: play.html?regu=KODE → otomatis bergabung setelah masuk ke lobi.
+const cleanCode = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+let pendingInvite = cleanCode(new URLSearchParams(location.search).get('regu')) || null;
+let partyIds = null;
+
+function partyMsg(text, warn = false) {
+  const el = $('#party-msg');
+  el.textContent = text || '';
+  el.dataset.warn = String(warn);
+}
+
+function memberStatus(m) {
+  if (net.me && m.id === net.me.id) return 'kamu';
+  const live = net.players.get(m.id);
+  if (!live) return '○ luring';
+  if (live.zone !== 'world') return '● di lobi';
+  const isl = W.islandAt(live.tx ?? live.x, live.ty ?? live.y);
+  if (W.isPost(isl)) return `● di Pos ${isl}`;
+  const found = W.islands.find((i) => i.id === isl);
+  return `● ${found ? found.name : 'di jembatan'}`;
+}
+
+function renderParty() {
+  const offline = !net || (user && user.offline);
+  const online = net && net.online;
+  $('#party-create').disabled = !online;
+  $('#party-join').querySelectorAll('input,button').forEach((el) => { el.disabled = !online; });
+  if (offline) {
+    $('#party-none').hidden = false; $('#party-in').hidden = true;
+    partyMsg('Mabar butuh server kelas. Dalam mode tamu kamu bermain sendiri.');
+    return;
+  }
+  if (online && pendingInvite) {
+    const code = pendingInvite;
+    pendingInvite = null;
+    try { history.replaceState(null, '', location.pathname); } catch { /* abaikan */ }
+    if (!net.party || net.party.code !== code) { net.partyJoin(code); partyMsg(`Bergabung ke regu ${code}…`); }
+  }
+  const party = online ? net.party : null;
+  $('#party-none').hidden = Boolean(party);
+  $('#party-in').hidden = !party;
+  if (!party) return;
+  $('#party-code-text').textContent = party.code;
+  $('#party-members').innerHTML = party.members.map((m) => {
+    const me = net.me && m.id === net.me.id;
+    const live = net.players.get(m.id);
+    const canJoin = !me && live && live.zone === 'world';
+    return `<li><i style="background:${esc(m.color)}"></i><b>${esc(m.alias)}${m.id === party.leaderId ? ' <span title="Pembuat regu">👑</span>' : ''}</b><span>${esc(memberStatus(m))}</span>${canJoin ? `<button type="button" class="button button-primary party-go" data-friend="${esc(m.id)}">Terjun ke dia ↓</button>` : ''}</li>`;
+  }).join('') + (party.members.length < 2 ? '<li class="empty">Belum ada teman. Bagikan kode di atas!</li>' : `<li class="empty">${party.members.length}/${party.max} anggota</li>`);
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* http di jaringan kelas: pakai cara lama */ }
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.append(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+async function dropToFriend(friendId) {
+  const friend = net.players.get(friendId);
+  const res = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 4000);
+    const ok = (msg) => { if (msg.friend === friendId) { clearTimeout(timer); resolve(msg); } };
+    net.on('spawned', ok);
+    net.on('spawn-denied', ok);
+    net.spawnNear(friendId);
+  });
+  if (!res || res.message) { game.showToast((res && res.message) || 'Server tidak merespons. Coba lagi.'); return; }
+  phase('game');
+  game.goTo('world');
+  const in3d = W3.dropTo(res.island, res.x, res.y);
+  if (!in3d && window.NutraWorld2D) { window.NutraWorld2D.placeAt(res.x, res.y); window.NutraWorld2D.start(); }
+  const name = friend ? friend.alias : 'temanmu';
+  game.showToast(res.near ? `Terjun ke dekat ${name}! 🤝` : `Pulau ${name} belum terbuka untukmu, jadi kamu mendarat di dekat sana.`);
+}
+
+$('#party-create').addEventListener('click', () => { net.partyCreate(); partyMsg('Membuat regu…'); });
+$('#party-join').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const code = cleanCode($('#party-code').value);
+  if (code.length !== 6) { partyMsg('Kode regu terdiri dari 6 huruf/angka.', true); $('#party-code').focus(); return; }
+  net.partyJoin(code);
+  partyMsg(`Bergabung ke regu ${code}…`);
+});
+$('#party-copy').addEventListener('click', async () => { const ok = await copyText(net.party.code); partyMsg(ok ? `Kode ${net.party.code} disalin. Kirim ke temanmu!` : `Salin manual: ${net.party.code}`, !ok); });
+$('#party-link').addEventListener('click', async () => {
+  const link = `${location.origin}${location.pathname}?regu=${net.party.code}`;
+  const ok = await copyText(link);
+  partyMsg(ok ? 'Tautan undangan disalin. Teman yang membukanya langsung bergabung.' : `Salin manual: ${link}`, !ok);
+});
+$('#party-leave').addEventListener('click', () => { net.partyLeave(); partyMsg('Kamu keluar dari regu.'); });
+$('#party-members').addEventListener('click', (e) => { const b = e.target.closest('[data-friend]'); if (b) dropToFriend(b.dataset.friend); });
+
+if (net) {
+  net.on('party', (party) => {
+    const ids = party ? party.members.map((m) => m.id) : null;
+    if (party && partyIds && party.code === partyIds.code) {
+      party.members.filter((m) => !partyIds.ids.includes(m.id)).forEach((m) => game.showToast(`🤝 ${m.alias} bergabung ke regumu!`));
+    }
+    partyIds = party ? { code: party.code, ids } : null;
+    if (party) partyMsg('');
+    if (document.body.dataset.phase === 'lobby') renderParty();
+  });
+  net.on('party-error', (message) => { partyMsg(message, true); game.showToast(message); });
 }
 
 document.querySelectorAll('[data-lemote]').forEach((b) => b.addEventListener('click', () => lobby.emote(b.dataset.lemote)));
@@ -341,7 +453,9 @@ async function dropTo(id) {
     const sealed = MISSIONS.filter((m) => game.state.posts[m.id].sealed).map((m) => m.id);
     if (!W.allowedIslands(sealed, null).has(id)) { game.showToast(game.lockMessage(id)); return; }
     const st = W.stations.find((s) => s.id === id);
-    px = st ? st.x : W.spawn.x; py = st ? st.y + 20 : W.spawn.y;
+    const isl = W.islands.find((i) => i.id === id);
+    // Pos: di depan portal; pulau jelajah: di tengah pulau; alun-alun: titik kumpul.
+    px = st ? st.x : id === 0 ? W.spawn.x : isl.cx; py = st ? st.y + 20 : id === 0 ? W.spawn.y : isl.cy + isl.ry * 0.62;
   }
   const in3d = W3.dropTo(id, px, py);
   if (!in3d && window.NutraWorld2D) { window.NutraWorld2D.placeAt(px, py); window.NutraWorld2D.start(); }

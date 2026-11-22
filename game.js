@@ -1019,6 +1019,46 @@
     return res;
   }
 
+  // ---------- Misi khas pulau (formatif, tidak memengaruhi skor) ----------
+
+  function activityState(id) {
+    const p = post(id);
+    if (!p) return {};
+    if (!p.activity || typeof p.activity !== 'object') p.activity = { stations: {}, rejected: false, collected: [], tries: 0, presented: false };
+    p.activity.stations = p.activity.stations || {};
+    p.activity.collected = p.activity.collected || [];
+    return p.activity;
+  }
+
+  function activityDone(id) {
+    const m = missionById(id);
+    const a = activityState(id);
+    if (!m || !m.activity) return true;
+    if (m.activity.type === 'classify') return Boolean(a.rejected);
+    if (m.activity.type === 'stations') return m.activity.stations.every((st) => a.stations[st.id]);
+    if (m.activity.type === 'collect') return a.collected.length >= (m.activity.need || 1);
+    return true;
+  }
+
+  function updateActivity(id, change) {
+    const a = activityState(id);
+    change(a);
+    post(id).started = true;
+    state.activePos = id;
+    saveState();
+    return a;
+  }
+
+  /** Masukkan bahan yang dikumpulkan di pulau ke rancangan awal Dapur Juara (nama & bentuk saja). */
+  function prefillKitchen(names) {
+    const p = project();
+    if (p.sealed || (p.initial && p.initial.savedAt)) return;
+    const rows = p.initial.ingredients.filter((x) => String(x.name || '').trim());
+    names.forEach((name) => { if (rows.length < 12 && !rows.some((x) => x.name.toLowerCase() === name.toLowerCase())) rows.push({ ...emptyIngredient(), name }); });
+    p.initial.ingredients = rows.length ? rows : [emptyIngredient()];
+    saveState();
+  }
+
   // ---------- Penilaian & evaluasi ----------
 
   const SKILLS = {
@@ -1133,6 +1173,7 @@
 
   window.NutraGame = {
     begin, end, openPos, isUnlocked, posStatus, showToast, goTo, renderPassport, evaluatePost, evaluateAll,
+    activityState, activityDone, updateActivity, prefillKitchen,
     computeScore, sealCount, missionById, scanEvidence, submitAnswer, sealPost, responseText, lockMessage,
     missions: MISSIONS,
     get state() { return state; },

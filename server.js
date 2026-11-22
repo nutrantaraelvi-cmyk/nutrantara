@@ -256,6 +256,7 @@ function adminPlayer(p, online) {
     lastSeen: p.lastSeen,
     createdAt: p.createdAt,
     finishedAt: p.finishedAt || null,
+    party: partyOf.get(p.id) || null,
     posts: postSummary(p)
   };
 }
@@ -328,6 +329,7 @@ function handleJoin(ws, conn, msg) {
     leaderboard: leaderboard()
   });
   broadcast({ type: 'player-join', player: publicPlayer(player) }, (c) => c.role === 'player' && c.playerId !== player.id);
+  if (partyOf.has(player.id)) partyChanged(partyOf.get(player.id)); else send(ws, { type: 'party', party: null });
   adminDirty = true;
   boardDirty = true;
 }
@@ -365,15 +367,32 @@ function handleSpawn(ws, conn, msg) {
   const id = Number(msg.island);
   if (!p) return;
   const allowed = allowedFor(p);
+  if (msg.to) return spawnNearFriend(ws, p, String(msg.to), allowed);
   if (!allowed.has(id)) return send(ws, { type: 'spawn-denied', island: id, message: 'Pulau ini belum terbuka untukmu.' });
   const isl = WORLD.islands.find((i) => i.id === id);
   const st = WORLD.stations.find((x) => x.id === id);
-  const base = id === 0 ? WORLD.spawn : { x: isl.cx, y: st ? st.y + 22 : isl.cy };
+  // Pos: di depan portal; pulau jelajah: sedikit di selatan pusat (pusatnya berisi penanda khas).
+  const base = id === 0 ? WORLD.spawn : { x: isl.cx, y: st ? st.y + 22 : isl.cy + isl.ry * 0.62 };
   const c = WORLD.clamp(base.x + (Math.random() * 30 - 15), base.y + (Math.random() * 16 - 8), allowed);
   p.x = c.x; p.y = c.y; p.h = 0; p.zone = 'world';
   positionsDirty = true;
   adminDirty = true;
   send(ws, { type: 'spawned', island: id, x: p.x, y: p.y });
+}
+
+// Terjun ke dekat teman satu regu yang sedang berada di dunia.
+function spawnNearFriend(ws, p, friendId, allowed) {
+  const f = db.players[friendId];
+  const deny = (message) => send(ws, { type: 'spawn-denied', friend: friendId, message });
+  if (!f || !partyOf.has(p.id) || partyOf.get(p.id) !== partyOf.get(f.id)) return deny('Pemain itu bukan anggota regumu.');
+  if (!onlineIds().has(f.id) || f.zone !== 'world') return deny(`${f.alias} sedang tidak berada di dunia.`);
+  const c = WORLD.clamp(f.x + (Math.random() * 40 - 20), f.y + (Math.random() * 24 - 12), allowed);
+  const near = Math.hypot(c.x - f.x, c.y - f.y) < 60;
+  const island = WORLD.islandAt(c.x, c.y);
+  p.x = c.x; p.y = c.y; p.h = 0; p.zone = 'world';
+  positionsDirty = true;
+  adminDirty = true;
+  send(ws, { type: 'spawned', island: island >= 0 ? island : 0, x: p.x, y: p.y, friend: f.id, near });
 }
 
 const EMOTES = new Set(['wave', 'dance', 'cheer', 'think']);
@@ -384,6 +403,88 @@ function handleEmote(conn, msg) {
   if (conn.lastEmote && t - conn.lastEmote < 1200) return;
   conn.lastEmote = t;
   broadcast({ type: 'emote', id: p.id, emote: msg.emote }, (c) => c.role === 'player');
+}
+
+// ---------- Regu mabar (kode undangan) ----------
+// Disimpan di memori saja: regu hilang saat server dinyalakan ulang, tidak menambah data siswa di disk.
+const PARTY_MAX = 6;
+const PARTY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // tanpa 0/O, 1/I/L agar mudah didikte
+const parties = new Map(); // kode -> { code, leaderId, members: Set<playerId>, createdAt }
+const partyOf = new Map(); // playerId -> kode
+
+function newPartyCode() {
+  for (;;) {
+    let code = '';
+    for (let i = 0; i < 6; i += 1) code += PARTY_ALPHABET[crypto.randomInt(PARTY_ALPHABET.length)];
+    if (!parties.has(code)) return code;
+  }
+}
+
+function partyView(code) {
+  const party = parties.get(code);
+  if (!party) return null;
+  const online = onlineIds();
+  return {
+    code,
+    leaderId: party.leaderId,
+    max: PARTY_MAX,
+    members: [...party.members].filter((id) => db.players[id]).map((id) => ({ ...publicPlayer(db.players[id]), online: online.has(id), island: online.has(id) && db.players[id].zone === 'world' ? WORLD.islandAt(db.players[id].x, db.players[id].y) : null }))
+  };
+}
+
+function sendParty(playerId) {
+  const view = partyView(partyOf.get(playerId));
+  socketsOf(playerId).forEach((ws) => send(ws, { type: 'party', party: view }));
+}
+function partyChanged(code) {
+  const party = parties.get(code);
+  if (party) party.members.forEach(sendParty);
+  adminDirty = true;
+}
+
+function leaveParty(playerId) {
+  const code = partyOf.get(playerId);
+  if (!code) return;
+  partyOf.delete(playerId);
+  const party = parties.get(code);
+  if (party) {
+    party.members.delete(playerId);
+    if (!party.members.size) parties.delete(code);
+    else { if (party.leaderId === playerId) party.leaderId = [...party.members][0]; partyChanged(code); }
+  }
+  sendParty(playerId);
+  adminDirty = true;
+}
+
+function handleParty(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  if (!p) return;
+  if (msg.action === 'create') {
+    if (!partyOf.has(p.id)) {
+      const code = newPartyCode();
+      parties.set(code, { code, leaderId: p.id, members: new Set([p.id]), createdAt: now() });
+      partyOf.set(p.id, code);
+    }
+    return partyChanged(partyOf.get(p.id));
+  }
+  if (msg.action === 'join') {
+    const code = String(msg.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    // Batasi tebakan kode: maksimal 8 kode salah per menit per koneksi.
+    const t = Date.now();
+    conn.partyFails = (conn.partyFails || []).filter((x) => t - x < 60000);
+    if (conn.partyFails.length >= 8) return send(ws, { type: 'party-error', message: 'Terlalu banyak kode salah. Tunggu satu menit.' });
+    const party = parties.get(code);
+    if (!party) { conn.partyFails.push(t); return send(ws, { type: 'party-error', message: 'Kode regu tidak ditemukan. Periksa lagi hurufnya.' }); }
+    if (party.members.has(p.id)) return sendParty(p.id);
+    if (party.members.size >= PARTY_MAX) return send(ws, { type: 'party-error', message: `Regu sudah penuh (maksimal ${PARTY_MAX} orang).` });
+    leaveParty(p.id);
+    party.members.add(p.id);
+    partyOf.set(p.id, code);
+    partyChanged(code);
+    socketsOf(p.id).forEach((s) => send(s, { type: 'notice', message: `Kamu bergabung dengan regu ${code}. Ayo mabar!` }));
+    return;
+  }
+  if (msg.action === 'leave') return leaveParty(p.id);
 }
 
 function handleProgress(ws, conn, msg) {
@@ -533,6 +634,7 @@ function handleAdmin(ws, msg) {
     case 'delete':
       if (!needTarget()) return;
       kickSockets(target.id, 'Data penjelajahmu dihapus oleh guru.');
+      leaveParty(target.id);
       delete db.players[target.id];
       toPlayers({ type: 'player-leave', id: target.id });
       adminDirty = true; boardDirty = true; scheduleSave();
@@ -570,10 +672,11 @@ const STATIC = {
   '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
   '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js',
   '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/theme.css': 'theme.css',
+  '/map-art.js': 'map-art.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
   '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };
 const IMMUTABLE = new Set(['vendor/three/three.module.min.js']);
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.webp': 'image/webp' };
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
@@ -715,6 +818,7 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'zone') return handleZone(conn, msg);
       if (msg.type === 'spawn') return handleSpawn(ws, conn, msg);
       if (msg.type === 'emote') return handleEmote(conn, msg);
+      if (msg.type === 'party') return handleParty(ws, conn, msg);
       if (msg.type === 'ping') return send(ws, { type: 'pong' });
     }
     if (conn.role === 'admin') {
@@ -728,7 +832,7 @@ wss.on('connection', (ws, req) => {
     if (conn.role === 'player' && conn.playerId) {
       const p = db.players[conn.playerId];
       if (p) p.lastSeen = now();
-      if (!onlineIds().has(conn.playerId)) toPlayers({ type: 'player-leave', id: conn.playerId });
+      if (!onlineIds().has(conn.playerId)) { toPlayers({ type: 'player-leave', id: conn.playerId }); if (partyOf.has(conn.playerId)) partyChanged(partyOf.get(conn.playerId)); }
       adminDirty = true;
       boardDirty = true;
       scheduleSave();

@@ -9,7 +9,7 @@
   const net = window.NutraNet;
   if (!W || !game) return;
 
-  const POS_KEY = 'nutrantara-world-pos-v1';
+  const POS_KEY = 'nutrantara-world-pos-v2'; // v2: peta 2400×1500
   const canvas = document.getElementById('world-canvas');
   const ctx = canvas.getContext('2d');
   const promptEl = document.getElementById('world-prompt');
@@ -71,9 +71,17 @@
   window.addEventListener('keyup', (e) => { if (MOVE_KEYS[e.code]) keys.delete(MOVE_KEYS[e.code]); });
   window.addEventListener('blur', () => keys.clear());
 
+  // Kamera 2D: peta dunia terbuka lebih luas dari layar, jadi yang tampak hanya jendela VIEW di sekitar pemain.
+  const VIEW = { w: 960, h: 600 };
+  const view = { x: 0, y: 0 };
+  function followCamera() {
+    view.x = Math.max(0, Math.min(W.width - VIEW.w, self.x - VIEW.w / 2));
+    view.y = Math.max(0, Math.min(W.height - VIEW.h, self.y - VIEW.h / 2));
+  }
+
   function toWorld(event) {
     const r = canvas.getBoundingClientRect();
-    return { x: ((event.clientX - r.left) / r.width) * W.width, y: ((event.clientY - r.top) / r.height) * W.height };
+    return { x: view.x + ((event.clientX - r.left) / r.width) * VIEW.w, y: view.y + ((event.clientY - r.top) / r.height) * VIEW.h };
   }
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -183,25 +191,26 @@
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const r = canvas.getBoundingClientRect();
     const w = Math.max(320, Math.round(r.width * dpr));
-    const h = Math.round((w * W.height) / W.width);
+    const h = Math.round((w * VIEW.h) / VIEW.w);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   }
 
   function drawWorld() {
-    const sx = canvas.width / W.width;
-    ctx.setTransform(sx, 0, 0, sx, 0, 0);
+    followCamera();
+    const sx = canvas.width / VIEW.w;
+    ctx.setTransform(sx, 0, 0, sx, -view.x * sx, -view.y * sx);
     const open = allowed();
 
     // Langit & awan
-    const sky = ctx.createLinearGradient(0, 0, 0, W.height);
+    const sky = ctx.createLinearGradient(0, view.y, 0, view.y + VIEW.h);
     sky.addColorStop(0, '#9fdbe6');
     sky.addColorStop(1, '#e8f7fa');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W.width, W.height);
     ctx.fillStyle = 'rgba(255,255,255,.75)';
-    for (let k = 0; k < 18; k += 1) {
+    for (let k = 0; k < 44; k += 1) {
       const x = ((k * 137 + t * 8) % (W.width + 120)) - 60;
-      const y = 40 + ((k * 61) % 520);
+      const y = 40 + ((k * 151) % (W.height - 80));
       ctx.beginPath(); ctx.ellipse(x, y, 46, 14, 0, 0, Math.PI * 2); ctx.fill();
     }
 
@@ -237,7 +246,7 @@
       ctx.font = '700 11px "DM Mono", monospace';
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(7,21,22,.8)';
-      ctx.fillText(isl.id ? `POS ${isl.id} · ${isl.name.toUpperCase()}` : isl.name.toUpperCase(), isl.cx, isl.cy - isl.ry + 18);
+      ctx.fillText(W.isPost(isl.id) ? `POS ${isl.id} · ${isl.name.toUpperCase()}` : isl.kind === 'wild' ? `◆ ${isl.name.toUpperCase()}` : isl.name.toUpperCase(), isl.cx, isl.cy - isl.ry + 18);
     });
 
     // Pohon
@@ -316,8 +325,8 @@
 
     if (net && net.online && (net.settings.paused || net.settings.movementLocked)) {
       ctx.fillStyle = 'rgba(4,22,26,.55)';
-      ctx.fillRect(0, 0, W.width, 30);
-      label(W.width / 2, 20, net.settings.paused ? 'PERMAINAN DIJEDA GURU' : 'GERAK DIBEKUKAN GURU', '#ffd17c');
+      ctx.fillRect(view.x, view.y, VIEW.w, 30);
+      label(view.x + VIEW.w / 2, view.y + 20, net.settings.paused ? 'PERMAINAN DIJEDA GURU' : 'GERAK DIBEKUKAN GURU', '#ffd17c');
     }
   }
 
@@ -338,7 +347,7 @@
     // Ransel penjelajah
     ctx.fillStyle = 'rgba(7,21,22,.6)';
     ctx.fillRect(p.x - (p.dir || 1) * 9 - 2, p.y - 3 + bob, 4, 9);
-    const name = `${p.alias}${p.seals ? ` ✦${p.seals}` : ''}`;
+    const name = `${!p.self && net && net.isTeammate && net.isTeammate(p.id) ? '🤝 ' : ''}${p.alias}${p.seals ? ` ✦${p.seals}` : ''}`;
     label(p.x, p.y - 26, name, p.self ? '#ffd17c' : '#ebfff6');
   }
 
@@ -362,7 +371,7 @@
     const shown = lines.slice(0, 4);
     const w = Math.max(...shown.map((l) => ctx.measureText(l).width)) + 14;
     const h = shown.length * 13 + 8;
-    const bx = Math.min(W.width - w - 4, Math.max(4, x - w / 2));
+    const bx = Math.min(view.x + VIEW.w - w - 4, Math.max(view.x + 4, x - w / 2));
     const by = Math.max(4, y - h);
     ctx.fillStyle = 'rgba(235,255,246,.95)';
     ctx.beginPath(); ctx.roundRect(bx, by, w, h, 6); ctx.fill();

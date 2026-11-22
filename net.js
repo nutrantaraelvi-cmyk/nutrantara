@@ -14,6 +14,7 @@ window.NutraNet = (() => {
   let failures = 0;
   let me = null;
   let muted = false;
+  let party = null; // { code, leaderId, max, members: [...] } — regu mabar
   let stopped = false;
   let chat = [];
   let leaderboard = [];
@@ -203,6 +204,13 @@ window.NutraNet = (() => {
       case 'reset':
         emit('reset', msg);
         break;
+      case 'party':
+        party = msg.party;
+        emit('party', party);
+        break;
+      case 'party-error':
+        emit('party-error', msg.message);
+        break;
       case 'kicked':
         showBlocker('Sesi berakhir', msg.message || 'Kamu dikeluarkan dari sesi oleh guru.');
         emit('kicked', msg);
@@ -225,6 +233,12 @@ window.NutraNet = (() => {
 
   function sendZone(zone) { if (joined) send({ type: 'zone', zone }); }
   function spawn(island) { return joined && send({ type: 'spawn', island }); }
+  /** Terjun ke dekat teman satu regu (server memilih pulau dan posisinya). */
+  function spawnNear(friendId) { return joined && send({ type: 'spawn', to: friendId }); }
+  const partyCreate = () => joined && send({ type: 'party', action: 'create' });
+  const partyJoin = (code) => joined && send({ type: 'party', action: 'join', code });
+  const partyLeave = () => joined && send({ type: 'party', action: 'leave' });
+  const isTeammate = (id) => Boolean(party && me && id !== me.id && party.members.some((m) => m.id === id));
   function emote(name) { return joined && send({ type: 'emote', emote: name }); }
 
   function pushProgress(state, screen) {
@@ -301,6 +315,8 @@ window.NutraNet = (() => {
   return {
     on, join, pushProgress, sendMove, sendChat, isPostOpen, status,
     api, serverStatus, register, login, resume, logout, getSession, sendZone, spawn, emote,
+    spawnNear, partyCreate, partyJoin, partyLeave, isTeammate,
+    get party() { return party; },
     get me() { return me; },
     get players() { return players; },
     get settings() { return settings; },

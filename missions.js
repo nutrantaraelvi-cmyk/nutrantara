@@ -375,3 +375,101 @@ window.NUTRANTARA_MISSIONS = [
     ]
   }
 ];
+
+/*
+ * Misi khas tiap pulau (aktivitas di dalam dunia 3D), mengikuti tabel "Tindakan pemain" pada dokumen desain.
+ * Bersifat formatif: boleh dicoba ulang, tidak memengaruhi skor. Papan Laporan terbuka setelah misi ini selesai.
+ * Posisi `at` = [lx, lz] relatif terhadap jari-jari pulau (z+ = sisi depan/selatan).
+ */
+(function () {
+  const ACTIVITIES = {
+    1: {
+      type: 'classify',
+      title: 'Pilah bukti yang relevan',
+      intro: 'Arsip kantin tercampur. Pindai keempat terminal, lalu putuskan mana yang benar-benar bisa menguji komposisi gizi dan mana yang hanya informasi pengalih.',
+      distractor: { label: 'Harga & Kemasan', values: [['Rp10.000', 'kotak kertas'], ['Rp12.000', 'daun pisang']], at: [0.86, 0.1] },
+      explain: 'Harga dan kemasan tidak menunjukkan kandungan zat gizi, jadi tidak bisa dipakai untuk menguji komposisi menu.'
+    },
+    2: {
+      type: 'stations',
+      title: 'Rakit tiga jalur perombakan',
+      intro: 'Tiga meja lab menunggu: karbohidrat, protein, dan lemak. Lengkapi zat yang bekerja di setiap tahap, lalu selidiki Ruang X dan Y di terminal.',
+      stations: [
+        { id: 'karbo', kind: 'bench', at: [-0.86, 0.12], label: 'Meja Karbohidrat', color: '#ffd17c', chain: ['Amilum', 'Maltosa', 'Glukosa'],
+          blanks: [{ label: 'Amilum → Maltosa dipecah oleh', options: ['Amilase', 'Pepsin', 'Lipase'], answer: 'Amilase' }, { label: 'Maltosa → Glukosa dipecah oleh', options: ['Tripsin', 'Maltase', 'Empedu'], answer: 'Maltase' }],
+          explain: 'Amilase (dari ludah dan pankreas) memecah amilum menjadi maltosa. Maltase di usus halus memecah maltosa menjadi glukosa.' },
+        { id: 'protein', kind: 'bench', at: [0.86, 0.12], label: 'Meja Protein', color: '#ff9f91', chain: ['Protein', 'Pepton/peptida', 'Asam amino'],
+          blanks: [{ label: 'Protein → Pepton di lambung oleh', options: ['Amilase', 'Pepsin', 'Lipase'], answer: 'Pepsin' }, { label: 'Pepton → Asam amino oleh', options: ['Tripsin dan peptidase', 'Maltase', 'Empedu'], answer: 'Tripsin dan peptidase' }],
+          explain: 'Pepsin di lambung memecah protein menjadi pepton. Tripsin dari pankreas dan peptidase di usus halus melanjutkannya menjadi asam amino.' },
+        { id: 'lemak', kind: 'bench', at: [0, 0.84], label: 'Meja Lemak', color: '#68dce7', chain: ['Lemak', 'Butiran lemak kecil', 'Asam lemak + gliserol'],
+          blanks: [{ label: 'Lemak → butiran kecil (emulsifikasi) oleh', options: ['Pepsin', 'Empedu', 'Maltase'], answer: 'Empedu' }, { label: 'Butiran lemak → asam lemak + gliserol oleh', options: ['Lipase', 'Amilase', 'Tripsin'], answer: 'Lipase' }],
+          explain: 'Empedu bukan enzim; ia mengemulsikan lemak menjadi butiran kecil. Lipase pankreas lalu memecahnya menjadi asam lemak dan gliserol.' }
+      ]
+    },
+    3: {
+      type: 'stations',
+      title: 'Lintaskan molekul ke sirkulasi',
+      intro: 'Hasil pencernaan melayang di depan gerbang. Antarkan setiap molekul ke jalur penyerapan yang tepat, lalu pulihkan komponen gerbang.',
+      stations: [
+        { id: 'glukosa', kind: 'orb', at: [-0.86, 0.1], label: 'Molekul Glukosa', color: '#ffd17c',
+          blanks: [{ label: 'Glukosa diserap menuju', options: ['Kapiler darah di vili → vena porta hepatika → hati', 'Pembuluh kil (lakteal) → pembuluh limfa'], answer: 'Kapiler darah di vili → vena porta hepatika → hati' }],
+          explain: 'Glukosa larut dalam air, diserap ke kapiler darah di vili, lalu dibawa vena porta hepatika ke hati.' },
+        { id: 'asamamino', kind: 'orb', at: [0.86, 0.1], label: 'Molekul Asam Amino', color: '#ff9f91',
+          blanks: [{ label: 'Asam amino diserap menuju', options: ['Pembuluh kil (lakteal) → pembuluh limfa', 'Kapiler darah di vili → vena porta hepatika → hati'], answer: 'Kapiler darah di vili → vena porta hepatika → hati' }],
+          explain: 'Seperti glukosa, asam amino masuk ke kapiler darah di vili lalu menuju hati melalui vena porta hepatika.' },
+        { id: 'lemak', kind: 'orb', at: [-0.32, 0.8], label: 'Asam Lemak + Gliserol', color: '#68dce7',
+          blanks: [{ label: 'Asam lemak dan gliserol diserap menuju', options: ['Kapiler darah di vili → vena porta hepatika → hati', 'Pembuluh kil (lakteal) → pembuluh limfa'], answer: 'Pembuluh kil (lakteal) → pembuluh limfa' }],
+          explain: 'Asam lemak dan gliserol (juga vitamin larut lemak A, D, E, K) masuk ke pembuluh kil atau lakteal, lalu beredar melalui pembuluh limfa.' },
+        { id: 'gerbang', kind: 'gate', at: [0.32, 0.8], label: 'Komponen Gerbang', color: '#78f4bd',
+          blanks: [{ label: 'Struktur yang memperluas permukaan penyerapan', options: ['Epiglotis', 'Vili dan mikrovili', 'Gigi geraham'], answer: 'Vili dan mikrovili' }, { label: 'Enzim pada mikrovili yang menuntaskan pemecahan', options: ['Pepsin dan ptialin', 'Maltase, sukrase, laktase, peptidase', 'Empedu'], answer: 'Maltase, sukrase, laktase, peptidase' }],
+          explain: 'Vili dan mikrovili memperluas permukaan penyerapan. Enzim di permukaan mikrovili menuntaskan pemecahan menjadi molekul siap serap: monosakarida dan asam amino.' }
+      ]
+    },
+    4: {
+      type: 'stations',
+      title: 'Nyalakan lentera dugaan',
+      intro: 'Kota terapung gelap. Setiap lentera mewakili satu faktor. Nyalakan dengan dugaan sebab-akibat yang masuk akal.',
+      stations: [
+        { id: 'serat', kind: 'lantern', at: [-0.86, 0.1], label: 'Lentera Serat', color: '#78f4bd',
+          blanks: [{ label: 'Jika serat harian naik, keluhan sulit BAB cenderung…', options: ['berkurang, karena serat menambah massa feses dan menahan air', 'bertambah, karena serat diserap ke dalam darah', 'tidak berubah sama sekali'], answer: 'berkurang, karena serat menambah massa feses dan menahan air' }],
+          explain: 'Serat tidak dicerna. Serat menambah massa feses dan menahan air sehingga feses lebih mudah bergerak.' },
+        { id: 'air', kind: 'lantern', at: [0.86, 0.1], label: 'Lentera Air', color: '#68dce7',
+          blanks: [{ label: 'Jika air minum naik, keluhan sulit BAB cenderung…', options: ['bertambah, karena usus kelebihan air', 'berkurang, karena feses menjadi lebih lunak', 'tidak berubah sama sekali'], answer: 'berkurang, karena feses menjadi lebih lunak' }],
+          explain: 'Usus besar menyerap air dari sisa makanan. Asupan air yang cukup membantu feses tetap lunak.' },
+        { id: 'aktivitas', kind: 'lantern', at: [0, 0.84], label: 'Lentera Aktivitas', color: '#ffd17c',
+          blanks: [{ label: 'Jika aktivitas fisik naik, keluhan sulit BAB cenderung…', options: ['berkurang, karena gerak tubuh membantu gerak peristaltik usus', 'bertambah, karena energi tubuh habis', 'tidak berubah sama sekali'], answer: 'berkurang, karena gerak tubuh membantu gerak peristaltik usus' }],
+          explain: 'Aktivitas fisik membantu merangsang gerak peristaltik. Ingat: ketiga faktor berubah bersamaan, jadi data ini belum bisa memastikan mana penyebab utamanya.' }
+      ]
+    },
+    5: {
+      type: 'stations',
+      title: 'Perbaiki iklan',
+      intro: 'Studio iklan menyiarkan klaim yang menyesatkan. Tulis ulang naskahnya agar jujur terhadap data, lalu tentukan data sasaran yang masih kurang.',
+      stations: [
+        { id: 'naskah', kind: 'board', at: [-0.86, 0.1], label: 'Naskah Iklan', color: '#ff9f91',
+          blanks: [{ label: 'Naskah iklan yang jujur terhadap data', options: ['Menu C paling sehat karena energinya paling tinggi.', 'Pada data simulasi, Menu C lebih tinggi energinya (600 kkal), sedangkan Menu B lebih tinggi protein dan seratnya. Pilih sesuai kebutuhan.', 'Menu B pasti paling sehat untuk semua orang.'], answer: 'Pada data simulasi, Menu C lebih tinggi energinya (600 kkal), sedangkan Menu B lebih tinggi protein dan seratnya. Pilih sesuai kebutuhan.' }],
+          explain: 'Naskah yang jujur menyebutkan data apa adanya tanpa melompat ke klaim "paling sehat".' },
+        { id: 'sasaran', kind: 'board', at: [0.86, 0.1], label: 'Data Sasaran', color: '#68dce7',
+          blanks: [{ label: 'Agar klaim "sehat untuk siswa SMA" bisa dinilai, perlu data…', options: ['Warna kemasan dan nama artis pengiklan', 'Kebutuhan gizi siswa SMA dan porsi yang dimakan', 'Jumlah penonton iklan'], answer: 'Kebutuhan gizi siswa SMA dan porsi yang dimakan' }],
+          explain: '"Sehat" selalu bergantung pada sasaran. Tanpa data kebutuhan gizi dan porsi, klaim belum bisa diuji.' }
+      ]
+    },
+    6: {
+      type: 'collect',
+      title: 'Siapkan bahan lokal',
+      intro: 'Kumpulkan bahan pangan lokal di sekitar Dapur Juara ke dalam rantangmu (minimal 4). Bahan yang terkumpul otomatis masuk ke rancangan menu.',
+      need: 4,
+      items: [
+        { id: 'jagung', label: 'Jagung', kind: 'corn', group: 'Makanan pokok · sumber karbohidrat', at: [-0.76, -0.12] },
+        { id: 'tempe', label: 'Tempe', kind: 'tempe', group: 'Lauk nabati · sumber protein', at: [0.76, -0.12] },
+        { id: 'telur', label: 'Telur ayam', kind: 'egg', group: 'Lauk hewani · sumber protein', at: [-0.84, 0.3] },
+        { id: 'kelor', label: 'Daun kelor', kind: 'leaf', group: 'Sayur · sumber serat, vitamin, mineral', at: [0.84, 0.3] },
+        { id: 'ubi', label: 'Ubi jalar', kind: 'ubi', group: 'Makanan pokok · sumber karbohidrat dan serat', at: [-0.5, 0.64] },
+        { id: 'pisang', label: 'Pisang', kind: 'banana', group: 'Buah · sumber karbohidrat dan vitamin', at: [0.5, 0.64] }
+      ],
+      stage: { at: [0, 0.86], label: 'Panggung Presentasi' },
+      explain: 'Cari nilai gizi per 100 g setiap bahan di Tabel Komposisi Pangan Indonesia (TKPI) atau label pangan, lalu hitung kontribusinya sesuai berat porsi.'
+    }
+  };
+  window.NUTRANTARA_MISSIONS.forEach((m) => { if (ACTIVITIES[m.id]) m.activity = ACTIVITIES[m.id]; });
+})();

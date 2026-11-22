@@ -9,6 +9,7 @@
  */
 import * as THREE from './vendor/three/three.module.min.js';
 import { createLabel, toon, PALETTE } from './characters.js';
+import { createCorn, createTempe } from './culture.js';
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -100,6 +101,86 @@ export function createQuests(ctx) {
     return { obj: g };
   }
 
+  // ---------- Stasiun misi khas pulau ----------
+  function stationLabel(g, text, color, y) {
+    const l = createLabel(text, { color, size: 22 });
+    l.position.y = y;
+    g.add(l);
+    return l;
+  }
+
+  function buildStation(st, x, z) {
+    const g = new THREE.Group();
+    const parts = {};
+    if (st.kind === 'bench') { // meja lab: tabung reaksi + layar rantai reaksi
+      add(new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.12, 0.9), toon('#e8e2d6')), 0, 0.95, 0, g);
+      [[-0.8, -0.35], [0.8, -0.35], [-0.8, 0.35], [0.8, 0.35]].forEach(([px, pz]) => add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.95, 0.1), toon('#9aa59c')), px, 0.47, pz, g));
+      [-0.5, 0, 0.5].forEach((px, i) => { const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.45, 10), new THREE.MeshToonMaterial({ color: [st.color, '#ffffff', '#c58cf0'][i], transparent: true, opacity: 0.85 })); add(tube, px, 1.24, 0, g); });
+      parts.screen = holoScreen(st.chain ? st.chain.join(' → ') : st.label, st.color);
+      parts.screen.scale.set(1.2, 0.8, 1);
+      parts.screen.position.set(0, 2, -0.3);
+      g.add(parts.screen);
+    } else if (st.kind === 'orb') { // molekul hasil pencernaan
+      const orb = new THREE.Group();
+      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 1), toon(st.color, { emissive: st.color, emissiveIntensity: 0.5, unique: true }));
+      orb.add(core);
+      for (let i = 0; i < 3; i += 1) { const a = (i / 3) * Math.PI * 2; const atom = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), toon('#ffffff')); atom.position.set(Math.cos(a) * 0.55, Math.sin(a) * 0.3, Math.sin(a) * 0.55); orb.add(atom); }
+      orb.position.y = 1.4;
+      g.add(orb);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.2, 14), toon('#d4e3df')), 0, 0.1, 0, g);
+      parts.orb = orb; parts.core = core;
+    } else if (st.kind === 'gate') { // gerbang vili usus yang rusak
+      for (let i = 0; i < 5; i += 1) { const v = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.7, 4, 8), toon('#f19a8c')); add(v, -0.8 + i * 0.4, 0.55, 0, g); v.rotation.z = (i - 2) * 0.12; }
+      parts.core = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.09, 8, 28, Math.PI), toon(st.color, { emissive: st.color, emissiveIntensity: 0.15, unique: true }));
+      add(parts.core, 0, 0.35, 0, g);
+    } else if (st.kind === 'lantern') { // lentera kota terapung
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 2.2, 6), toon('#5a3d22')), 0, 1.1, 0, g);
+      add(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.08), toon('#5a3d22')), 0.25, 2.15, 0, g);
+      parts.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), toon('#8a8a8a', { emissive: st.color, emissiveIntensity: 0, unique: true }));
+      parts.core.scale.y = 1.4;
+      add(parts.core, 0.5, 1.75, 0, g);
+    } else { // papan naskah studio
+      add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.1), toon('#7a4a2a')), -0.7, 0.9, 0, g);
+      add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.1), toon('#7a4a2a')), 0.7, 0.9, 0, g);
+      parts.screen = holoScreen(st.label.toUpperCase(), st.color);
+      parts.screen.position.y = 1.6;
+      g.add(parts.screen);
+    }
+    parts.label = stationLabel(g, st.label, st.color, st.kind === 'bench' ? 2.75 : 2.6);
+    add(g, x, 0, z);
+    return { obj: g, ...parts };
+  }
+
+  function buildIngredient(item, x, z) {
+    const g = new THREE.Group();
+    let model;
+    if (item.kind === 'corn') { model = createCorn(0.9); model.rotation.z = 1.2; }
+    else if (item.kind === 'tempe') model = createTempe(0.9);
+    else if (item.kind === 'egg') { model = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), toon('#f7ead4')); model.scale.y = 1.3; }
+    else if (item.kind === 'leaf') { model = new THREE.Group(); for (let i = 0; i < 6; i += 1) { const lf = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 4), toon('#3fa95c')); lf.scale.set(1, 0.3, 0.6); lf.position.set(Math.cos(i) * 0.2, i * 0.05, Math.sin(i) * 0.2); model.add(lf); } }
+    else if (item.kind === 'ubi') { model = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.35, 4, 8), toon('#b5486b')); model.rotation.z = 1.4; }
+    else { model = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.09, 6, 12, Math.PI * 0.8), toon('#f5d33b')); model.rotation.z = 0.6; }
+    model.position.y = 0.9;
+    g.add(model);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.55, 28), new THREE.MeshBasicMaterial({ color: PALETTE.gold, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05;
+    g.add(ring);
+    stationLabel(g, item.label, PALETTE.gold, 1.7);
+    add(g, x, 0, z);
+    return { obj: g, model };
+  }
+
+  function buildStage(x, z) {
+    const g = new THREE.Group();
+    add(new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.5, 0.35, 24), toon('#c0573a')), 0, 0.17, 0, g);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.05, 24), toon('#f5b72b')), 0, 0.37, 0, g);
+    const banner = holoScreen('PANGGUNG PRESENTASI', PALETTE.gold);
+    banner.position.set(0, 2.1, -1.1);
+    g.add(banner);
+    add(g, x, 0, z);
+    return { obj: g };
+  }
+
   // Tata letak tiap pulau pos (koordinat lokal relatif pusat pulau; z+ = sisi depan/selatan).
   game.missions.forEach((m) => {
     const f = islandFrame(m.id);
@@ -109,6 +190,9 @@ export function createQuests(ctx) {
       const p = P(0, 0.05);
       const t = buildKitchenTable(p.x, p.z);
       items.push({ kind: 'kitchen', pos: m.id, x: p.x, z: p.z, ...t });
+      (m.activity.items || []).forEach((ing) => { const q = P(ing.at[0], ing.at[1]); items.push({ kind: 'ingredient', pos: m.id, ing, x: q.x, z: q.z, ...buildIngredient(ing, q.x, q.z) }); });
+      const sg = P(m.activity.stage.at[0], m.activity.stage.at[1]);
+      items.push({ kind: 'stage', pos: m.id, x: sg.x, z: sg.z, ...buildStage(sg.x, sg.z) });
       return;
     }
     const rows = m.stimulus.rows;
@@ -123,6 +207,12 @@ export function createQuests(ctx) {
     items.push({ kind: 'board', pos: m.id, x: b.x, z: b.z, ...buildBoard(b.x, b.z, 0.45) });
     const a = P(0.62, 0.42);
     items.push({ kind: 'altar', pos: m.id, x: a.x, z: a.z, ...buildAltar(a.x, a.z, -0.45) });
+    const act = m.activity;
+    if (act && act.type === 'classify') {
+      const d = P(act.distractor.at[0], act.distractor.at[1]);
+      items.push({ kind: 'terminal', pos: m.id, row: -1, distractor: true, x: d.x, z: d.z, label: act.distractor.label, ...buildTerminal(m.id, -1, act.distractor.label, d.x, d.z, -0.4) });
+    }
+    if (act && act.type === 'stations') act.stations.forEach((st) => { const q = P(st.at[0], st.at[1]); items.push({ kind: 'station', pos: m.id, st, x: q.x, z: q.z, ...buildStation(st, q.x, q.z) }); });
   });
 
   // ---------- Status ----------
@@ -130,12 +220,29 @@ export function createQuests(ctx) {
   const postOf = (id) => game.state.posts[id];
   const evidenceOf = (id) => (postOf(id) && postOf(id).evidence) || [];
   const allScanned = (id) => evidenceOf(id).length >= game.missionById(id).stimulus.rows.length;
+  const activityOk = (id) => game.activityDone(id);
+  const boardOpen = (id) => allScanned(id) && activityOk(id);
   const challengesDone = (id) => postOf(id).challenges.every((c) => c.complete);
 
   function refresh() {
     items.forEach((it) => {
       const p = postOf(it.pos);
       if (!p) return;
+      const act = game.activityState(it.pos);
+      if (it.kind === 'terminal' && it.distractor) {
+        const c = act.rejected ? '#e2553f' : PALETTE.cyan;
+        it.screen.userData.glass.material.color.set(c);
+        it.ring.material.color.set(c);
+        return;
+      }
+      if (it.kind === 'station') {
+        const done = Boolean(act.stations[it.st.id]) || p.sealed;
+        if (it.screen) it.screen.userData.glass.material.color.set(done ? PALETTE.green : it.st.color);
+        if (it.core) { it.core.material.emissiveIntensity = done ? 1.1 : it.st.kind === 'lantern' ? 0 : 0.35; if (it.st.kind === 'lantern') it.core.material.color.set(done ? it.st.color : '#8a8a8a'); }
+        if (it.orb) it.orb.visible = !done;
+        return;
+      }
+      if (it.kind === 'ingredient') { it.obj.visible = !act.collected.includes(it.ing.id); return; }
       if (it.kind === 'terminal') {
         const done = evidenceOf(it.pos).includes(it.row) || p.sealed;
         const c = done ? PALETTE.green : PALETTE.cyan;
@@ -143,7 +250,7 @@ export function createQuests(ctx) {
         it.ring.material.color.set(c);
       }
       if (it.kind === 'board') {
-        const open = allScanned(it.pos) || p.sealed;
+        const open = boardOpen(it.pos) || p.sealed;
         it.lock.visible = !open;
         it.screen.userData.glass.material.color.set(p.sealed || (open && challengesDone(it.pos)) ? PALETTE.green : open ? PALETTE.gold : '#6c7f79');
       }
@@ -159,10 +266,16 @@ export function createQuests(ctx) {
   function hint(it) {
     const m = game.missionById(it.pos);
     const p = postOf(it.pos);
-    if (it.kind === 'kitchen') return `Meja Dapur Juara — rancang menu proyek akhir. Tekan E.`;
+    const act = game.activityState(it.pos);
+    if (it.kind === 'kitchen') return act.collected.length < (m.activity.need || 0) && !p.sealed ? `Meja Dapur Juara — kumpulkan bahan dulu (${act.collected.length}/${m.activity.need}).` : 'Meja Dapur Juara — rancang menu proyek akhir. Tekan E.';
+    if (it.kind === 'ingredient') return `${it.ing.label} — ${it.ing.group}. Tekan E untuk memasukkan ke rantang.`;
+    if (it.kind === 'stage') return p.sealed ? 'Panggung Presentasi — tekan E untuk mempresentasikan kartu menumu!' : 'Panggung Presentasi — terbuka setelah Dapur Juara disegel.';
+    if (it.kind === 'station') return `${it.st.label} — ${act.stations[it.st.id] ? 'selesai ✓' : 'tekan E untuk mengerjakan misi'}`;
+    if (it.kind === 'terminal' && it.distractor) return `Terminal Arsip · ${it.label} — ${act.rejected ? 'ditandai pengalih ✓' : 'tekan E untuk memindai'}`;
     if (it.kind === 'terminal') return `Terminal Arsip · ${it.label} — ${evidenceOf(it.pos).includes(it.row) ? 'sudah dipindai ✓' : 'tekan E untuk memindai'}`;
     if (it.kind === 'board') {
       if (p.sealed) return 'Papan Laporan — semua tantangan selesai ✓ (tekan E untuk meninjau)';
+      if (!activityOk(it.pos)) return `Papan Laporan terkunci — selesaikan misi "${m.activity.title}" dulu.`;
       if (!allScanned(it.pos)) return `Papan Laporan terkunci — pindai ${m.stimulus.rows.length - evidenceOf(it.pos).length} terminal lagi.`;
       return `Papan Laporan — ${p.challenges.filter((c) => c.complete).length}/${m.challenges.length} tantangan. Tekan E.`;
     }
@@ -173,7 +286,7 @@ export function createQuests(ctx) {
   function nearest(x, z, h) {
     if (h > 1.2) return null;
     let best = null; let bestD = RADIUS;
-    items.forEach((it) => { const d = Math.hypot(it.x - x, it.z - z); if (d < bestD) { bestD = d; best = it; } });
+    items.forEach((it) => { if (it.obj && !it.obj.visible) return; const d = Math.hypot(it.x - x, it.z - z); if (d < bestD) { bestD = d; best = it; } });
     return best;
   }
 
@@ -223,25 +336,27 @@ export function createQuests(ctx) {
 
   function scanTerminal(it) {
     const m = game.missionById(it.pos);
-    const row = m.stimulus.rows[it.row];
+    const classify = m.activity && m.activity.type === 'classify';
+    const row = it.distractor ? { label: m.activity.distractor.label, values: m.activity.distractor.values } : m.stimulus.rows[it.row];
     const cols = m.stimulus.columns.slice(1);
     fx.ring({ x: it.x, y: 0, z: it.z }, { color: PALETTE.cyan, from: 0.4, to: 2.4, life: 0.6 });
     fx.sparkle({ x: it.x, y: 1.8, z: it.z }, PALETTE.cyan);
-    const nums = row.values.map(([v]) => parseNum(v));
+    const nums = row.values.map(([v]) => (it.distractor ? null : parseNum(v)));
     const max = Math.max(...nums.filter((n) => n !== null), 1);
     const bars = row.values.map(([v, unit], i) => {
       const n = nums[i];
       const width = n === null ? 100 : Math.max(6, (n / max) * 100);
       return `<div class="scan-row"><span>${esc(cols[i])}</span><div class="scan-bar"><i style="--w:${width}%"></i></div><b ${n !== null ? `data-count="${n}"` : ''}>${n !== null ? '0' : esc(v)}</b><small>${esc(unit || '')}</small></div>`;
     }).join('');
-    const already = evidenceOf(it.pos).includes(it.row);
+    const already = it.distractor ? game.activityState(it.pos).rejected : evidenceOf(it.pos).includes(it.row);
+    const decide = classify && !already;
     openPanel(it, `
-      <p class="holo-kicker">POS ${pad(it.pos)} · TERMINAL ARSIP ${it.row + 1}/${m.stimulus.rows.length} <em>SIMULASI</em></p>
+      <p class="holo-kicker">POS ${pad(it.pos)} · TERMINAL ARSIP${it.distractor ? '' : ` ${it.row + 1}/${m.stimulus.rows.length}`} <em>SIMULASI</em></p>
       <h2>${esc(row.label)}</h2>
       <div class="scan-beam" aria-hidden="true"></div>
       <div class="scan-rows">${bars}</div>
       <p class="holo-note">${esc(m.stimulus.title)} · Data simulasi untuk tantangan, bukan rekomendasi gizi.</p>
-      <button type="button" class="button button-primary" data-act="keep" data-autofocus>${already ? 'Tutup' : 'Simpan sebagai bukti ✦'}</button>`, (el) => {
+      ${decide ? `<p class="holo-label">MISI: ${esc(m.activity.title).toUpperCase()}</p><p class="holo-ask">Apakah data ini bisa menguji perbedaan <b>komposisi gizi</b> kedua menu?</p><div class="holo-feedback" role="status" aria-live="polite"></div><div class="holo-duo"><button type="button" class="button button-primary" data-act="relevant" data-autofocus>✦ Bukti relevan</button><button type="button" class="button button-secondary" data-act="reject">✗ Informasi pengalih</button></div>` : `<button type="button" class="button button-primary" data-act="keep" data-autofocus>${already ? 'Tutup' : 'Simpan sebagai bukti ✦'}</button>`}`, (el) => {
       el.querySelectorAll('[data-count]').forEach((b) => {
         const target = Number(b.dataset.count);
         const start = performance.now();
@@ -252,6 +367,35 @@ export function createQuests(ctx) {
         };
         requestAnimationFrame(tick);
       });
+      const decideBtn = (choice) => {
+        const right = it.distractor ? choice === 'reject' : choice === 'relevant';
+        if (!right) {
+          game.updateActivity(it.pos, (a) => { a.tries = (a.tries || 0) + 1; });
+          ctx.nara('shake');
+          shake(el);
+          el.querySelector('.holo-feedback').innerHTML = it.distractor ? `<b class="warn">Coba lagi.</b> Apakah harga atau kemasan menunjukkan kandungan protein, serat, atau energi?` : `<b class="warn">Coba lagi.</b> Data "${esc(row.label)}" adalah angka zat gizi. Bisakah dipakai membandingkan komposisi menu?`;
+          return;
+        }
+        if (it.distractor) {
+          game.updateActivity(it.pos, (a) => { a.rejected = true; });
+          fx.ring({ x: it.x, y: 0, z: it.z }, { color: '#e2553f', from: 0.4, to: 2.2, life: 0.5 });
+          floatText('✗ PENGALIH DITOLAK', it.x, 2.6, it.z, '#ffffff');
+          ctx.say(`Tepat! ${m.activity.explain}`, 'celebrate');
+        } else {
+          const ev = game.scanEvidence(it.pos, it.row);
+          fx.sparkle({ x: it.x, y: 2, z: it.z }, PALETTE.green);
+          floatText('+ BUKTI', it.x, 2.6, it.z, PALETTE.green);
+          const left = m.stimulus.rows.length - ev.length;
+          ctx.say(left ? `Bukti "${row.label}" relevan dan tersimpan. ${left} terminal data lagi.` : `Semua bukti relevan terkumpul! ${m.stimulus.insight}`, left ? 'talk' : 'celebrate');
+        }
+        refresh();
+        closePanel();
+      };
+      if (decide) {
+        el.querySelector('[data-act="relevant"]').addEventListener('click', () => decideBtn('relevant'));
+        el.querySelector('[data-act="reject"]').addEventListener('click', () => decideBtn('reject'));
+        return;
+      }
       el.querySelector('[data-act="keep"]').addEventListener('click', () => {
         if (!already) {
           const ev = game.scanEvidence(it.pos, it.row);
@@ -264,6 +408,143 @@ export function createQuests(ctx) {
         closePanel();
       });
     });
+  }
+
+  // ---------- Stasiun misi (Pos 2–5) ----------
+
+  function openStation(it) {
+    const m = game.missionById(it.pos);
+    const st = it.st;
+    const act = game.activityState(it.pos);
+    const done = Boolean(act.stations[st.id]);
+    const chain = st.chain ? `<div class="holo-chain">${st.chain.map((c, i) => `<span>${esc(c)}</span>${i < st.chain.length - 1 ? `<i>→ <b>${i + 1}</b></i>` : ''}`).join('')}</div>` : '';
+    const blanks = st.blanks.map((b, i) => `<fieldset class="holo-choices" data-blank="${i}"><legend class="holo-label">${st.chain ? `${i + 1}. ` : ''}${esc(b.label)}</legend>${b.options.map((o, k) => `<label class="holo-choice${done && o === b.answer ? ' is-correct' : ''}"><input type="radio" name="b${i}" value="${esc(o)}"${done ? ' disabled' : ''}${done && o === b.answer ? ' checked' : ''} /><span class="mark">${String.fromCharCode(65 + k)}</span><span>${esc(o)}</span></label>`).join('')}</fieldset>`).join('');
+    openPanel(it, `
+      <p class="holo-kicker">POS ${pad(it.pos)} · MISI: ${esc(m.activity.title).toUpperCase()} <em>LATIHAN</em></p>
+      <h2>${esc(st.label)}</h2>
+      ${chain}
+      <form class="holo-form" novalidate>${blanks}
+        <div class="holo-feedback" role="status" aria-live="polite">${done ? `<b class="ok">✓ Selesai.</b> ${esc(st.explain)}` : ''}</div>
+        ${done ? '<button type="button" class="button button-primary" data-act="close" data-autofocus>Tutup</button>' : '<button type="submit" class="button button-primary">Periksa ↗</button>'}
+      </form>`, (el) => {
+      const form = el.querySelector('.holo-form');
+      const closeBtn = el.querySelector('[data-act="close"]');
+      if (closeBtn) closeBtn.addEventListener('click', () => closePanel());
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const picks = st.blanks.map((b, i) => { const x = form.querySelector(`input[name="b${i}"]:checked`); return x ? x.value : null; });
+        const fb = el.querySelector('.holo-feedback');
+        if (picks.some((p) => !p)) { fb.innerHTML = '<b class="warn">Pilih jawaban untuk setiap bagian terlebih dahulu.</b>'; shake(el); return; }
+        const wrong = st.blanks.map((b, i) => picks[i] !== b.answer);
+        form.querySelectorAll('fieldset[data-blank]').forEach((fs2, i) => fs2.classList.toggle('blank-wrong', wrong[i]));
+        if (wrong.some(Boolean)) {
+          const a = game.updateActivity(it.pos, (x) => { x.tries = (x.tries || 0) + 1; x.stationTries = x.stationTries || {}; x.stationTries[st.id] = (x.stationTries[st.id] || 0) + 1; });
+          const n = a.stationTries[st.id];
+          ctx.nara('shake');
+          shake(el);
+          fb.innerHTML = n >= 2 ? `<b class="warn">Belum tepat. Petunjuk:</b> ${esc(st.explain)}` : `<b class="warn">Belum tepat — coba lagi.</b> Bagian yang ditandai merah perlu diperiksa ulang.`;
+          return;
+        }
+        game.updateActivity(it.pos, (a) => { a.stations[st.id] = true; });
+        fx.sparkle({ x: it.x, y: 1.8, z: it.z }, st.color);
+        fx.ring({ x: it.x, y: 0, z: it.z }, { color: st.color, from: 0.4, to: 2.6, life: 0.7 });
+        if (st.kind === 'orb') fx.rise({ x: it.x, y: 1, z: it.z }, st.color);
+        if (st.kind === 'lantern') fx.pillar({ x: it.x + 0.5, y: 0, z: it.z }, { color: st.color, height: 6, life: 1.4, radius: 0.4 });
+        floatText('✓ MISI', it.x, 2.8, it.z, st.color);
+        refresh();
+        const left = m.activity.stations.filter((x) => !game.activityState(it.pos).stations[x.id]).length;
+        ctx.say(left ? `${st.explain} Masih ${left} lagi.` : `Misi "${m.activity.title}" tuntas! Sekarang pindai Terminal Arsip, lalu buka Papan Laporan.`, left ? 'talk' : 'celebrate');
+        closePanel();
+      });
+    });
+  }
+
+  // ---------- Dapur Juara: kumpulkan bahan & presentasi (Pos 6) ----------
+
+  function collectIngredient(it) {
+    const m = game.missionById(it.pos);
+    const act = game.updateActivity(it.pos, (a) => { if (!a.collected.includes(it.ing.id)) a.collected.push(it.ing.id); });
+    const names = m.activity.items.filter((x) => act.collected.includes(x.id)).map((x) => x.label);
+    game.prefillKitchen(names);
+    fx.sparkle({ x: it.x, y: 1, z: it.z }, PALETTE.gold);
+    floatText(`+ ${it.ing.label.toUpperCase()} KE RANTANG`, it.x, 2.2, it.z);
+    refresh();
+    const need = m.activity.need;
+    ctx.say(act.collected.length >= need ? `${it.ing.label} masuk rantang (${it.ing.group}). Bahan cukup! Bawa ke Meja Dapur Juara. ${m.activity.explain}` : `${it.ing.label} masuk rantang (${it.ing.group}). ${act.collected.length}/${need} bahan.`, act.collected.length >= need ? 'celebrate' : 'talk');
+  }
+
+  function openKitchen(it) {
+    const m = game.missionById(it.pos);
+    const act = game.activityState(it.pos);
+    if (act.collected.length < m.activity.need && !postOf(it.pos).sealed) { ctx.say(`Kumpulkan dulu minimal ${m.activity.need} bahan lokal di sekitar dapur (${act.collected.length}/${m.activity.need}).`, 'shake'); return; }
+    game.openPos(it.pos);
+  }
+
+  function present(it) {
+    const p = postOf(it.pos);
+    if (!p.sealed) { ctx.say('Panggung dibuka setelah Dapur Juara disegel. Selesaikan rancangan, telaah, revisi, dan refleksi.', 'shake'); return; }
+    const d = p.revision && p.revision.savedAt ? p.revision : p.initial;
+    const ings = (d.ingredients || []).filter((x) => String(x.name || '').trim());
+    game.updateActivity(it.pos, (a) => { a.presented = true; });
+    fx.confetti({ x: it.x, y: 2.5, z: it.z });
+    fx.pillar({ x: it.x, y: 0, z: it.z }, { color: PALETTE.gold, height: 10, life: 2 });
+    ctx.nara('celebrate');
+    openPanel(it, `
+      <p class="holo-kicker">POS 06 · PANGGUNG PRESENTASI · KARTU MENU</p>
+      <h2>${esc(d.menuName || 'Menu Juara')}</h2>
+      <p class="holo-ask">Sasaran: <b>${esc(d.target || '—')}</b> · ${esc(d.mealTime || '')}</p>
+      <ul class="menu-card">${ings.map((x) => `<li><b>${esc(x.name)}</b> <span>${esc(x.form)} · ${esc(x.grams || '?')} g</span><small>${esc(x.source || 'sumber belum ditulis')}</small></li>`).join('')}</ul>
+      <p class="holo-quote">${esc(d.rationale || '')}</p>
+      <p class="holo-note">Presentasikan kartu ini ke kelas: jelaskan alasan pemilihan bahan, porsi, dan apa yang kamu ubah setelah telaah.</p>
+      <button type="button" class="button button-primary" data-act="close" data-autofocus>Selesai presentasi ✦</button>`, (el) => el.querySelector('[data-act="close"]').addEventListener('click', () => closePanel()));
+  }
+
+  // ---------- Langkah misi per pos & log misi ----------
+
+  function steps(id) {
+    const m = game.missionById(id);
+    const p = postOf(id);
+    const a = game.activityState(id);
+    const out = [];
+    if (m.type === 'project') {
+      out.push({ text: `Kumpulkan bahan lokal (${Math.min(a.collected.length, m.activity.need)}/${m.activity.need})`, done: a.collected.length >= m.activity.need || p.sealed, item: items.find((x) => x.pos === id && x.kind === 'ingredient' && !a.collected.includes(x.ing.id)) });
+      out.push({ text: 'Rancang, telaah, revisi, dan refleksi di Meja Dapur Juara', done: p.sealed, item: items.find((x) => x.pos === id && x.kind === 'kitchen') });
+      out.push({ text: 'Presentasikan kartu menu di Panggung', done: Boolean(a.presented), item: items.find((x) => x.pos === id && x.kind === 'stage') });
+      return out;
+    }
+    const act = m.activity;
+    if (act && act.type === 'classify') {
+      out.push({ text: `${act.title}: simpan bukti relevan (${evidenceOf(id).length}/${m.stimulus.rows.length}) dan tolak pengalih`, done: (allScanned(id) && a.rejected) || p.sealed, item: items.find((x) => x.pos === id && x.kind === 'terminal' && (x.distractor ? !a.rejected : !evidenceOf(id).includes(x.row))) });
+    } else if (act) {
+      const n = act.stations.filter((st) => a.stations[st.id]).length;
+      out.push({ text: `Misi: ${act.title} (${n}/${act.stations.length})`, done: n >= act.stations.length || p.sealed, item: items.find((x) => x.pos === id && x.kind === 'station' && !a.stations[x.st.id]) });
+      out.push({ text: `Pindai Terminal Arsip (${evidenceOf(id).length}/${m.stimulus.rows.length})`, done: allScanned(id) || p.sealed, item: items.find((x) => x.pos === id && x.kind === 'terminal' && !evidenceOf(id).includes(x.row)) });
+    }
+    const c = p.challenges.filter((x) => x.complete).length;
+    out.push({ text: `Jawab tantangan di Papan Laporan (${c}/${m.challenges.length})`, done: c >= m.challenges.length, item: items.find((x) => x.pos === id && x.kind === 'board') });
+    out.push({ text: 'Tulis alasan & segel di Altar Segel', done: p.sealed, item: items.find((x) => x.pos === id && x.kind === 'altar') });
+    return out;
+  }
+
+  /** Tujuan berikutnya di pulau pos ini (untuk HUD & panah emas). */
+  function goal(id) {
+    const list = steps(id);
+    const next = list.find((x) => !x.done);
+    return next ? { text: next.text, item: next.item } : null;
+  }
+
+  function openLog(id) {
+    const m = game.missionById(id);
+    if (!m) return;
+    const list = steps(id);
+    const story = m.activity ? m.activity.intro : '';
+    openPanel({ x: 0, z: 0 }, `
+      <p class="holo-kicker">📜 LOG MISI · POS ${pad(id)} · ${esc(m.location)}</p>
+      <h2>${esc(m.title)} ${esc(m.titleEm)}</h2>
+      <p class="holo-quote">${esc(story)}</p>
+      <ol class="mission-steps">${list.map((x) => `<li class="${x.done ? 'done' : ''}"><span>${x.done ? '✓' : '○'}</span>${esc(x.text)}</li>`).join('')}</ol>
+      <p class="holo-note">Misi khas pulau adalah latihan: boleh dicoba ulang dan tidak memengaruhi skor. Tantangan di Papan Laporan dinilai sekali jawab.</p>
+      <button type="button" class="button button-primary" data-act="close" data-autofocus>Lanjut ↗</button>`, (el) => el.querySelector('[data-act="close"]').addEventListener('click', () => closePanel()));
   }
 
   // ---------- Papan Laporan: tantangan ----------
@@ -294,6 +575,10 @@ export function createQuests(ctx) {
   function openBoard(it) {
     const m = game.missionById(it.pos);
     const p = postOf(it.pos);
+    if (!activityOk(it.pos) && !p.sealed) {
+      ctx.say(`Papan Laporan masih terkunci. Selesaikan misi "${m.activity.title}" dulu.`, 'shake');
+      return;
+    }
     if (!allScanned(it.pos) && !p.sealed) {
       ctx.say(`Papan Laporan masih terkunci. Pindai dulu semua Terminal Arsip (${evidenceOf(it.pos).length}/${m.stimulus.rows.length}).`, 'shake');
       return;
@@ -449,11 +734,17 @@ export function createQuests(ctx) {
     if (it.kind === 'terminal') scanTerminal(it);
     else if (it.kind === 'board') openBoard(it);
     else if (it.kind === 'altar') openAltar(it);
-    else if (it.kind === 'kitchen') game.openPos(it.pos);
+    else if (it.kind === 'kitchen') openKitchen(it);
+    else if (it.kind === 'station') openStation(it);
+    else if (it.kind === 'ingredient') collectIngredient(it);
+    else if (it.kind === 'stage') present(it);
   }
 
   function update(dt, t) {
     items.forEach((it, i) => {
+      if (it.kind === 'station' && it.orb) { it.orb.position.y = 1.4 + Math.sin(t * 2 + i) * 0.15; it.orb.rotation.y += dt; }
+      if (it.kind === 'station' && it.core && it.st.kind === 'gate') it.core.rotation.z = Math.sin(t) * 0.05;
+      if (it.kind === 'ingredient' && it.obj.visible) { it.model.rotation.y += dt * 1.2; it.model.position.y = 0.9 + Math.sin(t * 2.5 + i) * 0.1; }
       if (it.kind === 'terminal') {
         it.screen.position.y = 1.75 + Math.sin(t * 2 + i) * 0.06;
         it.ring.scale.setScalar(1 + Math.sin(t * 3 + i) * 0.06);
@@ -470,5 +761,5 @@ export function createQuests(ctx) {
   }
 
   refresh();
-  return { items, nearest, hint, activate, refresh, update, closePanel, get panelOpen() { return Boolean(panel); } };
+  return { items, nearest, hint, activate, refresh, update, closePanel, goal, steps, openLog, get panelOpen() { return Boolean(panel); } };
 }

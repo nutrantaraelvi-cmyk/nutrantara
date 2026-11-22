@@ -1,16 +1,23 @@
-# Blueprint Render (opsional). Isi NUTRANTARA_ADMIN_PIN di dasbor Render; jangan commit PIN ke Git.
+# Blueprint Render. Isi NUTRANTARA_ADMIN_PIN di dasbor Render; jangan commit PIN ke Git.
+#
+# SAAT INI: paket Free untuk demo.
+#   - Tanpa disk persisten: akun, progres, dan obrolan siswa HILANG setiap server restart/deploy.
+#   - Server tertidur setelah ~15 menit tanpa pengunjung; kunjungan berikutnya menunggu ±1 menit.
+#
+# SAAT SIAP DIPAKAI KELAS: ganti `plan: free` menjadi `plan: starter`, lalu hapus tanda # pada
+# blok `disk:` di bawah, sehingga data tersimpan di /data dan tidak hilang.
 services:
   - type: web
     name: nutrantara
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: NUTRANTARA_ADMIN_PIN
         sync: false
       - key: TRUST_PROXY
         value: "1"
-    disk:
-      name: nutrantara-data
-      mountPath: /data
-      sizeGB: 1
+    # disk:
+    #   name: nutrantara-data
+    #   mountPath: /data
+    #   sizeGB: 1

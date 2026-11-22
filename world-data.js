@@ -1,21 +1,32 @@
 /*
  * Data dunia NUTRANTARA (dipakai bersama oleh peramban dan server).
  * Kepulauan melayang di atas awan: Alun-alun Nusantara di tengah dan enam pulau pos di sekelilingnya,
- * dihubungkan jembatan cahaya. Koordinat dalam satuan peta logis 960 × 600.
+ * dihubungkan jembatan cahaya, ditambah pulau jelajah bebas (dunia terbuka). Koordinat dalam satuan peta logis 2400 × 1500.
  */
 (function (root) {
+  // kind: 'plaza' (titik kumpul), 'post' (Pos 1–6 berisi misi), 'wild' (pulau jelajah bebas, selalu terbuka).
   const islands = [
-    { id: 0, name: 'Alun-alun Nusantara', cx: 470, cy: 300, rx: 230, ry: 140 },
-    { id: 1, name: 'Kantin Nusantara', cx: 170, cy: 112, rx: 112, ry: 72 },
-    { id: 2, name: 'Pasar & Lab Pencernaan', cx: 122, cy: 352, rx: 100, ry: 72 },
-    { id: 3, name: 'Gerbang Usus Halus', cx: 612, cy: 88, rx: 98, ry: 62 },
-    { id: 4, name: 'Kota Terapung', cx: 852, cy: 158, rx: 92, ry: 66 },
-    { id: 5, name: 'Studio Iklan', cx: 842, cy: 378, rx: 92, ry: 66 },
-    { id: 6, name: 'Dapur Juara', cx: 676, cy: 522, rx: 122, ry: 66 }
+    { id: 0, kind: 'plaza', name: 'Alun-alun Nusantara', cx: 1200, cy: 750, rx: 250, ry: 160 },
+    { id: 1, kind: 'post', name: 'Kantin Nusantara', cx: 600, cy: 470, rx: 130, ry: 86 },
+    { id: 2, kind: 'post', name: 'Pasar & Lab Pencernaan', cx: 380, cy: 960, rx: 124, ry: 86 },
+    { id: 3, kind: 'post', name: 'Gerbang Usus Halus', cx: 1330, cy: 230, rx: 120, ry: 78 },
+    { id: 4, kind: 'post', name: 'Kota Terapung', cx: 1930, cy: 330, rx: 116, ry: 80 },
+    { id: 5, kind: 'post', name: 'Studio Iklan', cx: 2050, cy: 1060, rx: 116, ry: 80 },
+    { id: 6, kind: 'post', name: 'Dapur Juara', cx: 1500, cy: 1290, rx: 140, ry: 84 },
+    { id: 7, kind: 'wild', name: 'Bukit Sawah Terasering', cx: 830, cy: 1240, rx: 140, ry: 92, desc: 'Sawah bertingkat yang bisa didaki sampai gubuk di puncak. Padi adalah sumber karbohidrat utama di banyak daerah Indonesia.' },
+    { id: 8, kind: 'wild', name: 'Hutan Bambu', cx: 190, cy: 560, rx: 118, ry: 88, desc: 'Hutan bambu yang rimbun dengan angklung raksasa dan tunggul kayu untuk dilompati.' },
+    { id: 9, kind: 'wild', name: 'Danau Kawah', cx: 1760, cy: 740, rx: 124, ry: 92, desc: 'Danau biru di kawah tua, dengan dermaga kayu, teratai, dan batu loncatan menuju candi kecil.' },
+    { id: 10, kind: 'wild', name: 'Pantai Kelapa', cx: 2190, cy: 1370, rx: 120, ry: 76, desc: 'Pantai berpasir dengan nyiur melambai, mercusuar, dan perahu pinisi yang bersandar.' },
+    { id: 11, kind: 'wild', name: 'Bukit Layang-layang', cx: 840, cy: 180, rx: 118, ry: 80, desc: 'Bukit berangin tempat layang-layang menari dan kincir angin berputar.' },
+    { id: 12, kind: 'wild', name: 'Kebun Rempah', cx: 2230, cy: 640, rx: 112, ry: 84, desc: 'Kebun rempah Nusantara: kunyit, cabai, kayu manis, dan cengkeh dijemur di atas para-para.' }
   ];
 
-  // Jembatan cahaya: rute utama 1→2→alun-alun→3→4→5→6, ditambah alun-alun→1 agar pemain baru bisa kembali.
-  const links = [[0, 1], [1, 2], [2, 0], [0, 3], [3, 4], [4, 5], [5, 6]];
+  // Jembatan cahaya. Rute pos: 1→2→(sawah)→alun-alun→3→4→(Danau Kawah)→5→6, ditambah jalur jelajah ke pulau liar.
+  // Jembatan terbuka bila kedua ujungnya terbuka, jadi pulau liar di balik pos terkunci ikut terbuka bersama posnya.
+  const links = [
+    [0, 1], [1, 2], [2, 7], [7, 0], [0, 3], [3, 4], [5, 6], [6, 0], [6, 7],
+    [0, 11], [11, 1], [11, 3], [1, 8], [8, 2], [0, 9], [9, 4], [9, 5], [9, 12], [12, 4], [5, 10]
+  ];
   const byId = (id) => islands.find((i) => i.id === id);
   function edgePoint(from, to, k) {
     const dx = to.cx - from.cx; const dy = to.cy - from.cy;
@@ -28,21 +39,32 @@
   const bridges = links.map(([a, b]) => ({ from: a, to: b, a: edgePoint(byId(a), byId(b), 0.82), b: edgePoint(byId(b), byId(a), 0.82), w: 30 }));
 
   // Titik pendaratan/portal tiap pos = sedikit di depan pusat pulau.
-  const stations = islands.filter((i) => i.id > 0).map((i) => ({ id: i.id, x: i.cx, y: i.cy + i.ry * 0.25, name: i.name }));
+  const stations = islands.filter((i) => i.kind === 'post').map((i) => ({ id: i.id, x: i.cx, y: i.cy + i.ry * 0.25, name: i.name }));
 
   const W = {
-    width: 960,
-    height: 600,
+    width: 2400,
+    height: 1500,
     islands,
     bridges,
     stations,
     island: islands[0], // kompatibilitas: pulau utama
-    spawn: { x: 430, y: 320 },
-    nara: { x: 470, y: 268 },
+    spawn: { x: 1150, y: 775 },
+    nara: { x: 1200, y: 712 },
     interactRadius: 46,
     speed: 170,
-    trees: [[330, 230], [380, 380], [560, 230], [600, 380], [300, 330], [650, 300], [470, 410], [110, 80], [240, 140], [70, 340], [600, 60], [880, 120], [880, 400], [760, 520], [600, 540]]
+    trees: [],
+    isPost: (id) => Boolean(byId(id) && byId(id).kind === 'post'),
+    isWild: (id) => Boolean(byId(id) && byId(id).kind === 'wild')
   };
+
+  // Pohon di tepi tiap pulau (deterministik, dipakai peta 2D dan alun-alun 3D).
+  islands.forEach((isl) => {
+    const n = isl.kind === 'plaza' ? 10 : 4;
+    for (let k = 0; k < n; k += 1) {
+      const a = (k / n) * Math.PI * 2 + isl.id * 0.7;
+      W.trees.push([Math.round(isl.cx + Math.cos(a) * isl.rx * 0.72), Math.round(isl.cy + Math.sin(a) * isl.ry * 0.72)]);
+    }
+  });
 
   function inEllipse(isl, x, y, m) {
     const ax = isl.rx - m; const ay = isl.ry - m;
@@ -99,11 +121,11 @@
     return best ? { x: best.x, y: best.y } : { x: W.spawn.x, y: W.spawn.y };
   };
 
-  /** Pulau yang terbuka: alun-alun selalu; pos k bila sudah disegel, atau (urutan terpenuhi dan dibuka guru). */
+  /** Pulau yang terbuka: alun-alun & pulau jelajah selalu; pos k bila sudah disegel, atau (urutan terpenuhi dan dibuka guru). */
   W.allowedIslands = function (sealedIds, openPosts) {
     const sealed = new Set(sealedIds);
     const open = new Set(openPosts || [1, 2, 3, 4, 5, 6]);
-    const set = new Set([0]);
+    const set = new Set(islands.filter((i) => i.kind !== 'post').map((i) => i.id));
     for (let k = 1; k <= 6; k += 1) {
       if (sealed.has(k) || ((k === 1 || sealed.has(k - 1)) && open.has(k))) set.add(k);
     }
