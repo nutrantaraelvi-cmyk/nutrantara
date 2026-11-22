@@ -1680,6 +1680,8 @@ window.NutraWorld3D = {
   get supported() { return gfx !== '2d'; },
   get mode() { return mode; },
   get landed() { return landed; },
+  /** Pulau tempat pemain berada (dipakai HUD regu). */
+  get island() { return mode === 'play' || mode === 'drop' ? self.island : null; },
   prepare,
   showOverview,
   hideOverview,

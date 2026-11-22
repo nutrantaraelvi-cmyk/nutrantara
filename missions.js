@@ -392,8 +392,8 @@ window.NUTRANTARA_MISSIONS = [
     },
     2: {
       type: 'stations',
-      title: 'Rakit tiga jalur perombakan',
-      intro: 'Tiga meja lab menunggu: karbohidrat, protein, dan lemak. Lengkapi zat yang bekerja di setiap tahap, lalu selidiki Ruang X dan Y di terminal.',
+      title: 'Rakit jalur & selidiki Ruang Y',
+      intro: 'Tiga meja lab menunggu: karbohidrat, protein, dan lemak. Rakit jalur normalnya, lalu bawa sampel Ruang X dan Y ke Meja Uji Reagen. Uji, bandingkan, dan tunjuk bagian jalur yang macet. Tuduhan tanpa bukti ditolak!',
       stations: [
         { id: 'karbo', kind: 'bench', at: [-0.86, 0.12], label: 'Meja Karbohidrat', color: '#ffd17c', chain: ['Amilum', 'Maltosa', 'Glukosa'],
           blanks: [{ label: 'Amilum → Maltosa dipecah oleh', options: ['Amilase', 'Pepsin', 'Lipase'], answer: 'Amilase' }, { label: 'Maltosa → Glukosa dipecah oleh', options: ['Tripsin', 'Maltase', 'Empedu'], answer: 'Maltase' }],
@@ -403,27 +403,120 @@ window.NUTRANTARA_MISSIONS = [
           explain: 'Pepsin di lambung memecah protein menjadi pepton. Tripsin dari pankreas dan peptidase di usus halus melanjutkannya menjadi asam amino.' },
         { id: 'lemak', kind: 'bench', at: [0, 0.84], label: 'Meja Lemak', color: '#68dce7', chain: ['Lemak', 'Butiran lemak kecil', 'Asam lemak + gliserol'],
           blanks: [{ label: 'Lemak → butiran kecil (emulsifikasi) oleh', options: ['Pepsin', 'Empedu', 'Maltase'], answer: 'Empedu' }, { label: 'Butiran lemak → asam lemak + gliserol oleh', options: ['Lipase', 'Amilase', 'Tripsin'], answer: 'Lipase' }],
-          explain: 'Empedu bukan enzim; ia mengemulsikan lemak menjadi butiran kecil. Lipase pankreas lalu memecahnya menjadi asam lemak dan gliserol.' }
-      ]
+          explain: 'Empedu bukan enzim; ia mengemulsikan lemak menjadi butiran kecil. Lipase pankreas lalu memecahnya menjadi asam lemak dan gliserol.' },
+        { id: 'lab', kind: 'lab', at: [0, 0.4], label: 'Meja Uji Reagen', color: '#c58cf0' }
+      ],
+      // Meja Uji Reagen: praktikum virtual uji makanan. Kasus aktif (caseId) dipasang oleh varian Pos 2.
+      // Hasil uji adalah simulasi berbasis prinsip uji makanan SMA (Lugol, Benedict, Biuret, Sudan III).
+      caseId: 'protease',
+      lab: {
+        brief: 'Sampel isi usus halus dua jam setelah makan nasi, telur, dan santan. Ruang X adalah kontrol normal; Ruang Y bermasalah. Uji keduanya, lalu tunjuk bagian jalur yang macet.',
+        budget: 6,
+        sample: '#f1e4c6',
+        tools: [
+          { id: 'lugol', label: 'Lugol', tests: 'amilum (pati)', color: '#b9782a', kind: 'drop' },
+          { id: 'benedict', label: 'Benedict', tests: 'gula hasil cerna (glukosa, maltosa)', color: '#3b7fd1', kind: 'heat' },
+          { id: 'biuret', label: 'Biuret', tests: 'protein utuh', color: '#5b9de3', kind: 'drop' },
+          { id: 'sudan', label: 'Sudan III', tests: 'lemak', color: '#e2553f', kind: 'drop' },
+          { id: 'micro', label: 'Mikroskop', tests: 'ukuran butiran lemak', color: '#11a3b5', kind: 'look' }
+        ],
+        normal: { lugol: 'neg', benedict: 'pos', biuret: 'neg', sudan: 'neg', micro: 'few' },
+        results: {
+          lugol: { neg: { color: '#d9a441', word: 'Negatif', text: 'kuning kecokelatan: amilum sudah terurai.' }, pos: { color: '#1f2a5c', word: 'Positif', text: 'biru kehitaman: masih banyak amilum.' } },
+          benedict: { pos: { color: '#c4532b', word: 'Positif', text: 'merah bata: banyak gula hasil pencernaan.' }, neg: { color: '#3b7fd1', word: 'Negatif', text: 'tetap biru: hampir tidak ada gula hasil pencernaan.' } },
+          biuret: { neg: { color: '#7fb2e5', word: 'Negatif', text: 'tetap biru: protein sudah terurai.' }, pos: { color: '#7b3fa0', word: 'Positif', text: 'ungu: masih banyak protein utuh.' } },
+          sudan: { neg: { color: '#f3dcb8', word: 'Negatif', text: 'tidak ada lapisan merah: lemak sudah terurai.' }, pos: { color: '#f3dcb8', layer: '#e0472f', word: 'Positif', text: 'lapisan merah jingga mengapung di atas: masih banyak lemak.' } },
+          micro: { few: { dots: [5, 'small'], word: 'Normal', text: 'butiran lemak sangat kecil dan sedikit.' }, many: { dots: [26, 'small'], word: 'Janggal', text: 'banyak butiran lemak kecil: lemak sudah teremulsi, tetapi belum dipecah.' }, big: { dots: [6, 'big'], word: 'Janggal', text: 'butiran lemak besar dan menggumpal: lemak tidak teremulsi.' } }
+        },
+        cases: {
+          amilase: { label: 'Amilase (pemecah amilum)', y: { lugol: 'pos', benedict: 'neg' }, need: [['lugol', 'benedict']], needHint: 'Uji Ruang Y dengan reagen yang memeriksa pati atau gula hasil pencernaan.',
+            predict: 'Jika amilase yang macet, Lugol di Ruang Y akan positif (biru kehitaman) dan Benedict negatif.', path: { from: 'Amilum', mid: 'Maltosa', to: 'Glukosa', agent: 'Amilase + maltase' },
+            explain: 'Tanpa amilase, amilum tidak dipecah menjadi maltosa. Lugol Ruang Y positif dan Benedict negatif, sedangkan uji protein dan lemak sama dengan kontrol.' },
+          protease: { label: 'Protease — pepsin & tripsin (pemecah protein)', y: { biuret: 'pos' }, need: [['biuret']], needHint: 'Uji Ruang Y dengan reagen yang memeriksa protein utuh.',
+            predict: 'Jika protease yang macet, Biuret di Ruang Y akan positif (ungu) karena protein tetap utuh.', path: { from: 'Protein', mid: 'Peptida', to: 'Asam amino', agent: 'Protease + peptidase' },
+            explain: 'Tanpa protease, protein tidak dipecah menjadi peptida. Biuret Ruang Y positif ungu, sedangkan uji pati, gula, dan lemak sama dengan kontrol.' },
+          lipase: { label: 'Lipase (pemecah lemak)', y: { sudan: 'pos', micro: 'many' }, need: [['sudan'], ['micro']], needHint: 'Sudan III saja belum cukup: lemak juga tertinggal bila empedu macet. Periksa ukuran butiran lemak Ruang Y.',
+            predict: 'Jika lipase yang macet, Sudan III Ruang Y positif, tetapi butiran lemaknya kecil-kecil karena empedu tetap mengemulsikannya.', path: { from: 'Butiran lemak', mid: 'Digliserida', to: 'Asam lemak + gliserol', agent: 'Lipase' },
+            explain: 'Lemak Ruang Y tertinggal (Sudan III positif), padahal butirannya sudah kecil. Emulsifikasi berjalan, jadi yang macet adalah lipase pemecahnya.' },
+          empedu: { label: 'Empedu (pengemulsi lemak)', y: { sudan: 'pos', micro: 'big' }, need: [['sudan'], ['micro']], needHint: 'Sudan III saja belum cukup: lemak juga tertinggal bila lipase macet. Periksa ukuran butiran lemak Ruang Y.',
+            predict: 'Jika empedu yang macet, Sudan III Ruang Y positif dan butiran lemaknya besar menggumpal karena tidak teremulsi.', path: { from: 'Gumpalan lemak', mid: 'Butiran kecil', to: 'Asam lemak + gliserol', agent: 'Empedu → lipase' },
+            explain: 'Lemak Ruang Y tertinggal dan butirannya besar menggumpal. Tanpa empedu, lemak tidak teremulsi sehingga lipase sulit bekerja. Ingat: empedu bukan enzim.' }
+        }
+      }
     },
     3: {
       type: 'stations',
-      title: 'Lintaskan molekul ke sirkulasi',
-      intro: 'Hasil pencernaan melayang di depan gerbang. Antarkan setiap molekul ke jalur penyerapan yang tepat, lalu pulihkan komponen gerbang.',
+      title: 'Cerna dulu, baru serap!',
+      intro: 'Gerbang usus halus macet karena banyak penjelajah tertukar antara pencernaan dan penyerapan. Pilah prosesnya di Gerbang Pilah, buktikan di Simulator Vili 3D, lalu pulihkan komponen gerbang.',
       stations: [
-        { id: 'glukosa', kind: 'orb', at: [-0.86, 0.1], label: 'Molekul Glukosa', color: '#ffd17c',
-          blanks: [{ label: 'Glukosa diserap menuju', options: ['Kapiler darah di vili → vena porta hepatika → hati', 'Pembuluh kil (lakteal) → pembuluh limfa'], answer: 'Kapiler darah di vili → vena porta hepatika → hati' }],
-          explain: 'Glukosa larut dalam air, diserap ke kapiler darah di vili, lalu dibawa vena porta hepatika ke hati.' },
-        { id: 'asamamino', kind: 'orb', at: [0.86, 0.1], label: 'Molekul Asam Amino', color: '#ff9f91',
-          blanks: [{ label: 'Asam amino diserap menuju', options: ['Pembuluh kil (lakteal) → pembuluh limfa', 'Kapiler darah di vili → vena porta hepatika → hati'], answer: 'Kapiler darah di vili → vena porta hepatika → hati' }],
-          explain: 'Seperti glukosa, asam amino masuk ke kapiler darah di vili lalu menuju hati melalui vena porta hepatika.' },
-        { id: 'lemak', kind: 'orb', at: [-0.32, 0.8], label: 'Asam Lemak + Gliserol', color: '#68dce7',
-          blanks: [{ label: 'Asam lemak dan gliserol diserap menuju', options: ['Kapiler darah di vili → vena porta hepatika → hati', 'Pembuluh kil (lakteal) → pembuluh limfa'], answer: 'Pembuluh kil (lakteal) → pembuluh limfa' }],
-          explain: 'Asam lemak dan gliserol (juga vitamin larut lemak A, D, E, K) masuk ke pembuluh kil atau lakteal, lalu beredar melalui pembuluh limfa.' },
-        { id: 'gerbang', kind: 'gate', at: [0.32, 0.8], label: 'Komponen Gerbang', color: '#78f4bd',
+        { id: 'sortir', kind: 'twingate', at: [-0.86, 0.1], label: 'Gerbang Pilah', color: '#ff9f43' },
+        { id: 'vili', kind: 'villi', at: [0, 0.78], label: 'Simulator Vili 3D', color: '#ff6f91' },
+        { id: 'gerbang', kind: 'gate', at: [0.86, 0.1], label: 'Komponen Gerbang', color: '#78f4bd',
           blanks: [{ label: 'Struktur yang memperluas permukaan penyerapan', options: ['Epiglotis', 'Vili dan mikrovili', 'Gigi geraham'], answer: 'Vili dan mikrovili' }, { label: 'Enzim pada mikrovili yang menuntaskan pemecahan', options: ['Pepsin dan ptialin', 'Maltase, sukrase, laktase, peptidase', 'Empedu'], answer: 'Maltase, sukrase, laktase, peptidase' }],
           explain: 'Vili dan mikrovili memperluas permukaan penyerapan. Enzim di permukaan mikrovili menuntaskan pemecahan menjadi molekul siap serap: monosakarida dan asam amino.' }
-      ]
+      ],
+      // Gerbang Pilah: kartu peristiwa dipilah ke PENCERNAAN (memecah) atau PENYERAPAN (memindahkan).
+      sorter: {
+        deal: 8,
+        gates: {
+          cerna: { label: 'PENCERNAAN', hint: 'memecah makanan atau molekul besar menjadi lebih kecil' },
+          serap: { label: 'PENYERAPAN', hint: 'memindahkan molekul kecil menembus dinding saluran ke darah atau limfa' }
+        },
+        cards: [
+          { gate: 'cerna', text: 'Gigi mengunyah nasi menjadi potongan kecil.', why: 'Mengunyah memecah makanan secara mekanik. Belum ada zat yang masuk ke darah.' },
+          { gate: 'cerna', text: 'Amilase ludah memecah amilum menjadi maltosa.', why: 'Enzim memecah molekul besar menjadi lebih kecil: itu pencernaan kimiawi.' },
+          { gate: 'cerna', text: 'Pepsin di lambung memecah protein menjadi pepton.', why: 'Pepsin memecah protein. Hasilnya masih di dalam lambung, belum diserap.' },
+          { gate: 'cerna', text: 'Empedu mengemulsikan lemak menjadi butiran kecil.', why: 'Emulsifikasi memperkecil butiran lemak agar mudah dipecah lipase. Belum ada yang diserap.' },
+          { gate: 'cerna', text: 'Lipase pankreas memecah lemak menjadi asam lemak dan gliserol.', why: 'Lipase memecah lemak: pencernaan kimiawi di usus halus.' },
+          { gate: 'cerna', text: 'Dinding lambung meremas makanan hingga menjadi kimus.', why: 'Gerak meremas lambung adalah pencernaan mekanik.' },
+          { gate: 'cerna', text: 'Maltase di permukaan mikrovili memecah maltosa menjadi glukosa.', why: 'Jebakan! Walau terjadi di mikrovili, maltase memecah molekul. Itu pencernaan; glukosanya baru diserap sesudahnya.' },
+          { gate: 'cerna', text: 'Tripsin memecah pepton menjadi peptida yang lebih pendek.', why: 'Tripsin memecah rantai protein menjadi lebih pendek: pencernaan kimiawi.' },
+          { gate: 'serap', text: 'Glukosa masuk ke kapiler darah di vili.', why: 'Glukosa berpindah menembus dinding vili ke darah: itu penyerapan.' },
+          { gate: 'serap', text: 'Asam amino dibawa vena porta hepatika menuju hati.', why: 'Asam amino yang sudah diserap diangkut darah ke hati.' },
+          { gate: 'serap', text: 'Asam lemak dan gliserol masuk ke pembuluh kil (lakteal).', why: 'Hasil pencernaan lemak berpindah ke pembuluh kil: penyerapan lewat jalur limfa.' },
+          { gate: 'serap', text: 'Vitamin A, D, E, dan K ikut masuk ke pembuluh limfa bersama lemak.', why: 'Vitamin larut lemak diserap bersama lemak ke pembuluh limfa.' },
+          { gate: 'serap', text: 'Air dan mineral diserap di usus besar.', why: 'Usus besar memindahkan air dan mineral ke tubuh: penyerapan, bukan pemecahan.' },
+          { gate: 'serap', text: 'Sel epitel vili menarik asam amino dari rongga usus.', why: 'Molekul kecil dipindahkan dari rongga usus ke dalam sel: penyerapan.' }
+        ]
+      },
+      // Simulator Vili 3D: cerna molekul besar, antar hasilnya ke jalur yang tepat, lalu uji luas permukaan (Model P vs Q).
+      villi: {
+        enzymes: [
+          { id: 'karbo', label: 'Amilase → maltase' },
+          { id: 'protein', label: 'Pepsin → tripsin → peptidase' },
+          { id: 'lemak', label: 'Empedu → lipase' }
+        ],
+        routes: {
+          darah: { label: 'Kapiler darah', path: 'kapiler darah → vena porta hepatika → hati' },
+          limfa: { label: 'Pembuluh kil (lakteal)', path: 'pembuluh kil → pembuluh limfa → aliran darah' }
+        },
+        molecules: [
+          { id: 'amilum', label: 'Amilum (pati)', color: '#f2c94c', shape: 'chain', enzyme: 'karbo', product: 'Glukosa', route: 'darah',
+            wrongEnzyme: 'Enzim tidak cocok! Amilum hanya dipecah amilase lalu maltase. Enzim bekerja spesifik pada substratnya.',
+            wrongRoute: 'Glukosa larut dalam air, jadi masuk ke kapiler darah, bukan pembuluh kil.' },
+          { id: 'protein', label: 'Protein', color: '#ff8f7a', shape: 'fold', enzyme: 'protein', product: 'Asam amino', route: 'darah',
+            wrongEnzyme: 'Enzim tidak cocok! Protein dipecah pepsin, tripsin, lalu peptidase. Enzim bekerja spesifik pada substratnya.',
+            wrongRoute: 'Asam amino larut dalam air, jadi masuk ke kapiler darah lalu ke hati, bukan pembuluh kil.' },
+          { id: 'lemak', label: 'Lemak', color: '#ffd166', shape: 'blob', enzyme: 'lemak', product: 'Asam lemak + gliserol', route: 'limfa',
+            wrongEnzyme: 'Enzim tidak cocok! Lemak perlu diemulsikan empedu, lalu dipecah lipase.',
+            wrongRoute: 'Di sel vili, asam lemak dan gliserol disusun ulang menjadi butiran lemak berlapis protein (kilomikron) yang terlalu besar untuk kapiler, jadi masuk pembuluh kil.' }
+        ],
+        tooBig: 'Terpental! Molekul ini terlalu besar untuk menembus dinding vili. Cerna dulu menjadi molekul kecil.',
+        models: {
+          P: { label: 'Model P · vili tinggi + mikrovili', surface: 100, cross: 80 },
+          Q: { label: 'Model Q · vili rusak dan pendek', surface: 40, cross: 32 }
+        },
+        conclusion: {
+          question: 'Kedua model sama-sama membentuk 100 unit asam amino. Apa yang sebenarnya berbeda?',
+          options: [
+            { value: 'cerna', text: 'Pencernaannya: Model Q memecah protein lebih sedikit.' },
+            { value: 'serap', text: 'Penyerapannya: pemecahan sama, tetapi Model Q memindahkan lebih sedikit asam amino ke darah karena permukaannya sempit.' },
+            { value: 'enzim', text: 'Model Q tidak punya enzim pencerna protein.' }
+          ],
+          correct: 'serap',
+          explain: 'Pencernaan memecah molekul; penyerapan memindahkan hasilnya ke sirkulasi. Luas permukaan vili dan mikrovili menentukan berapa banyak yang bisa berpindah.'
+        }
+      }
     },
     4: {
       type: 'stations',
@@ -660,15 +753,196 @@ window.NUTRANTARA_MISSIONS = [
           placeholder: 'Contoh: Energi kedua menu sama, tetapi data … menunjukkan bahwa…'
         }
       },
-      distractorValues: [[rupiah(priceA), packA], [rupiah(priceB), packB]]
+      name: `${a} vs ${b}`,
+      activity: { distractor: { ...m1.activity.distractor, values: [[rupiah(priceA), packA], [rupiah(priceB), packB]] } }
     };
   }
 
   m1.stimulus.ref = 'REF. 01–001';
   const variants = [{
     mission: { description: m1.description, nara: m1.nara, stimulus: m1.stimulus, challenges: m1.challenges, passport: m1.passport },
-    distractorValues: m1.activity ? m1.activity.distractor.values : null
+    name: 'Menu A vs Menu B',
+    activity: { distractor: m1.activity.distractor }
   }];
   shuffle(pairs).slice(0, COUNT - 1).forEach((pair, i) => variants.push(build(i + 1, pair)));
   m1.variants = variants;
 })();
+
+/*
+ * Pos 2 "Laboratorium Pencernaan": 4 kasus gangguan jalur (varian 0 = kasus asli protease).
+ * Kasus yang sama dipakai Meja Uji Reagen (activity.caseId) dan Papan Laporan, sehingga bukti
+ * praktikum, data terminal, dan tantangan yang dinilai selalu cocok. Struktur tetap: 4 baris arsip, 2 tantangan.
+ */
+(function () {
+  const m2 = window.NUTRANTARA_MISSIONS.find((m) => m.id === 2);
+  if (!m2) return;
+  const cols = ['INDIKATOR', 'RUANG X', 'RUANG Y'];
+  const afterOne = 'Jalur normal sudah terakit. Sekarang bandingkan Ruang X dan Ruang Y untuk menemukan bagian jalur yang terganggu.';
+  const afterTwo = m2.nara.afterTwo;
+  const insight = 'Pati, protein, dan lemak dirombak melalui jalur dan zat yang berbeda.';
+  const row = (label, x, y, differs = true) => ({ label, values: [[x], [y]], ...(differs ? { highlight: [1] } : {}) });
+
+  const variants = [
+    { name: 'Gangguan protease', activity: { caseId: 'protease' },
+      mission: { description: m2.description, nara: m2.nara, stimulus: m2.stimulus, challenges: m2.challenges, passport: m2.passport } },
+    { name: 'Gangguan amilase', activity: { caseId: 'amilase' },
+      mission: {
+        description: 'Dua ruang uji, satu jalur yang macet. Protein terurai di kedua ruang, tetapi ada yang janggal di Ruang Y.',
+        nara: { intro: 'Protein berkurang di kedua ruang. Jalur mana yang tetap bermasalah di Ruang Y? Rakit dulu jalur yang normal, lalu uji sampelnya.', afterOne, afterTwo },
+        stimulus: { title: 'HASIL UJI RUANG', ref: 'REF. 02–B', columns: cols, insight,
+          rows: [row('Protein', 'Berkurang', 'Berkurang', false), row('Pati', 'Berkurang', 'Hampir tidak berubah'), row('Maltosa & glukosa', 'Banyak', 'Sedikit'), row('Amilase', 'Terdeteksi', 'Tidak terdeteksi')] },
+        challenges: [
+          { type: 'order', label: 'RAKIT JALUR', question: 'Susun jalur perombakan pati (amilum) di Ruang X dari awal sampai akhir.',
+            items: [
+              { value: 'maltose', text: 'Maltosa (disakarida)' },
+              { value: 'glucose', text: 'Glukosa siap diserap' },
+              { value: 'starch', text: 'Amilum (pati) dari makanan' },
+              { value: 'maltase', text: 'Maltase memecah maltosa' },
+              { value: 'amylase', text: 'Amilase memecah amilum' }
+            ],
+            correct: ['starch', 'amylase', 'maltose', 'maltase', 'glucose'],
+            hints: ['Belum tepat. Mulailah dari molekul terbesar. Setiap enzim berada di antara molekul yang dipecahnya dan hasil pemecahannya.', 'Periksa lagi: amilase bekerja pada amilum dan menghasilkan maltosa. Maltosa masih dipecah lagi sebelum diserap.'],
+            success: 'Tepat. Amilase (dari ludah dan pankreas) memecah amilum menjadi maltosa, lalu maltase di usus halus memecah maltosa menjadi glukosa.' },
+          { type: 'multi', label: 'TEMUKAN GANGGUAN', question: 'Ruang Y bermasalah. Data mana yang menunjukkan bahwa jalur pati, bukan jalur protein, yang terganggu? Pilih semua yang mendukung.',
+            options: [
+              { value: 'starch', text: 'Pati di Ruang Y hampir tidak berubah.' },
+              { value: 'protein', text: 'Protein di Ruang Y berkurang.' },
+              { value: 'sugar', text: 'Maltosa dan glukosa di Ruang Y sedikit.' },
+              { value: 'amylase', text: 'Amilase di Ruang Y tidak terdeteksi.' }
+            ],
+            correct: ['starch', 'sugar', 'amylase'],
+            hints: ['Belum tepat. Protein berkurang di kedua ruang, jadi data protein tidak menunjukkan gangguan. Fokus pada data jalur pati.', 'Ada tiga baris jalur pati yang berbeda antara Ruang X dan Ruang Y. Data protein bukan salah satunya.'],
+            success: 'Tepat. Tanpa amilase, amilum tidak dipecah menjadi maltosa. Karena itu pati hampir tidak berubah dan gula hasil pencernaan sedikit, sementara protein tetap berkurang.' }
+        ],
+        passport: { prompt: 'Jelaskan gangguan di Ruang Y menggunakan data pati, gula, dan amilase.', placeholder: 'Contoh: Di Ruang Y amilase tidak terdeteksi, sehingga…' }
+      } },
+    { name: 'Gangguan lipase', activity: { caseId: 'lipase' },
+      mission: {
+        description: 'Dua ruang uji, satu jalur yang macet. Protein terurai di kedua ruang, tetapi sesuatu tertinggal di Ruang Y.',
+        nara: { intro: 'Protein berkurang di kedua ruang. Apa yang tertinggal di Ruang Y? Rakit dulu jalur yang normal, lalu uji sampelnya.', afterOne, afterTwo },
+        stimulus: { title: 'HASIL UJI RUANG', ref: 'REF. 02–C', columns: cols, insight,
+          rows: [row('Protein', 'Berkurang', 'Berkurang', false), row('Lemak', 'Berkurang', 'Hampir tidak berubah'), row('Asam lemak & gliserol', 'Banyak', 'Sedikit'), row('Lipase', 'Terdeteksi', 'Tidak terdeteksi')] },
+        challenges: [
+          { type: 'order', label: 'RAKIT JALUR', question: 'Susun jalur perombakan lemak di Ruang X dari awal sampai akhir.',
+            items: [
+              { value: 'droplet', text: 'Butiran lemak kecil (teremulsi)' },
+              { value: 'fatty', text: 'Asam lemak dan gliserol siap diserap' },
+              { value: 'fat', text: 'Lemak dari makanan' },
+              { value: 'lipase', text: 'Lipase memecah butiran lemak' },
+              { value: 'bile', text: 'Empedu mengemulsikan lemak' }
+            ],
+            correct: ['fat', 'bile', 'droplet', 'lipase', 'fatty'],
+            hints: ['Belum tepat. Mulailah dari lemak utuh. Ingat: empedu bukan enzim; ia memperkecil butiran lemak sebelum enzim bekerja.', 'Periksa lagi: empedu menghasilkan butiran lemak kecil, lalu lipase memecah butiran itu menjadi molekul siap serap.'],
+            success: 'Tepat. Empedu mengemulsikan lemak menjadi butiran kecil, lalu lipase pankreas memecahnya menjadi asam lemak dan gliserol.' },
+          { type: 'multi', label: 'TEMUKAN GANGGUAN', question: 'Ruang Y bermasalah. Data mana yang menunjukkan bahwa jalur lemak, bukan jalur protein, yang terganggu? Pilih semua yang mendukung.',
+            options: [
+              { value: 'protein', text: 'Protein di Ruang Y berkurang.' },
+              { value: 'fat', text: 'Lemak di Ruang Y hampir tidak berubah.' },
+              { value: 'fatty', text: 'Asam lemak dan gliserol di Ruang Y sedikit.' },
+              { value: 'lipase', text: 'Lipase di Ruang Y tidak terdeteksi.' }
+            ],
+            correct: ['fat', 'fatty', 'lipase'],
+            hints: ['Belum tepat. Protein berkurang di kedua ruang, jadi data protein tidak menunjukkan gangguan. Fokus pada data jalur lemak.', 'Ada tiga baris jalur lemak yang berbeda antara Ruang X dan Ruang Y. Data protein bukan salah satunya.'],
+            success: 'Tepat. Tanpa lipase, lemak tidak dipecah menjadi asam lemak dan gliserol. Karena itu lemak hampir tidak berubah dan hasil pemecahannya sedikit, sementara protein tetap berkurang.' }
+        ],
+        passport: { prompt: 'Jelaskan gangguan di Ruang Y menggunakan data lemak, asam lemak, dan lipase.', placeholder: 'Contoh: Di Ruang Y lipase tidak terdeteksi, sehingga…' }
+      } },
+    { name: 'Gangguan empedu', activity: { caseId: 'empedu' },
+      mission: {
+        description: 'Dua ruang uji, satu jalur yang macet. Enzimnya lengkap, tetapi lemak di Ruang Y tetap menggumpal.',
+        nara: { intro: 'Enzim terdeteksi di kedua ruang, tetapi lemak di Ruang Y menggumpal. Apa yang hilang? Rakit dulu jalur yang normal, lalu uji sampelnya.', afterOne: 'Rute empedu sudah tersusun. Sekarang bandingkan Ruang X dan Ruang Y untuk menemukan bagian jalur yang terganggu.', afterTwo },
+        stimulus: { title: 'HASIL UJI RUANG', ref: 'REF. 02–D', columns: cols, insight: 'Empedu bukan enzim, tetapi tanpa empedu lipase sulit memecah lemak.',
+          rows: [row('Lemak', 'Berkurang', 'Hampir tidak berubah'), row('Ukuran butiran lemak', 'Kecil (teremulsi)', 'Besar (menggumpal)'), row('Empedu', 'Terdeteksi', 'Tidak terdeteksi'), row('Lipase', 'Terdeteksi', 'Terdeteksi', false)] },
+        challenges: [
+          { type: 'order', label: 'RUTE EMPEDU', question: 'Susun perjalanan empedu di Ruang X sampai lemak siap dipecah lipase.',
+            items: [
+              { value: 'store', text: 'Empedu disimpan di kantong empedu' },
+              { value: 'emulsify', text: 'Empedu mengemulsikan lemak menjadi butiran kecil' },
+              { value: 'liver', text: 'Hati membentuk empedu' },
+              { value: 'lipase', text: 'Lipase memecah butiran lemak lebih cepat' },
+              { value: 'duodenum', text: 'Empedu dialirkan ke usus dua belas jari (duodenum)' }
+            ],
+            correct: ['liver', 'store', 'duodenum', 'emulsify', 'lipase'],
+            hints: ['Belum tepat. Mulailah dari organ yang membentuk empedu, lalu ikuti ke mana empedu disimpan dan dialirkan.', 'Periksa lagi: empedu dibentuk hati, disimpan, lalu dialirkan ke duodenum. Baru di sana empedu bertemu lemak.'],
+            success: 'Tepat. Empedu dibentuk hati, disimpan di kantong empedu, dialirkan ke duodenum, lalu mengemulsikan lemak sehingga permukaan kerja lipase lebih luas.' },
+          { type: 'multi', label: 'TEMUKAN GANGGUAN', question: 'Data mana yang berbeda antara Ruang X dan Ruang Y dan menunjukkan gangguan pada jalur lemak? Pilih semua yang mendukung.',
+            options: [
+              { value: 'fat', text: 'Lemak di Ruang Y hampir tidak berubah.' },
+              { value: 'lipase', text: 'Lipase terdeteksi di Ruang X dan Ruang Y.' },
+              { value: 'droplet', text: 'Butiran lemak di Ruang Y besar dan menggumpal.' },
+              { value: 'bile', text: 'Empedu di Ruang Y tidak terdeteksi.' }
+            ],
+            correct: ['fat', 'droplet', 'bile'],
+            hints: ['Belum tepat. Baris yang nilainya sama di kedua ruang bukan tanda gangguan.', 'Ada tiga baris yang berbeda antara Ruang X dan Ruang Y. Lipase terdeteksi di kedua ruang.'],
+            success: 'Tepat. Tanpa empedu, lemak tidak teremulsi sehingga butirannya besar dan lipase sulit bekerja. Lipase sama-sama terdeteksi, jadi baris itu bukan tanda gangguan.' }
+        ],
+        passport: { prompt: 'Jelaskan gangguan di Ruang Y menggunakan data lemak, ukuran butiran, dan empedu.', placeholder: 'Contoh: Di Ruang Y empedu tidak terdeteksi, sehingga…' }
+      } }
+  ];
+  m2.stimulus.ref = 'REF. 02–A';
+  m2.variants = variants;
+})();
+
+/*
+ * PERAN REGU (Project Based Learning). Setiap pos punya 4 peran; tugas di dunia dibagi ke peran itu.
+ * Pembagian menurut jumlah anggota (maks. 4): 1 orang memegang semua peran, 2 orang masing-masing 2,
+ * 3 orang (satu orang memegang 2), 4 orang satu peran per orang. Peran berputar setiap pos agar
+ * tiap siswa mencoba tugas yang berbeda. Bila pemegang peran sedang luring, anggota lain boleh
+ * mengambil alih (tercatat di log kontribusi), sehingga regu yang bermain bergantian tidak macet.
+ * tasks: peta tugas → indeks peran. terminal: angka (semua baris) atau larik per baris.
+ */
+window.NUTRANTARA_TEAM = {
+  max: 4,
+  scenarios: {
+    1: { name: 'Mode Solo', text: 'Kamu memegang keempat peran. Kerjakan semua tugas sendiri — tetap seru, tetap tuntas.' },
+    2: { name: 'Mode Duo', text: 'Masing-masing memegang 2 peran. Bagi tugas, lalu cocokkan temuan sebelum mengunci jawaban.' },
+    3: { name: 'Mode Trio', text: 'Satu anggota memegang 2 peran (bergiliran tiap pos). Jawaban regu butuh 2 suara yang sama.' },
+    4: { name: 'Mode Regu Penuh', text: 'Satu peran per orang. Setiap anggota memegang potongan bukti yang tidak dimiliki yang lain.' }
+  },
+  roles: {
+    1: [
+      { icon: '🔎', name: 'Penyidik Arsip 1', task: 'Pindai Terminal Arsip 1 dan laporkan angkanya ke regu.' },
+      { icon: '🔍', name: 'Penyidik Arsip 2', task: 'Pindai Terminal Arsip 2 dan laporkan angkanya ke regu.' },
+      { icon: '🧾', name: 'Penyidik Arsip 3', task: 'Pindai Terminal Arsip 3 dan laporkan angkanya ke regu.' },
+      { icon: '🕵', name: 'Pemburu Pengalih', task: 'Periksa terminal Harga & Kemasan: bukti relevan atau pengalih?' }
+    ],
+    2: [
+      { icon: '🍚', name: 'Ahli Karbohidrat', task: 'Rakit Meja Karbohidrat; di Meja Uji Reagen pegang Lugol dan Benedict.' },
+      { icon: '🥚', name: 'Ahli Protein', task: 'Rakit Meja Protein; di Meja Uji Reagen pegang Biuret.' },
+      { icon: '🧈', name: 'Ahli Lemak', task: 'Rakit Meja Lemak; di Meja Uji Reagen pegang Sudan III dan mikroskop.' },
+      { icon: '⚖', name: 'Kepala Lab', task: 'Pindai Terminal Arsip dan ajukan tuduhan jalur yang macet setelah bukti regu lengkap.' }
+    ],
+    3: [
+      { icon: '✂', name: 'Pemecah Molekul', task: 'Pilah kartu Gerbang Pilah milikmu; cerna molekul besar di Simulator Vili.' },
+      { icon: '🚚', name: 'Pengantar Molekul', task: 'Pilah kartu Gerbang Pilah milikmu; antar hasil cerna ke kapiler darah atau pembuluh kil.' },
+      { icon: '🔬', name: 'Peneliti Model P', task: 'Pilah kartumu; jalankan eksperimen Model P; pulihkan Komponen Gerbang.' },
+      { icon: '📊', name: 'Peneliti Model Q', task: 'Pilah kartumu; jalankan eksperimen Model Q; pindai Terminal Arsip.' }
+    ],
+    4: [
+      { icon: '🥬', name: 'Penjaga Lentera Serat', task: 'Nyalakan Lentera Serat dengan dugaan sebab-akibat yang tepat.' },
+      { icon: '💧', name: 'Penjaga Lentera Air', task: 'Nyalakan Lentera Air dengan dugaan sebab-akibat yang tepat.' },
+      { icon: '🏃', name: 'Penjaga Lentera Aktivitas', task: 'Nyalakan Lentera Aktivitas dengan dugaan sebab-akibat yang tepat.' },
+      { icon: '📈', name: 'Analis Data', task: 'Pindai semua Terminal Arsip dan sampaikan pola datanya ke regu.' }
+    ],
+    5: [
+      { icon: '✍', name: 'Penulis Naskah', task: 'Tulis ulang naskah iklan agar jujur terhadap data.' },
+      { icon: '🎯', name: 'Peneliti Sasaran', task: 'Tentukan data sasaran yang dibutuhkan untuk menilai klaim.' },
+      { icon: '🔍', name: 'Pemeriksa Klaim', task: 'Pindai Terminal Arsip bernomor ganjil.' },
+      { icon: '🛡', name: 'Dewan Sensor', task: 'Pindai Terminal Arsip bernomor genap; pastikan regu tidak tertipu klaim.' }
+    ],
+    6: [
+      { icon: '🧑‍🍳', name: 'Perancang Menu', task: 'Kumpulkan bahan bagianmu dan susun rancangan awal menu regu.' },
+      { icon: '🧐', name: 'Penelaah', task: 'Kumpulkan bahan bagianmu dan telaah rancangan awal dengan daftar periksa.' },
+      { icon: '✏', name: 'Perevisi', task: 'Kumpulkan bahan bagianmu dan revisi rancangan berdasarkan telaah.' },
+      { icon: '📣', name: 'Juru Bicara', task: 'Kumpulkan bahan bagianmu dan presentasikan kartu menu regu di Panggung.' }
+    ]
+  },
+  tasks: {
+    1: { terminal: [0, 1, 2], distractor: 3 },
+    2: { station: { karbo: 0, protein: 1, lemak: 2 }, terminal: 3, lab: { lugol: 0, benedict: 0, biuret: 1, sudan: 2, micro: 2, accuse: 3 } },
+    3: { station: { gerbang: 2 }, terminal: 3, sorterCard: true, villi: { digest: 0, route: 1, P: 2, Q: 3 } },
+    4: { station: { serat: 0, air: 1, aktivitas: 2 }, terminal: 3 },
+    5: { station: { naskah: 0, sasaran: 1 }, terminal: [2, 3, 2, 3] },
+    6: { ingredient: true, kitchen: { initial: 0, review: 1, revision: 2 }, stage: 3 }
+  }
+};

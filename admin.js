@@ -94,6 +94,7 @@
       ['PERLU DICEK', flagged ? `<span class="warn">⚠ ${flagged}</span>` : '0']
     ].map(([k, v]) => `<div><span>${k}</span><strong>${v}</strong></div>`).join('');
     $('#server-time').textContent = `DIPERBARUI ${new Date(snapshot.serverTime).toLocaleTimeString('id-ID')}`;
+    renderTeams();
 
     toggleBtn('#btn-pause', settings.paused, '▶ Lanjutkan permainan', '❚❚ Jeda semua pemain');
     toggleBtn('#btn-move', settings.movementLocked, '↔ Bebaskan gerak', '⌑ Bekukan gerak');
@@ -144,7 +145,7 @@
       const answered = p.posts.reduce((n, s) => n + (s.total ? s.done : 0), 0);
       const right = p.posts.reduce((n, s) => n + (s.total ? (s.correct ?? s.done) : 0), 0);
       const flags = p.flags.length ? ` <span class="warn" title="${esc(p.flags.join('\n'))}">⚠</span>` : '';
-      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}${p.party ? ` <span class="tag" title="Regu mabar">🤝 ${esc(p.party)}</span>` : ''}`;
+      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}${p.party ? ` <span class="tag" title="Regu proyek">🤝 ${esc(p.party)}</span>` : ''}`;
       return `<tr data-id="${p.id}"${selected === p.id ? ' class="selected"' : ''}>
         <th scope="row"><span class="roster-dot" style="background:${esc(p.color)}"></span> ${esc(p.alias)} <small class="${p.online ? 'on' : 'off'}">${p.online ? '● daring' : '○ luring'}</small>${flags}${tags}</th>
         <td>${p.score}</td><td>${p.seals} / 6</td><td class="pcells">${cells}</td><td>${right}/${answered}</td>
@@ -190,6 +191,31 @@
       case 'delete': if (confirm(`Hapus permanen data ${p.alias} dari server kelas? Ekspor data terlebih dahulu bila perlu.`)) command('delete', { playerId: id }); break;
       default: break;
     }
+  });
+
+  // ---------- Regu proyek ----------
+
+  function renderTeams() {
+    const teams = (snapshot && snapshot.teams) || [];
+    const solo = snapshot ? snapshot.players.filter((p) => !p.party).length : 0;
+    if (!teams.length) { $('#admin-teams').innerHTML = `<p class="field-hint">Belum ada regu. ${solo} siswa bermain solo.</p>`; return; }
+    $('#admin-teams').innerHTML = teams.map((t) => {
+      const total = t.members.reduce((n, m) => n + m.contrib, 0) || 1;
+      const posts = t.posts.map((x) => {
+        const text = x.type === 'project' ? `${x.steps}/3 langkah · ${x.collected} bahan` : `${x.done}/${x.total} jawab (${x.correct} tepat)${x.stationTotal ? ` · misi ${x.stations}/${x.stationTotal}` : ''} · bukti ${x.evidence}${x.variant ? ` · kasus ${x.variant}` : ''}${x.pendingVotes ? ` · 🗳 ${x.pendingVotes} menunggu suara` : ''}`;
+        const full = x.type === 'project' ? x.steps === 3 : x.done === x.total;
+        return `<li class="${full ? 'done' : ''}"><b>Pos ${x.id}</b> ${esc(text)}</li>`;
+      }).join('');
+      const members = t.members.map((m) => `<li><span class="team-bar" style="--w:${Math.round((m.contrib / total) * 100)}%"></span><b>${m.online ? '●' : '○'} ${esc(m.alias)}</b> <span>${m.contrib} aksi · ${m.score} poin · ${m.seals}/6 segel</span></li>`).join('');
+      const log = t.log.slice().reverse().map((e) => `<li><time>${new Date(e.at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</time> <b>${esc(e.alias)}</b> ${esc(e.text)}${e.pos ? ` <small>(Pos ${e.pos})</small>` : ''}</li>`).join('');
+      return `<article class="admin-team"><header><b>REGU ${esc(t.code)}</b><span>${t.members.length} orang · ${['', 'Solo', 'Duo', 'Trio', 'Penuh'][t.members.length] || ''}</span><button type="button" class="button button-secondary admin-small" data-dissolve="${esc(t.code)}">Bubarkan</button></header>
+        <div class="admin-team-grid"><div><p class="admin-team-h">ANGGOTA &amp; KONTRIBUSI</p><ul class="admin-team-members">${members}</ul></div><div><p class="admin-team-h">KEMAJUAN PER POS</p><ul class="admin-team-posts">${posts}</ul></div></div>
+        <details><summary>Log regu terbaru</summary><ul class="admin-team-log">${log || '<li>Belum ada aktivitas.</li>'}</ul></details></article>`;
+    }).join('') + (solo ? `<p class="field-hint">${solo} siswa belum berada di regu (bermain solo).</p>` : '');
+  }
+  $('#admin-teams').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dissolve]');
+    if (b && confirm(`Bubarkan regu ${b.dataset.dissolve}? Progres setiap anggota tetap tersimpan; mereka bisa membentuk regu baru.`)) command('team-dissolve', { code: b.dataset.dissolve });
   });
 
   // ---------- Kendali ----------
@@ -299,7 +325,7 @@
         return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2><p><b>Menu:</b> ${esc(d.menuName || '—')} · <b>Sasaran:</b> ${esc(d.target || '—')}</p><p><b>Alasan:</b> ${esc(d.rationale || '—')}</p><p><b>Telaah:</b> ${esc((s.review && s.review.notes) || '—')}</p><p><b>Refleksi:</b> ${esc((s.reflection && s.reflection.learned) || '—')}</p></article>`;
       }
       const ch = (s.challenges || []).map((c, i) => `<li>Tantangan ${i + 1}: ${c.complete ? '✓' : '…'} · ${c.attempts || 0} percobaan · ${c.points || 0} poin</li>`).join('');
-      const kasus = m.variants ? `<p><b>Kasus:</b> varian ${(Number.isInteger(s.variant) ? s.variant : 0) + 1}/${m.variants.length} · ${esc((m.variants[s.variant] || m.variants[0]).mission.stimulus.columns.slice(1).join(' vs '))}</p>` : '';
+      const kasus = m.variants ? `<p><b>Kasus:</b> varian ${(Number.isInteger(s.variant) ? s.variant : 0) + 1}/${m.variants.length} · ${esc((m.variants[s.variant] || m.variants[0]).name)}</p>` : '';
       return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2>${kasus}<ul>${ch}</ul><p><b>Alasan:</b> ${esc(s.reason || '—')}</p></article>`;
     }).join('') : '<p>Belum ada progres.</p>';
     const flags = p.flags.length ? `<div class="feedback"><b>Catatan validasi server:</b><ul>${p.flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : '';

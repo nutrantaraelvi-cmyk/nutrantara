@@ -336,7 +336,7 @@ function renderParty() {
   $('#party-join').querySelectorAll('input,button').forEach((el) => { el.disabled = !online; });
   if (offline) {
     $('#party-none').hidden = false; $('#party-in').hidden = true;
-    partyMsg('Mabar butuh server kelas. Dalam mode tamu kamu bermain sendiri.');
+    partyMsg('Regu proyek butuh server kelas. Dalam mode tamu kamu bermain solo dan memegang semua peran.');
     return;
   }
   if (online && pendingInvite) {
@@ -350,12 +350,14 @@ function renderParty() {
   $('#party-in').hidden = !party;
   if (!party) return;
   $('#party-code-text').textContent = party.code;
+  const sc = window.NutraTeam ? window.NutraTeam.scenario() : null;
+  $('#party-scn').innerHTML = sc ? `<b>${esc(sc.name)}</b> ${esc(sc.text)}` : '';
   $('#party-members').innerHTML = party.members.map((m) => {
     const me = net.me && m.id === net.me.id;
     const live = net.players.get(m.id);
     const canJoin = !me && live && live.zone === 'world';
     return `<li><i style="background:${esc(m.color)}"></i><b>${esc(m.alias)}${m.id === party.leaderId ? ' <span title="Pembuat regu">👑</span>' : ''}</b><span>${esc(memberStatus(m))}</span>${canJoin ? `<button type="button" class="button button-primary party-go" data-friend="${esc(m.id)}">Terjun ke dia ↓</button>` : ''}</li>`;
-  }).join('') + (party.members.length < 2 ? '<li class="empty">Belum ada teman. Bagikan kode di atas!</li>' : `<li class="empty">${party.members.length}/${party.max} anggota</li>`);
+  }).join('') + (party.members.length < 2 ? '<li class="empty">Belum ada teman. Bagikan kode di atas, atau mulai solo dulu.</li>' : `<li class="empty">${party.members.length}/${party.max} anggota · peran berputar setiap pos</li>`);
 }
 
 async function copyText(text) {

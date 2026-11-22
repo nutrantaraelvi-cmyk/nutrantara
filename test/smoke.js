@@ -149,6 +149,22 @@ async function adminProbe() {
     ok((await b.wait(type('notice'))).message.includes(partyA.code), 'pemberitahuan bergabung regu');
     ok((await a.wait((m) => m.type === 'party' && m.party && m.party.members.length === 2)).party.members.some((m) => m.alias === 'TimTempe'), 'pembuat regu melihat anggota baru');
     ok((await adminProbe()).players.find((p) => p.alias === 'TimTempe').party === partyA.code, 'guru melihat regu siswa');
+
+    // Regu proyek (PjBL): data misi bersama lewat operasi kecil, jawaban regu lewat voting.
+    a.send({ type: 'team-op', pos: 1, note: 'menyimpan bukti Energi', ops: [{ p: [1, 'evidence'], push: 0 }, { p: [1, 'activity', 'stations', 'x'], set: true }, { p: [1, 'challenges'], set: [] }, { p: [1, '__proto__', 'x'], set: 1 }] });
+    const shared = (await b.wait((m) => m.type === 'party' && m.party && (m.party.posts[1] || {}).evidence && m.party.posts[1].evidence.includes(0))).party;
+    ok(shared.posts[1].activity.stations.x === true && shared.log.some((e) => e.text === 'menyimpan bukti Energi'), 'bukti & misi anggota A tampil di regu anggota B, lengkap dengan log kontribusi');
+    ok((shared.posts[1].challenges || []).every((c) => !c.complete), 'operasi regu tidak bisa menandai tantangan selesai (hanya lewat voting)');
+    const tv = Number.isInteger(shared.posts[1].variant) ? shared.posts[1].variant : 0;
+    const key0 = MISSIONS[0].variants[tv].mission.challenges[0].correct;
+    a.send({ type: 'team-vote', pos: 1, index: 0, response: key0 });
+    const pending = (await b.wait((m) => m.type === 'party' && m.party && ((m.party.posts[1] || {}).votes || {})[0])).party;
+    ok(!pending.posts[1].challenges[0].complete, 'satu usulan belum mengunci jawaban bila anggota lain aktif');
+    b.send({ type: 'team-vote', pos: 1, index: 0, response: key0 });
+    const locked = (await a.wait((m) => m.type === 'party' && m.party && m.party.posts[1]?.challenges?.[0]?.complete)).party;
+    ok(locked.posts[1].challenges[0].correct === true && locked.posts[1].challenges[0].points === 30 && locked.posts[1].challenges[0].by.length === 2, 'dua suara sama mengunci jawaban regu (30 poin)');
+    const teamAdmin = (await adminProbe()).teams.find((t) => t.code === partyA.code);
+    ok(teamAdmin && teamAdmin.members.length === 2 && teamAdmin.posts[0].done === 1 && teamAdmin.members.every((m) => m.contrib >= 1), 'guru melihat kemajuan regu dan kontribusi setiap anggota');
     b.send({ type: 'spawn', to: wa.you.id });
     const nearA = await b.wait((m) => m.type === 'spawned' && m.friend === wa.you.id);
     ok(Number.isFinite(nearA.x) && W.islandAt(nearA.x, nearA.y) === nearA.island || nearA.island === 0, 'terjun ke dekat teman satu regu');
@@ -156,6 +172,8 @@ async function adminProbe() {
     ok((await b.wait((m) => m.type === 'party' && m.party === null)).party === null && (await a.wait((m) => m.type === 'party' && m.party && m.party.members.length === 1)), 'keluar dari regu');
     b.send({ type: 'spawn', to: wa.you.id });
     ok(/bukan anggota/.test((await b.wait((m) => m.type === 'spawn-denied' && m.friend === wa.you.id)).message), 'tidak bisa terjun ke pemain di luar regu');
+    a.send({ type: 'party', action: 'leave' });
+    ok((await a.wait((m) => m.type === 'party' && m.party === null)).party === null, 'anggota terakhir keluar: regu bubar, progres pribadi tetap ada');
 
     // ---------- Progres ----------
     a.send({ type: 'progress', state: fakeState() });
@@ -180,6 +198,13 @@ async function adminProbe() {
     ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 80))), `jawaban benar varian ${k + 1} = 80 poin`);
     b.send({ type: 'progress', state: variantState(V[0].mission.challenges.map((c) => c.correct)) });
     ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 50))), 'kunci kasus asli tidak berlaku untuk varian lain');
+
+    // Pos 2 punya 4 kasus gangguan jalur; tiap kasus cocok dengan kasus Meja Uji Reagen.
+    const P2 = MISSIONS[1];
+    ok(P2.variants.length === 4 && P2.variants.every((v) => P2.activity.lab.cases[v.activity.caseId] && v.mission.stimulus.rows.length === 4), 'Pos 2 punya 4 kasus yang cocok dengan Meja Uji Reagen');
+    const p2State = (v, keys) => { const st = fakeState({ 2: { started: true, sealed: false, reason: '', variant: v, challenges: keys.map((r) => ({ complete: true, attempts: 1, response: r, log: [] })) } }); st.posts[1].variant = 0; return st; };
+    b.send({ type: 'progress', state: p2State(3, P2.variants[3].mission.challenges.map((c) => c.correct)) });
+    ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 140))), 'kasus empedu Pos 2 dinilai dengan kuncinya sendiri');
 
     const forged = fakeState({ 2: { started: true, sealed: true, reason: 'aaaaaaaaaaaaaaaaaaaaaaaaa', challenges: [{ complete: false, attempts: 0 }, { complete: false, attempts: 0 }] } });
     b.send({ type: 'progress', state: forged });

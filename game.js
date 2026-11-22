@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '0.9';
+  const APP_VERSION = '1.0';
   const STORAGE_PREFIX = 'nutrantara-save-v2:';
   let userKey = '';
   const saveKey = () => STORAGE_PREFIX + userKey;
@@ -45,7 +45,7 @@
     return { schemaVersion: SCHEMA_VERSION, appVersion: APP_VERSION, alias: '', currentScreen: 'welcome', activePos: 1, leaderboardRecorded: false, posts };
   }
 
-  // Pos bervarian (Pos 1: 100 kasus menu). Nomor varian tersimpan di progres siswa; isinya dipasang
+  // Pos bervarian (Pos 1: 100 kasus menu, Pos 2: 4 kasus gangguan jalur). Nomor varian tersimpan di progres siswa; isinya dipasang
   // ke objek misi agar semua modul (layar misi, quest.js, world3d.js) membaca kasus yang sama.
   const randomVariant = (m) => Math.floor(Math.random() * m.variants.length);
   const validVariant = (m, v) => Number.isInteger(v) && v >= 0 && v < m.variants.length;
@@ -55,7 +55,7 @@
       const p = state.posts[m.id];
       const v = m.variants[p && validVariant(m, p.variant) ? p.variant : 0];
       Object.assign(m, v.mission);
-      if (m.activity && m.activity.distractor && v.distractorValues) m.activity.distractor.values = v.distractorValues;
+      if (m.activity && v.activity) Object.assign(m.activity, v.activity);
     });
   }
 
@@ -149,6 +149,7 @@
 
   function saveState() {
     applyVariants();
+    scheduleTeamPush();
     state.updatedAt = new Date().toISOString();
     if (net && state.alias) net.pushProgress(state, state.currentScreen);
     try {
@@ -507,7 +508,9 @@
         : `<div class="feedback wrong" role="status" aria-live="polite"><b>Belum tepat — tidak apa-apa, lanjutkan!</b> Jawaban yang tepat: <i>${escapeHtml(responseText(def, def.correct))}</i>. ${escapeHtml(explanation(def))} <b>0 poin</b></div>`)
       : '<div class="feedback" id="challenge-feedback" role="status" aria-live="polite" hidden></div>';
 
-    $('#challenge-area').innerHTML = `<div class="challenge"><p class="challenge-label">TANTANGAN ${pad(index + 1)} <span>· ${escapeHtml(def.label)}</span></p><h2>${escapeHtml(def.question)}</h2><form id="challenge-form" novalidate>${body}${action}</form>${feedback}</div>`;
+    const votes = done ? (c.by ? `<p class="team-locked">🤝 Jawaban regu dikunci oleh ${escapeHtml(c.by.join(', '))}.</p>` : '') : teamVotesHtml(m.id, index);
+    const teamAction = !done && window.NutraTeam && window.NutraTeam.voting() ? action.replace('Kirim keputusan', 'Usulkan jawaban regu') : action;
+    $('#challenge-area').innerHTML = `<div class="challenge"><p class="challenge-label">TANTANGAN ${pad(index + 1)} <span>· ${escapeHtml(def.label)}</span></p><h2>${escapeHtml(def.question)}</h2>${votes}<form id="challenge-form" novalidate>${body}${teamAction}</form>${feedback}</div>`;
   }
 
   function currentOrder(def, c) {
@@ -551,6 +554,13 @@
     if (!def || c.complete) return;
     const response = readResponse(def, event.target);
     if (!response) { showToast(EMPTY_PROMPT[def.type]); return; }
+    if (window.NutraTeam && window.NutraTeam.voting()) {
+      const r = submitAnswer(m.id, challengeView, response);
+      if (r.proposed) showToast(r.need > 1 ? 'Usulan terkirim. Jawaban terkunci saat anggota lain menyetujuinya.' : 'Jawaban regu dikirim.');
+      else showToast(r.message);
+      renderChallenge(m, challengeView);
+      return;
+    }
     const res = gradeChallenge(m, challengeView, response);
     saveState();
     renderChallenge(m, challengeView);
@@ -572,6 +582,8 @@
   });
 
   $('#challenge-area').addEventListener('click', (event) => {
+    const agree = event.target.closest('[data-agree]');
+    if (agree) { agreeVote(state.activePos, challengeView, Number(agree.dataset.agree)); showToast('Suaramu terkirim.'); return; }
     if (event.target.closest('#challenge-next')) {
       challengeView += 1;
       renderMissionView();
@@ -830,7 +842,18 @@
     return problems;
   }
 
+  /** Langkah proyek regu dikunci oleh peran (Perancang/Penelaah/Perevisi); semua boleh ikut mengisi. */
+  function kitchenGate(step) {
+    const T = window.NutraTeam;
+    if (!T) return true;
+    const g = T.check(projectMission().id, 'kitchen', step);
+    if (!g.ok) { showToast(g.text); return false; }
+    if (g.takeover) showToast(g.text);
+    return true;
+  }
+
   function saveDraft(kind) {
+    if (!kitchenGate(kind)) return;
     const d = draftFor(kind);
     const problems = validateDraft(d, kind);
     const feedback = $(`#${kind}-feedback`);
@@ -842,6 +865,7 @@
       return;
     }
     d.savedAt = new Date().toISOString();
+    noteTeam(projectMission().id, kind === 'initial' ? 'menyimpan rancangan awal menu regu' : 'menyimpan revisi menu regu');
     saveState();
     showToast(kind === 'initial' ? 'Rancangan awal tersimpan sebagai versi 1.' : 'Revisi tersimpan sebagai versi 2.');
     unlockStep(kind === 'initial' ? 'review' : 'reflection');
@@ -876,6 +900,8 @@
       feedback.innerHTML = `<b>Lengkapi dulu:</b> tulis masukan telaah minimal ${MIN_REASON} karakter. Bagian daftar periksa yang belum dicentang menjadi bahan revisi.`;
       return;
     }
+    if (!kitchenGate('review')) return;
+    noteTeam(projectMission().id, 'menyimpan telaah rancangan regu');
     p.review.savedAt = new Date().toISOString();
     saveState();
     showToast('Telaah tersimpan. Gunakan masukan ini untuk merevisi rancangan.');
@@ -1014,12 +1040,127 @@
     $('#leaderboard-list').innerHTML = `<table class="leaderboard-table"><caption class="sr-only">Papan peringkat lokal</caption><thead><tr><th scope="col">#</th><th scope="col">Penjelajah</th><th scope="col">Skor</th><th scope="col">Lencana</th><th scope="col">Selesai</th></tr></thead><tbody>${board.map((row, i) => `<tr${row.alias === state.alias ? ' class="me"' : ''}><td>${i + 1}</td><td>${escapeHtml(row.alias)}${row.alias === state.alias ? ' <span class="you">(kamu)</span>' : ''}</td><td>${row.score}</td><td>${row.badges} / ${MISSIONS.length}</td><td>${new Date(row.finishedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</td></tr>`).join('')}</tbody></table>`;
   }
 
+  // ---------- Regu proyek: sinkronisasi data misi bersama ----------
+  // Bagian bersama setiap pos (bukti, misi khas, rancangan Dapur Juara, jawaban Papan Laporan) milik regu.
+  // Perubahan lokal dikirim sebagai selisih kecil (set/push) ke server; data regu dari server
+  // menimpa bagian bersama di state lokal. Alasan, refleksi, dan segel tetap milik pribadi.
+  const TEAM_KEYS = { analysis: ['variant', 'evidence', 'activity', 'challenges', 'started'], project: ['activity', 'initial', 'review', 'revision', 'reached', 'started'] };
+  const TEAM_OP_KEYS = { analysis: ['variant', 'evidence', 'activity', 'started'], project: ['activity', 'initial', 'review', 'revision', 'reached', 'started'] };
+  const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const cloneJson = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+  const teamOn = () => Boolean(net && net.online && net.party);
+  let teamBase = null; // { [pos]: bagian bersama terakhir yang sama dengan server }
+  let teamTimer = null;
+  let teamNote = null; // { text, pos } — catatan kontribusi untuk kiriman berikutnya
+
+  function opsSnapshot(m) {
+    const p = post(m.id);
+    const out = {};
+    if (!p) return out;
+    TEAM_OP_KEYS[m.type].forEach((k) => { if (p[k] !== undefined && p[k] !== null) out[k] = cloneJson(p[k]); });
+    return out;
+  }
+
+  // Larik primitif atau objek ber-cap waktu (at) boleh ditambah (push); larik lain dikirim utuh.
+  const pushable = (x) => x === null || typeof x !== 'object' || Boolean(x.at);
+  function diffOps(a, b, path, out) {
+    if (sameJson(a, b) || b === undefined) return;
+    if (Array.isArray(b)) {
+      if (Array.isArray(a) && a.length < b.length && a.every((x, i) => sameJson(x, b[i])) && b.slice(a.length).every(pushable)) { b.slice(a.length).forEach((x) => out.push({ p: path, push: x })); return; }
+      if (Array.isArray(a) && a.length === b.length) { b.forEach((x, i) => diffOps(a[i], x, [...path, i], out)); return; }
+      out.push({ p: path, set: b });
+      return;
+    }
+    if (b && typeof b === 'object') {
+      if (!a || typeof a !== 'object' || Array.isArray(a)) { out.push({ p: path, set: b }); return; }
+      Object.keys(b).forEach((k) => diffOps(a[k], b[k], [...path, k], out));
+      return;
+    }
+    out.push({ p: path, set: b });
+  }
+
+  function scheduleTeamPush() {
+    if (!teamOn()) return;
+    clearTimeout(teamTimer);
+    teamTimer = setTimeout(flushTeam, teamNote ? 80 : 450);
+  }
+
+  function flushTeam() {
+    teamTimer = null;
+    if (!teamOn() || !teamBase) return;
+    const ops = [];
+    MISSIONS.forEach((m) => {
+      const cur = opsSnapshot(m);
+      diffOps(teamBase[m.id] || {}, cur, [m.id], ops);
+      teamBase[m.id] = cur;
+    });
+    const note = teamNote;
+    teamNote = null;
+    if (ops.length) net.teamOp(ops, note ? note.text : '', note ? note.pos : Number(ops[0].p[0]));
+  }
+
+  /** Catat kontribusi ("memindai Terminal Protein") untuk kiriman regu berikutnya. */
+  function noteTeam(pos, text) { if (teamOn() && text) teamNote = { pos, text }; }
+
+  /** Data regu dari server menimpa bagian bersama; draf jawaban pribadi dipertahankan. */
+  function adoptTeam(party) {
+    if (!party || !party.posts) { teamBase = null; return; }
+    clearTimeout(teamTimer);
+    if (teamBase) flushTeam(); // kirim dulu perubahan lokal yang belum terkirim
+    MISSIONS.forEach((m) => {
+      const t = party.posts[m.id];
+      const p = post(m.id);
+      if (!p) return;
+      if (t) {
+        TEAM_KEYS[m.type].forEach((k) => {
+          if (t[k] === undefined) return;
+          if (k === 'challenges') p.challenges = t.challenges.map((c, i) => ({ ...freshChallenge(), ...cloneJson(c), draft: c.complete ? null : ((p.challenges[i] || {}).draft ?? null) }));
+          else p[k] = cloneJson(t[k]);
+        });
+      }
+      teamBase = teamBase || {};
+      teamBase[m.id] = opsSnapshot(m);
+    });
+    applyVariants();
+    try { if (userKey) localStorage.setItem(saveKey(), JSON.stringify(state)); } catch { /* abaikan */ }
+    document.dispatchEvent(new CustomEvent('nutra:state'));
+    document.dispatchEvent(new CustomEvent('nutra:team'));
+    const screen = visibleScreen();
+    const typing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#screen-kitchen, #challenge-area, #passport-entry');
+    if (screen === 'mission' && !typing) { const m = missionById(state.activePos); if (m && m.type === 'analysis') { renderStimulus(m); renderMissionView(); } }
+    if (screen === 'kitchen' && !typing) showKitchenStep(project().step);
+    updatePlayerChip();
+  }
+
+  /** Kartu usulan jawaban regu (dipakai layar misi dan Papan Laporan di dunia). */
+  function teamVotesHtml(id, index) {
+    const T = window.NutraTeam;
+    if (!T || !T.voting()) return '';
+    const m = missionById(id);
+    const def = m.challenges[index];
+    const groups = T.proposals(id, index);
+    const need = T.needVotes();
+    if (!groups.length) return `<div class="team-votes"><p class="team-votes-head">🗳 JAWABAN REGU</p><p>Diskusikan dulu, lalu usulkan jawaban. Jawaban terkunci bila <b>${need} anggota</b> memilih jawaban yang sama.</p></div>`;
+    return `<div class="team-votes"><p class="team-votes-head">🗳 USULAN REGU <span>butuh ${need} suara sama</span></p><ul>${groups.map((g, k) => `<li class="${g.mine ? 'mine' : ''}"><span class="team-vote-count" aria-label="${g.ids.length} suara">${g.ids.length}/${need}</span><div><b>${escapeHtml(responseText(def, g.response))}</b><small>diusulkan ${escapeHtml(g.aliases.join(', '))}</small></div>${g.mine ? '<em>pilihanmu</em>' : `<button type="button" class="button button-secondary" data-agree="${k}">Setuju ✓</button>`}</li>`).join('')}</ul></div>`;
+  }
+
+  function agreeVote(id, index, k) {
+    const T = window.NutraTeam;
+    const g = T && T.proposals(id, index)[k];
+    if (!g) return false;
+    noteTeam(id, `menyetujui usulan Tantangan ${index + 1}`);
+    return T.vote(id, index, g.response);
+  }
+
+  if (net) net.on('party', (party) => { if (party) adoptTeam(party); else { teamBase = null; } });
+
   // ---------- API misi di dalam dunia (dipakai quest.js) ----------
 
   function scanEvidence(id, row) {
     const p = post(id);
     if (!p || !p.challenges) return [];
     p.started = true;
+    if (!(p.evidence || []).includes(row)) { const label = ((missionById(id).stimulus || {}).rows || [])[row]; noteTeam(id, `menyimpan bukti ${label ? label.label : `terminal ${row + 1}`}`); }
     p.evidence = Array.from(new Set([...(p.evidence || []), row])).sort((a, b) => a - b);
     state.activePos = id;
     saveState();
@@ -1034,6 +1175,10 @@
     if (c.complete) return { correct: isRight(c), points: c.points, attempts: c.attempts, success: def.success, explanation: explanation(def), correctText: responseText(def, def.correct), already: true };
     const empty = response === null || response === undefined || (Array.isArray(response) && !response.length) || (def.type === 'sort' && !Object.values(response || {}).every(Boolean));
     if (empty) return { empty: true, message: EMPTY_PROMPT[def.type] || 'Lengkapi jawabanmu terlebih dahulu.' };
+    if (window.NutraTeam && window.NutraTeam.voting()) {
+      if (!window.NutraTeam.vote(id, index, response)) return { empty: true, message: 'Belum tersambung ke server. Coba lagi sebentar.' };
+      return { proposed: true, need: window.NutraTeam.needVotes() };
+    }
     const res = gradeChallenge(m, index, response);
     state.activePos = id;
     saveState();
@@ -1062,9 +1207,10 @@
     return true;
   }
 
-  function updateActivity(id, change) {
+  function updateActivity(id, change, note) {
     const a = activityState(id);
     change(a);
+    if (note) noteTeam(id, note);
     post(id).started = true;
     state.activePos = id;
     saveState();
@@ -1195,7 +1341,7 @@
 
   window.NutraGame = {
     begin, end, openPos, isUnlocked, posStatus, showToast, goTo, renderPassport, evaluatePost, evaluateAll,
-    activityState, activityDone, updateActivity, prefillKitchen,
+    activityState, activityDone, updateActivity, prefillKitchen, teamVotesHtml, agreeVote, noteTeam,
     computeScore, sealCount, missionById, scanEvidence, submitAnswer, sealPost, responseText, lockMessage,
     missions: MISSIONS,
     get state() { return state; },

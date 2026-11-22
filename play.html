@@ -13,6 +13,7 @@
     <script src="missions.js" defer></script>
     <script src="world-data.js" defer></script>
     <script src="net.js" defer></script>
+    <script src="team.js" defer></script>
     <script src="game.js" defer></script>
     <script src="world.js" defer></script>
     <script src="map-art.js" defer></script>
@@ -85,10 +86,11 @@
       <section class="lobby-side" aria-label="Kelas">
         <div class="lobby-ann" id="lobby-ann" hidden></div>
         <section class="lobby-party" id="lobby-party" aria-labelledby="party-title">
-          <p class="lobby-kicker" id="party-title">🤝 REGU MABAR</p>
+          <p class="lobby-kicker" id="party-title">🤝 REGU PROYEK <small>(1–4 orang)</small></p>
           <div id="party-none">
-            <p class="party-hint">Ajak teman main bareng: buat kode undangan, lalu bagikan kodenya.</p>
-            <button type="button" class="button button-primary party-create" id="party-create">Buat kode undangan</button>
+            <p class="party-hint">NUTRANTARA adalah proyek regu. Buat regu, bagikan kodenya ke maksimal 3 teman, lalu bagi peran di setiap pos. Boleh juga bermain sendiri.</p>
+            <ul class="party-modes" aria-label="Skenario jumlah pemain"><li><b>1</b> Solo · semua peran</li><li><b>2</b> Duo · 2 peran/orang</li><li><b>3</b> Trio · 1 orang 2 peran</li><li><b>4</b> Penuh · 1 peran/orang</li></ul>
+            <button type="button" class="button button-primary party-create" id="party-create">Bentuk regu baru</button>
             <form class="party-join" id="party-join" autocomplete="off">
               <label for="party-code">Punya kode dari teman?</label>
               <div><input class="text-input" id="party-code" maxlength="7" placeholder="mis. K7RM2Q" inputmode="text" autocapitalize="characters" spellcheck="false" /><button type="submit" class="button button-secondary">Gabung</button></div>
@@ -97,6 +99,7 @@
           <div id="party-in" hidden>
             <div class="party-code-box"><span>KODE UNDANGAN</span><b id="party-code-text" aria-live="polite">——————</b></div>
             <div class="party-share"><button type="button" class="button button-secondary" id="party-copy">Salin kode</button><button type="button" class="button button-secondary" id="party-link">Salin tautan</button></div>
+            <p class="party-scn" id="party-scn"></p>
             <ul class="party-members" id="party-members"></ul>
             <button type="button" class="link-button party-leave" id="party-leave">Keluar dari regu</button>
           </div>

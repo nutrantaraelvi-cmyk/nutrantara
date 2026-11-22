@@ -14,7 +14,7 @@ window.NutraNet = (() => {
   let failures = 0;
   let me = null;
   let muted = false;
-  let party = null; // { code, leaderId, max, members: [...] } — regu mabar
+  let party = null; // { code, leaderId, max, members: [...], posts, log } — regu proyek (maks. 4)
   let stopped = false;
   let chat = [];
   let leaderboard = [];
@@ -238,6 +238,10 @@ window.NutraNet = (() => {
   const partyCreate = () => joined && send({ type: 'party', action: 'create' });
   const partyJoin = (code) => joined && send({ type: 'party', action: 'join', code });
   const partyLeave = () => joined && send({ type: 'party', action: 'leave' });
+  /** Operasi kecil pada data misi regu (set/push) + catatan kontribusi. */
+  const teamOp = (ops, note, pos) => joined && Boolean(party) && send({ type: 'team-op', ops, note, pos });
+  /** Usulan/suara jawaban regu untuk satu tantangan Papan Laporan. */
+  const teamVote = (pos, index, response) => joined && Boolean(party) && send({ type: 'team-vote', pos, index, response });
   const isTeammate = (id) => Boolean(party && me && id !== me.id && party.members.some((m) => m.id === id));
   function emote(name) { return joined && send({ type: 'emote', emote: name }); }
 
@@ -315,7 +319,7 @@ window.NutraNet = (() => {
   return {
     on, join, pushProgress, sendMove, sendChat, isPostOpen, status,
     api, serverStatus, register, login, resume, logout, getSession, sendZone, spawn, emote,
-    spawnNear, partyCreate, partyJoin, partyLeave, isTeammate,
+    spawnNear, partyCreate, partyJoin, partyLeave, isTeammate, teamOp, teamVote,
     get party() { return party; },
     get me() { return me; },
     get players() { return players; },

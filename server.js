@@ -51,6 +51,7 @@ function freshDb() {
     createdAt: new Date().toISOString(),
     settings: { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', classCode: '' },
     players: {},
+    teams: {},
     chat: []
   };
 }
@@ -59,7 +60,7 @@ function loadDb() {
   try {
     const saved = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     const base = freshDb();
-    return { ...base, ...saved, settings: { ...base.settings, ...saved.settings }, players: saved.players || {}, chat: saved.chat || [] };
+    return { ...base, ...saved, settings: { ...base.settings, ...saved.settings }, players: saved.players || {}, teams: saved.teams || {}, chat: saved.chat || [] };
   } catch (err) {
     if (err.code !== 'ENOENT') console.warn('[data] Gagal membaca data kelas, memulai data baru:', err.message);
     return freshDb();
@@ -254,6 +255,27 @@ function postSummary(p) {
   });
 }
 
+/** Ringkasan regu untuk panel guru: kemajuan per pos dan kontribusi tiap anggota. */
+function adminTeam(team) {
+  const online = onlineIds();
+  return {
+    code: team.code,
+    createdAt: team.createdAt,
+    members: team.members.filter((id) => db.players[id]).map((id) => {
+      const c = (team.contrib && team.contrib[id]) || {};
+      return { id, alias: db.players[id].alias, online: online.has(id), lastSeen: db.players[id].lastSeen, score: db.players[id].score, seals: db.players[id].seals, contrib: Object.values(c).reduce((n, x) => n + x, 0), perPost: c };
+    }),
+    posts: MISSIONS.map((m) => {
+      const t = team.posts[m.id] || {};
+      const stations = m.activity && m.activity.stations ? m.activity.stations.filter((st) => t.activity && t.activity.stations && t.activity.stations[st.id]).length : 0;
+      if (m.type === 'project') return { id: m.id, type: m.type, steps: ['initial', 'review', 'revision'].filter((k) => t[k] && t[k].savedAt).length, collected: ((t.activity && t.activity.collected) || []).length };
+      const ch = Array.isArray(t.challenges) ? t.challenges : [];
+      return { id: m.id, type: m.type, done: ch.filter((c) => c && c.complete).length, correct: ch.filter((c) => c && c.complete && c.correct).length, total: m.challenges.length, stations, stationTotal: m.activity && m.activity.stations ? m.activity.stations.length : 0, evidence: (t.evidence || []).length, variant: Number.isInteger(t.variant) ? t.variant + 1 : null, pendingVotes: Object.keys(t.votes || {}).length };
+    }),
+    log: (team.log || []).slice(-12)
+  };
+}
+
 function adminPlayer(p, online) {
   return {
     ...publicPlayer(p),
@@ -267,7 +289,7 @@ function adminPlayer(p, online) {
     lastSeen: p.lastSeen,
     createdAt: p.createdAt,
     finishedAt: p.finishedAt || null,
-    party: partyOf.get(p.id) || null,
+    party: teamOf(p) ? p.team : null,
     posts: postSummary(p)
   };
 }
@@ -278,6 +300,7 @@ function adminSnapshot() {
     type: 'admin-state',
     settings: db.settings,
     players: Object.values(db.players).sort((a, b) => a.alias.localeCompare(b.alias, 'id')).map((p) => adminPlayer(p, online)),
+    teams: Object.values(db.teams).map(adminTeam),
     missions: MISSIONS.map((m) => ({ id: m.id, title: `${m.title} ${m.titleEm}`, type: m.type })),
     world: { width: WORLD.width, height: WORLD.height },
     serverTime: now()
@@ -327,6 +350,7 @@ function handleJoin(ws, conn, msg) {
   player.lastSeen = now();
   scheduleSave();
 
+  if (teamOf(player) && player.progress) overlayTeam(player.progress, teamOf(player));
   const online = onlineIds();
   send(ws, {
     type: 'welcome',
@@ -340,7 +364,7 @@ function handleJoin(ws, conn, msg) {
     leaderboard: leaderboard()
   });
   broadcast({ type: 'player-join', player: publicPlayer(player) }, (c) => c.role === 'player' && c.playerId !== player.id);
-  if (partyOf.has(player.id)) partyChanged(partyOf.get(player.id)); else send(ws, { type: 'party', party: null });
+  if (teamOf(player)) teamChanged(player.team, true); else { player.team = null; send(ws, { type: 'party', party: null }); }
   adminDirty = true;
   boardDirty = true;
 }
@@ -395,7 +419,7 @@ function handleSpawn(ws, conn, msg) {
 function spawnNearFriend(ws, p, friendId, allowed) {
   const f = db.players[friendId];
   const deny = (message) => send(ws, { type: 'spawn-denied', friend: friendId, message });
-  if (!f || !partyOf.has(p.id) || partyOf.get(p.id) !== partyOf.get(f.id)) return deny('Pemain itu bukan anggota regumu.');
+  if (!f || !sameTeam(p, f)) return deny('Pemain itu bukan anggota regumu.');
   if (!onlineIds().has(f.id) || f.zone !== 'world') return deny(`${f.alias} sedang tidak berada di dunia.`);
   const c = WORLD.clamp(f.x + (Math.random() * 40 - 20), f.y + (Math.random() * 24 - 12), allowed);
   const near = Math.hypot(c.x - f.x, c.y - f.y) < 60;
@@ -416,67 +440,199 @@ function handleEmote(conn, msg) {
   broadcast({ type: 'emote', id: p.id, emote: msg.emote }, (c) => c.role === 'player');
 }
 
-// ---------- Regu mabar (kode undangan) ----------
-// Disimpan di memori saja: regu hilang saat server dinyalakan ulang, tidak menambah data siswa di disk.
-const PARTY_MAX = 6;
-const PARTY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // tanpa 0/O, 1/I/L agar mudah didikte
-const parties = new Map(); // kode -> { code, leaderId, members: Set<playerId>, createdAt }
-const partyOf = new Map(); // playerId -> kode
+// ---------- Regu proyek (PjBL): 1–4 anggota, tersimpan permanen ----------
+// Regu dibentuk bebas oleh siswa dengan kode undangan. Misi di setiap pos dikerjakan bersama:
+// bukti, misi khas, rancangan Dapur Juara, dan jawaban Papan Laporan milik regu; alasan/refleksi
+// dan segel tetap milik masing-masing siswa (tanggung jawab individu). Anggota boleh bermain
+// pada waktu berbeda: perubahan dikirim sebagai operasi kecil (set/push) agar tidak saling menimpa.
+const TEAM_MAX = 4;
+const TEAM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // tanpa 0/O, 1/I/L agar mudah didikte
+const ACTIVE_MS = 24 * 3600 * 1000; // anggota dianggap aktif bila daring atau terlihat < 24 jam terakhir
+const SHARED_KEYS = { analysis: ['variant', 'evidence', 'activity', 'challenges', 'started'], project: ['activity', 'initial', 'review', 'revision', 'reached', 'started'] };
+const OP_KEYS = { analysis: ['variant', 'evidence', 'activity', 'started'], project: ['activity', 'initial', 'review', 'revision', 'reached', 'started'] };
+const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const missionOf = (id) => MISSIONS.find((m) => m.id === Number(id));
+const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const teamOf = (p) => (p && p.team && db.teams[p.team]) || null;
+const sameTeam = (a, b) => Boolean(a && b && a.team && a.team === b.team && db.teams[a.team]);
+const isActive = (id) => onlineIds().has(id) || (db.players[id] && Date.now() - Date.parse(db.players[id].lastSeen || 0) < ACTIVE_MS);
+const freshTeamChallenge = () => ({ complete: false, attempts: 0, points: 0, response: null, log: [] });
 
-function newPartyCode() {
+function newTeamCode() {
   for (;;) {
     let code = '';
-    for (let i = 0; i < 6; i += 1) code += PARTY_ALPHABET[crypto.randomInt(PARTY_ALPHABET.length)];
-    if (!parties.has(code)) return code;
+    for (let i = 0; i < 6; i += 1) code += TEAM_ALPHABET[crypto.randomInt(TEAM_ALPHABET.length)];
+    if (!db.teams[code]) return code;
   }
 }
 
-function partyView(code) {
-  const party = parties.get(code);
-  if (!party) return null;
+/** Kunci jawaban sesuai varian kasus regu. */
+function teamDefs(m, t) {
+  return challengesFor(m, { variant: Number.isInteger(t.variant) ? t.variant : undefined }, []);
+}
+
+function normalizeTeamPost(m, t) {
+  if (m.type !== 'analysis') return t;
+  const defs = teamDefs(m, t);
+  t.challenges = defs.map((def, i) => {
+    const c = Array.isArray(t.challenges) ? t.challenges[i] : null;
+    if (!c || !c.complete || c.response === null || c.response === undefined) return freshTeamChallenge();
+    const correct = isCorrect(def, c.response);
+    return { ...c, complete: true, attempts: 1, correct, points: correct ? awardForAttempt(1) : 0 };
+  });
+  if (Array.isArray(t.evidence)) t.evidence = [...new Set(t.evidence.filter(Number.isInteger))].sort((a, b) => a - b);
+  return t;
+}
+
+function extractShared(progress) {
+  const out = {};
+  const posts = (progress && progress.posts) || {};
+  MISSIONS.forEach((m) => {
+    const src = posts[m.id];
+    if (!src || typeof src !== 'object') return;
+    const dst = {};
+    SHARED_KEYS[m.type].forEach((k) => { if (src[k] !== undefined && src[k] !== null) dst[k] = clone(src[k]); });
+    out[m.id] = normalizeTeamPost(m, dst);
+  });
+  return out;
+}
+
+/** Gabung isi (bukan timpa): boolean OR, angka maksimum, larik digabung, teks milik regu dipertahankan. */
+function fillMerge(a, b) {
+  if (a === undefined || a === null) return clone(b);
+  if (b === undefined || b === null) return a;
+  if (Array.isArray(a) && Array.isArray(b)) { b.forEach((x) => { if (!a.some((y) => same(x, y))) a.push(clone(x)); }); return a; }
+  if (typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+    Object.keys(b).forEach((k) => { if (!BAD_KEYS.has(k)) a[k] = fillMerge(a[k], b[k]); });
+    return a;
+  }
+  if (typeof a === 'boolean' && typeof b === 'boolean') return a || b;
+  if (typeof a === 'number' && typeof b === 'number') return Math.max(a, b);
+  return a;
+}
+
+/** Anggota baru membawa progresnya: isi yang belum dikerjakan regu diambil dari anggota itu. */
+function mergeIntoTeam(team, progress) {
+  const incoming = extractShared(progress);
+  Object.entries(incoming).forEach(([pid, s]) => {
+    const m = missionOf(pid);
+    const t = team.posts[pid] || (team.posts[pid] = {});
+    if (t.variant === undefined && s.variant !== undefined) t.variant = s.variant;
+    if (s.started) t.started = true;
+    if (Array.isArray(s.evidence)) t.evidence = [...new Set([...(t.evidence || []), ...s.evidence])];
+    if (s.activity) t.activity = fillMerge(t.activity, s.activity);
+    if (m.type === 'analysis' && Array.isArray(s.challenges) && (t.variant === s.variant || !m.variants)) {
+      t.challenges = t.challenges || [];
+      s.challenges.forEach((c, i) => { if (c && c.complete && !(t.challenges[i] && t.challenges[i].complete)) t.challenges[i] = c; });
+    }
+    if (m.type === 'project') {
+      ['initial', 'review', 'revision'].forEach((k) => { if (s[k] && (!t[k] || (s[k].savedAt && !t[k].savedAt))) t[k] = s[k]; });
+      if (Number.isFinite(s.reached)) t.reached = Math.max(t.reached || 0, s.reached);
+    }
+    normalizeTeamPost(m, t);
+  });
+}
+
+/** Salin bagian milik regu ke progres seorang anggota (server berwenang atas bagian bersama). */
+function overlayTeam(progress, team) {
+  if (!progress || typeof progress !== 'object' || !team) return progress;
+  progress.posts = progress.posts || {};
+  Object.entries(team.posts).forEach(([pid, t]) => {
+    const m = missionOf(pid);
+    if (!m) return;
+    const dst = progress.posts[pid] || (progress.posts[pid] = {});
+    SHARED_KEYS[m.type].forEach((k) => { if (t[k] !== undefined) dst[k] = clone(t[k]); });
+  });
+  return progress;
+}
+
+function refreshMemberScores(team) {
+  team.members.forEach((id) => {
+    const p = db.players[id];
+    if (!p || !p.progress) return;
+    overlayTeam(p.progress, team);
+    const { score, seals } = validateProgress(p.progress);
+    if (score !== p.score || seals !== p.seals) boardDirty = true;
+    p.score = score;
+    p.seals = seals;
+    if (seals === MISSIONS.length && !p.finishedAt) p.finishedAt = now();
+  });
+}
+
+function teamLog(team, p, pos, text) {
+  team.log = team.log || [];
+  const entry = { at: now(), id: p.id, alias: p.alias, pos: Number(pos) || 0, text: cleanText(text, 100) };
+  team.log.push(entry);
+  if (team.log.length > 300) team.log.splice(0, team.log.length - 300);
+  return entry;
+}
+
+function teamView(team) {
   const online = onlineIds();
   return {
-    code,
-    leaderId: party.leaderId,
-    max: PARTY_MAX,
-    members: [...party.members].filter((id) => db.players[id]).map((id) => ({ ...publicPlayer(db.players[id]), online: online.has(id), island: online.has(id) && db.players[id].zone === 'world' ? WORLD.islandAt(db.players[id].x, db.players[id].y) : null }))
+    code: team.code,
+    leaderId: team.leaderId,
+    max: TEAM_MAX,
+    createdAt: team.createdAt,
+    members: team.members.filter((id) => db.players[id]).map((id) => ({
+      ...publicPlayer(db.players[id]),
+      online: online.has(id),
+      active: isActive(id),
+      island: online.has(id) && db.players[id].zone === 'world' ? WORLD.islandAt(db.players[id].x, db.players[id].y) : null,
+      contrib: (team.contrib && team.contrib[id]) || {}
+    })),
+    posts: team.posts,
+    log: (team.log || []).slice(-25)
   };
 }
 
-function sendParty(playerId) {
-  const view = partyView(partyOf.get(playerId));
-  socketsOf(playerId).forEach((ws) => send(ws, { type: 'party', party: view }));
-}
-function partyChanged(code) {
-  const party = parties.get(code);
-  if (party) party.members.forEach(sendParty);
+const teamTimers = new Map();
+function teamChanged(code, immediate) {
   adminDirty = true;
+  scheduleSave();
+  const fire = () => {
+    teamTimers.delete(code);
+    const team = db.teams[code];
+    if (!team) return;
+    const view = teamView(team);
+    team.members.forEach((id) => socketsOf(id).forEach((ws) => send(ws, { type: 'party', party: view })));
+  };
+  if (immediate) { clearTimeout(teamTimers.get(code)); return fire(); }
+  if (!teamTimers.has(code)) teamTimers.set(code, setTimeout(fire, 150));
 }
 
-function leaveParty(playerId) {
-  const code = partyOf.get(playerId);
-  if (!code) return;
-  partyOf.delete(playerId);
-  const party = parties.get(code);
-  if (party) {
-    party.members.delete(playerId);
-    if (!party.members.size) parties.delete(code);
-    else { if (party.leaderId === playerId) party.leaderId = [...party.members][0]; partyChanged(code); }
+function sendNoTeam(playerId) { socketsOf(playerId).forEach((ws) => send(ws, { type: 'party', party: null })); }
+
+function leaveTeam(playerId) {
+  const p = db.players[playerId];
+  const team = teamOf(p);
+  if (p) p.team = null;
+  if (team) {
+    team.members = team.members.filter((id) => id !== playerId);
+    if (!team.members.length) delete db.teams[team.code];
+    else {
+      if (team.leaderId === playerId) team.leaderId = team.members[0];
+      if (p) teamLog(team, p, 0, 'keluar dari regu');
+      teamChanged(team.code, true);
+    }
   }
-  sendParty(playerId);
+  sendNoTeam(playerId);
   adminDirty = true;
+  scheduleSave();
 }
 
 function handleParty(ws, conn, msg) {
   const p = db.players[conn.playerId];
   if (!p) return;
   if (msg.action === 'create') {
-    if (!partyOf.has(p.id)) {
-      const code = newPartyCode();
-      parties.set(code, { code, leaderId: p.id, members: new Set([p.id]), createdAt: now() });
-      partyOf.set(p.id, code);
+    if (!teamOf(p)) {
+      const code = newTeamCode();
+      db.teams[code] = { code, leaderId: p.id, members: [p.id], createdAt: now(), posts: extractShared(p.progress), log: [], contrib: {} };
+      p.team = code;
+      teamLog(db.teams[code], p, 0, 'membentuk regu');
     }
-    return partyChanged(partyOf.get(p.id));
+    return teamChanged(p.team, true);
   }
   if (msg.action === 'join') {
     const code = String(msg.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
@@ -484,18 +640,111 @@ function handleParty(ws, conn, msg) {
     const t = Date.now();
     conn.partyFails = (conn.partyFails || []).filter((x) => t - x < 60000);
     if (conn.partyFails.length >= 8) return send(ws, { type: 'party-error', message: 'Terlalu banyak kode salah. Tunggu satu menit.' });
-    const party = parties.get(code);
-    if (!party) { conn.partyFails.push(t); return send(ws, { type: 'party-error', message: 'Kode regu tidak ditemukan. Periksa lagi hurufnya.' }); }
-    if (party.members.has(p.id)) return sendParty(p.id);
-    if (party.members.size >= PARTY_MAX) return send(ws, { type: 'party-error', message: `Regu sudah penuh (maksimal ${PARTY_MAX} orang).` });
-    leaveParty(p.id);
-    party.members.add(p.id);
-    partyOf.set(p.id, code);
-    partyChanged(code);
-    socketsOf(p.id).forEach((s) => send(s, { type: 'notice', message: `Kamu bergabung dengan regu ${code}. Ayo mabar!` }));
+    const team = db.teams[code];
+    if (!team) { conn.partyFails.push(t); return send(ws, { type: 'party-error', message: 'Kode regu tidak ditemukan. Periksa lagi hurufnya.' }); }
+    if (team.members.includes(p.id)) return teamChanged(code, true);
+    if (team.members.length >= TEAM_MAX) return send(ws, { type: 'party-error', message: `Regu sudah penuh (maksimal ${TEAM_MAX} orang).` });
+    if (teamOf(p)) leaveTeam(p.id);
+    team.members.push(p.id);
+    p.team = code;
+    mergeIntoTeam(team, p.progress);
+    teamLog(team, p, 0, 'bergabung ke regu');
+    refreshMemberScores(team);
+    teamChanged(code, true);
+    socketsOf(p.id).forEach((s) => send(s, { type: 'notice', message: `Kamu bergabung dengan regu ${code}. Bagi peran, lalu kerjakan misi bersama!` }));
     return;
   }
-  if (msg.action === 'leave') return leaveParty(p.id);
+  if (msg.action === 'leave') return leaveTeam(p.id);
+}
+
+/** Operasi kecil dari anggota: { p: [pos, kunci, ...jalur], set } atau { p, push }. */
+function applyTeamOps(team, ops) {
+  let changed = 0;
+  for (const op of ops.slice(0, 200)) {
+    if (!op || !Array.isArray(op.p) || op.p.length < 2 || op.p.length > 10) continue;
+    if (op.p.some((seg) => (typeof seg !== 'string' && !Number.isInteger(seg)) || BAD_KEYS.has(seg) || (typeof seg === 'string' && seg.length > 40))) continue;
+    const m = missionOf(op.p[0]);
+    if (!m || !OP_KEYS[m.type].includes(op.p[1])) continue;
+    const hasPush = Object.prototype.hasOwnProperty.call(op, 'push');
+    const value = hasPush ? op.push : op.set;
+    if (value === undefined || JSON.stringify(value).length > 20000) continue;
+    const t = team.posts[m.id] || (team.posts[m.id] = {});
+    if (op.p[1] === 'variant') {
+      if (t.variant === undefined && m.variants && Number.isInteger(value) && m.variants[value]) { t.variant = value; normalizeTeamPost(m, t); changed += 1; }
+      continue;
+    }
+    if (op.p[1] === 'evidence' && !(hasPush ? Number.isInteger(value) : Array.isArray(value) && value.every(Number.isInteger))) continue;
+    const rest = op.p.slice(1);
+    let obj = t;
+    let ok = true;
+    for (let i = 0; i < rest.length - 1; i += 1) {
+      const k = rest[i];
+      if (Array.isArray(obj) && !Number.isInteger(k)) { ok = false; break; }
+      if (obj[k] === null || typeof obj[k] !== 'object') obj[k] = Number.isInteger(rest[i + 1]) ? [] : {};
+      obj = obj[k];
+    }
+    const last = rest[rest.length - 1];
+    if (!ok || (Array.isArray(obj) && !Number.isInteger(last)) || (Number.isInteger(last) && (last < 0 || last > 500))) continue;
+    if (hasPush) {
+      if (!Array.isArray(obj[last])) obj[last] = [];
+      if (obj[last].length < 500 && !obj[last].some((x) => same(x, value))) obj[last].push(clone(value));
+    } else obj[last] = clone(value);
+    changed += 1;
+  }
+  return changed;
+}
+
+function handleTeamOp(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  const team = teamOf(p);
+  if (!team || !Array.isArray(msg.ops)) return;
+  if (JSON.stringify(team.posts).length > 400000) return send(ws, { type: 'notice', message: 'Data regu sudah terlalu besar. Hubungi guru.' });
+  const changed = applyTeamOps(team, msg.ops);
+  if (!changed) return;
+  const pos = Number(msg.pos) || Number(msg.ops[0] && msg.ops[0].p && msg.ops[0].p[0]) || 0;
+  team.contrib = team.contrib || {};
+  const mine = team.contrib[p.id] || (team.contrib[p.id] = {});
+  if (msg.note) { mine[pos] = (mine[pos] || 0) + 1; teamLog(team, p, pos, msg.note); }
+  teamChanged(team.code);
+}
+
+/** Jawaban regu: usulan anggota; terkunci bila ada 2 suara sama (atau 1 bila anggota lain tidak aktif). */
+function handleTeamVote(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  const team = teamOf(p);
+  const m = missionOf(msg.pos);
+  if (!team || !m || m.type !== 'analysis') return;
+  const t = team.posts[m.id] || (team.posts[m.id] = {});
+  normalizeTeamPost(m, t);
+  const index = Number(msg.index);
+  const defs = teamDefs(m, t);
+  const def = defs[index];
+  if (!def || t.challenges[index].complete) return;
+  const r = msg.response;
+  const okShape = def.type === 'single' ? typeof r === 'string' && r.length <= 40
+    : def.type === 'sort' ? r && typeof r === 'object' && !Array.isArray(r) && Object.keys(r).length <= 20
+      : Array.isArray(r) && r.length && r.length <= 20 && r.every((x) => typeof x === 'string' && x.length <= 40);
+  if (!okShape) return send(ws, { type: 'notice', message: 'Jawaban belum lengkap.' });
+  t.votes = t.votes || {};
+  const v = t.votes[index] || (t.votes[index] = {});
+  v[p.id] = { alias: p.alias, response: clone(r), at: now() };
+  const supporters = Object.entries(v).filter(([id, x]) => team.members.includes(id) && same(x.response, r));
+  const others = team.members.filter((id) => id !== p.id && isActive(id));
+  const need = others.length ? 2 : 1;
+  team.contrib = team.contrib || {};
+  const mine = team.contrib[p.id] || (team.contrib[p.id] = {});
+  mine[m.id] = (mine[m.id] || 0) + 1;
+  if (supporters.length >= need) {
+    const correct = isCorrect(def, r);
+    t.challenges[index] = { complete: true, attempts: 1, response: clone(r), correct, points: correct ? awardForAttempt(1) : 0, by: supporters.map(([, x]) => x.alias), at: now(), log: [] };
+    delete t.votes[index];
+    t.started = true;
+    teamLog(team, p, m.id, `mengunci jawaban regu Tantangan ${index + 1} (${correct ? 'tepat' : 'belum tepat'})`);
+    refreshMemberScores(team);
+  } else {
+    teamLog(team, p, m.id, `mengusulkan jawaban Tantangan ${index + 1} (${supporters.length}/${need} suara)`);
+  }
+  teamChanged(team.code, true);
 }
 
 function handleProgress(ws, conn, msg) {
@@ -503,6 +752,7 @@ function handleProgress(ws, conn, msg) {
   if (!p || !msg.state || typeof msg.state !== 'object' || !msg.state.posts) return;
   const state = msg.state;
   state.alias = p.alias;
+  overlayTeam(state, teamOf(p));
   const { score, seals, flags } = validateProgress(state);
   p.progress = state;
   p.progressUpdatedAt = now();
@@ -645,7 +895,7 @@ function handleAdmin(ws, msg) {
     case 'delete':
       if (!needTarget()) return;
       kickSockets(target.id, 'Data penjelajahmu dihapus oleh guru.');
-      leaveParty(target.id);
+      leaveTeam(target.id);
       delete db.players[target.id];
       toPlayers({ type: 'player-leave', id: target.id });
       adminDirty = true; boardDirty = true; scheduleSave();
@@ -668,8 +918,16 @@ function handleAdmin(ws, msg) {
     case 'detail':
       if (!needTarget()) return;
       return send(ws, { type: 'admin-detail', player: { ...adminPlayer(target, onlineIds()), progress: target.progress } });
+    case 'team-dissolve': {
+      const team = db.teams[String(msg.code || '')];
+      if (!team) return send(ws, { type: 'admin-error', message: 'Regu tidak ditemukan.' });
+      [...team.members].forEach((id) => leaveTeam(id));
+      delete db.teams[team.code];
+      adminDirty = true; scheduleSave();
+      return done(`Regu ${team.code} dibubarkan. Progres anggota tetap tersimpan.`);
+    }
     case 'export':
-      return send(ws, { type: 'admin-export', data: { exportedAt: now(), game: 'NUTRANTARA', settings: db.settings, players: Object.values(db.players).map(({ tokenHash, aliasKey, passHash, sessions, ...rest }) => rest), chat: db.chat } });
+      return send(ws, { type: 'admin-export', data: { exportedAt: now(), game: 'NUTRANTARA', settings: db.settings, players: Object.values(db.players).map(({ tokenHash, aliasKey, passHash, sessions, ...rest }) => rest), teams: Object.values(db.teams), chat: db.chat } });
     default:
       return send(ws, { type: 'admin-error', message: 'Perintah tidak dikenal.' });
   }
@@ -680,9 +938,9 @@ function handleAdmin(ws, msg) {
 const STATIC = {
   '/': 'index.html', '/index.html': 'index.html', '/play': 'play.html', '/play.html': 'play.html', '/admin': 'admin.html', '/admin.html': 'admin.html',
   '/styles.css': 'styles.css', '/admin.css': 'admin.css', '/landing.css': 'landing.css',
-  '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
+  '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/team.js': 'team.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
   '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js',
-  '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/theme.css': 'theme.css',
+  '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/lab.js': 'lab.js', '/absorb.js': 'absorb.js', '/theme.css': 'theme.css',
   '/map-art.js': 'map-art.js', '/sky.js': 'sky.js', '/region.js': 'region.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
   '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };
@@ -830,6 +1088,8 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'spawn') return handleSpawn(ws, conn, msg);
       if (msg.type === 'emote') return handleEmote(conn, msg);
       if (msg.type === 'party') return handleParty(ws, conn, msg);
+      if (msg.type === 'team-op') return handleTeamOp(ws, conn, msg);
+      if (msg.type === 'team-vote') return handleTeamVote(ws, conn, msg);
       if (msg.type === 'ping') return send(ws, { type: 'pong' });
     }
     if (conn.role === 'admin') {
@@ -843,7 +1103,7 @@ wss.on('connection', (ws, req) => {
     if (conn.role === 'player' && conn.playerId) {
       const p = db.players[conn.playerId];
       if (p) p.lastSeen = now();
-      if (!onlineIds().has(conn.playerId)) { toPlayers({ type: 'player-leave', id: conn.playerId }); if (partyOf.has(conn.playerId)) partyChanged(partyOf.get(conn.playerId)); }
+      if (!onlineIds().has(conn.playerId)) { toPlayers({ type: 'player-leave', id: conn.playerId }); if (p && teamOf(p)) teamChanged(p.team); }
       adminDirty = true;
       boardDirty = true;
       scheduleSave();
