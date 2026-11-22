@@ -4,7 +4,7 @@ Game pembelajaran berbasis web untuk **Biologi SMA kelas XI (Fase F)**, topik **
 
 > Bagaimana kita merancang satu porsi menu berbahan pangan lokal untuk siswa SMA dengan mempertimbangkan komposisi, porsi, dan fungsi zat gizi berdasarkan bukti?
 
-**Status:** prototipe 0.5 — **Kepulauan NUTRANTARA**: pulau-pulau melayang di atas awan (mengikuti konsep peta), dengan akun siswa, lobi, pilih map, terjun ke pulau, dan **semua misi Pos 1–5 dimainkan langsung di dalam dunia 3D**. Tanpa WebGL, game beralih ke dunia 2D; tanpa server kelas, tersedia mode tamu luring.
+**Status:** prototipe 0.6 (tema **Nusantara Ceria**: UI cerah bermotif batik, budaya populer Indonesia di dunia 3D; lihat [docs/KARAKTER.md](docs/KARAKTER.md)). Sebelumnya, 0.5 — **Kepulauan NUTRANTARA**: pulau-pulau melayang di atas awan (mengikuti konsep peta), dengan akun siswa, lobi, pilih map, terjun ke pulau, dan **semua misi Pos 1–5 dimainkan langsung di dalam dunia 3D**. Tanpa WebGL, game beralih ke dunia 2D; tanpa server kelas, tersedia mode tamu luring.
 
 ## Alur bermain
 
@@ -84,6 +84,8 @@ Buka `play.html` langsung di browser, atau unggah ke hosting statis (`index.html
 | `world3d.js` | Kepulauan 3D: pulau melayang, jembatan, pilih map, terjun, kamera, kontrol, multipemain |
 | `quest.js` | Misi di dalam dunia: terminal arsip, papan laporan, altar segel, panel hologram |
 | `fx.js` | Efek: konfeti, debu, kilau, pilar cahaya, gelombang |
+| `culture.js` | Ornamen budaya: candi bentar, meru, penjor, stupa, rumah gadang, gunungan, gong, ondel-ondel, layang-layang, pinisi, pangan lokal |
+| `theme.css` | Tema cerah Nusantara (kawung, tumpal, tombol toska-emas) |
 | `app.js`, `app.css` | Alur aplikasi: masuk/daftar, memuat, lobi 3D, pilih map |
 | `vendor/three/` | Three.js r170 (MIT), disimpan lokal agar jalan tanpa internet |
 | `Dockerfile`, `render.yaml`, `docs/DEPLOY.md` | Deploy server kelas |

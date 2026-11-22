@@ -8,6 +8,7 @@ import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, createLabel, createBubble, toon, PALETTE } from './characters.js';
 import { createFx } from './fx.js';
 import { createQuests } from './quest.js';
+import { createCandiBentar, createMeru, createPenjor, createKite, createPinisi, createStupa, createRumahGadang, createGunungan, createGong, createOndelOndel, createCorn, createTempe, createPapaya, kawungTexture } from './culture.js';
 
 const W = window.NUTRANTARA_WORLD;
 const game = window.NutraGame;
@@ -150,12 +151,12 @@ function initRenderer() {
   renderer.domElement.setAttribute('aria-describedby', 'world-prompt');
   wrap.prepend(renderer.domElement);
   scene = new THREE.Scene();
-  const sky = new THREE.Color('#a8e3f0');
+  const sky = new THREE.Color('#86d4f7');
   scene.background = sky;
-  scene.fog = new THREE.Fog(sky, 70, 210);
+  scene.fog = new THREE.Fog('#bfe9fb', 80, 230);
   camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 500);
-  scene.add(new THREE.HemisphereLight('#f0fbff', '#4d8a5e', 1.7));
-  sun = new THREE.DirectionalLight('#fff0d0', 2.2);
+  scene.add(new THREE.HemisphereLight('#fffaf0', '#5aa86a', 1.9));
+  sun = new THREE.DirectionalLight('#ffe9b8', 2.5);
   sun.position.set(25, 40, 18);
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 });
@@ -207,7 +208,7 @@ function buildIsland(isl) {
   const g = new THREE.Group();
   const sand = cyl(1, 0.97, 0.5, '#ecd8a0', 48); sand.scale.set(f.rx + 0.6, 1, f.rz + 0.6);
   add(sand, 0, -0.32, 0, g);
-  const top = cyl(1, 1, 0.5, isl.id === 0 ? '#6ccb72' : '#62c46f', 48); top.scale.set(f.rx, 1, f.rz);
+  const top = cyl(1, 1, 0.5, isl.id === 0 ? '#74d46f' : '#68cf67', 48); top.scale.set(f.rx, 1, f.rz);
   add(top, 0, -0.25, 0, g);
   top.userData.islandId = isl.id;
   islandTops.push(top);
@@ -276,14 +277,18 @@ function buildIsland(isl) {
 // Penanda khas tiap pulau (mengikuti konsep peta)
 const LANDMARKS = {
   0(g) { // Alun-alun: gapura, sawah, kolam, rumah Nara
-    const gate = new THREE.Group();
-    add(box(0.4, 3.4, 0.4, '#8a5a35'), -2.2, 1.7, 0, gate); add(box(0.4, 3.4, 0.4, '#8a5a35'), 2.2, 1.7, 0, gate);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(3.2, 1, 4), toon('#b5523b')); roof.rotation.y = Math.PI / 4; roof.scale.z = 0.35;
-    add(roof, 0, 3.8, 0, gate);
-    add(box(4, 0.55, 0.16, PALETTE.deep), 0, 3.05, 0.12, gate);
-    const sign = createLabel('ALUN-ALUN NUSANTARA', { color: PALETTE.gold, bg: 'rgba(0,0,0,0)', size: 28, scale: 0.0085 });
-    sign.position.set(0, 3.06, 0.35); gate.add(sign);
-    add(gate, 0, 0, 5.5, g);
+    const gate = createCandiBentar(1.25);
+    const sign = createLabel('ALUN-ALUN NUSANTARA', { color: '#7a3f1c', bg: 'rgba(255,244,220,.92)', size: 28, scale: 0.0095 });
+    sign.position.set(0, 4.6, 0.4); gate.add(sign);
+    add(gate, 0, 0, 7.5, g);
+    [-3.4, 3.4].forEach((x) => { const p = createPenjor(0.9); if (x > 0) p.scale.x *= -1; add(p, x, 0, 8.2, g); });
+    add(createMeru(9, 1.2), 16, 0, -3.5, g);
+    add(createMeru(5, 0.8), 18.5, 0, 1.5, g);
+    const gong = createGong(0.9); add(gong, 4.5, 0, -8.5, g); gong.userData.disc.userData.gong = true;
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(3.4, 40), new THREE.MeshToonMaterial({ map: kawungTexture('#f6e3b8', '#b0743a', 3) }));
+    plaza.rotation.x = -Math.PI / 2; plaza.receiveShadow = true;
+    add(plaza, toX(W.nara.x) - toX(W.island.cx), 0.015, toZ(W.nara.y) - toZ(W.island.cy), g);
+    [[-6, 3.5], [6.5, 4]].forEach(([x, z]) => add(createStupa(0.7), x, 0, z, g));
     for (let r = 0; r < 3; r += 1) for (let c = 0; c < 4; c += 1) {
       const t = new THREE.Group();
       add(box(2.1, 0.2 + r * 0.25, 1.6, '#6b8f3a'), 0, (0.2 + r * 0.25) / 2, 0, t);
@@ -296,7 +301,9 @@ const LANDMARKS = {
     const pad = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.5, 32), new THREE.MeshBasicMaterial({ color: PALETTE.cyan, transparent: true, opacity: 0.6 }));
     pad.rotation.x = -Math.PI / 2; add(pad, toX(W.nara.x) - toX(W.island.cx), 0.03, toZ(W.nara.y) - toZ(W.island.cy), g);
   },
-  1(g) { // Kantin sekolah modern dengan portal lengkung bersulur
+  1(g) { // Kantin sekolah modern dengan portal lengkung bersulur, jagung, tempe, pepaya
+    add(createTempe(0.8), -1.8, 0.92, 2.7, g); add(createPapaya(0.9), -1.3, 0.88, 3.0, g); add(createCorn(0.9), 1.4, 1.05, 2.8, g).rotation.z = 1.2;
+    [-2.8, 2.8].forEach((x) => { const p = createPenjor(0.75); if (x > 0) p.scale.x *= -1; add(p, x, 0, 3.6, g); });
     add(box(6, 2.6, 2.6, '#f6ead2'), 0, 1.3, 0, g);
     add(box(6.1, 0.35, 2.7, '#f08a3c'), 0, 2.2, 0, g);
     add(box(6.3, 0.2, 2.9, '#5a6d6b'), 0, 2.7, 0, g);
@@ -326,6 +333,8 @@ const LANDMARKS = {
     const dome = new THREE.Mesh(new THREE.SphereGeometry(1.35, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshToonMaterial({ color: PALETTE.cyan, transparent: true, opacity: 0.3, depthWrite: false }));
     add(dome, 0, 0.4, 0, lab);
     add(lab, 5.6, 0, 0.6, g);
+    add(createRumahGadang(0.75), -6.2, 0, -0.6, g);
+    [-2.9, -0.3, 2.3].forEach((x) => add(createCorn(0.6), x, 1.15, 0.25, g).rotation.z = 1.4);
   },
   3(g) { // Pohon raksasa dengan gerbang emas (penyerapan)
     add(cyl(0.9, 1.4, 5, '#7a5134', 10), 0, 2.5, 0, g);
@@ -339,6 +348,7 @@ const LANDMARKS = {
       l.userData.orbit = { r: 1.5 + rand(), s: 0.4 + rand() * 0.5, y: 1 + rand() * 4, o: rand() * 6 };
       add(l, 0, l.userData.orbit.y, 0, g);
     }
+    [[-4.2, 0.5], [4.2, 0.5], [-3.2, -2.2], [3.2, -2.2]].forEach(([x, z]) => add(createStupa(0.55), x, 0, z, g));
   },
   4(g) { // Kota terapung: menara & bola molekul
     let y = 0;
@@ -367,7 +377,10 @@ const LANDMARKS = {
     add(cyl(0.07, 0.09, 1, '#7a4a2a', 6), 0, -1.05, 0, lens);
     lens.rotation.z = 0.6;
     add(lens, 2.4, 2.3, 0.2, g).userData.bob = 2.3;
-    const onair = createLabel('● ON AIR', { color: PALETTE.coral, size: 26 }); onair.position.set(0, 3.8, -1.2); g.add(onair);
+    const onair = createLabel('● ON AIR', { color: '#e2553f', size: 26 }); onair.position.set(0, 3.8, -1.2); g.add(onair);
+    const kelir = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.2), new THREE.MeshBasicMaterial({ color: '#fff1c9' })); add(kelir, -4.4, 1.6, -0.6, g);
+    add(createGunungan(0.75), -4.4, 0.7, -0.55, g);
+    const blencong = sph(0.16, '#ffb347'); blencong.material = toon('#ffb347', { emissive: '#ff9a1f', emissiveIntensity: 1.2 }); add(blencong, -4.4, 2.9, 0.4, g).userData.blink = true;
   },
   6(g) { // Dapur Juara: pendopo joglo, tungku, dan portal daun emas
     add(box(4.4, 0.25, 3.2, '#c79a63'), 0, 0.12, 0, g);
@@ -383,6 +396,8 @@ const LANDMARKS = {
     portal.add(pd); pd.userData.pulse = true;
     for (let i = 0; i < 7; i += 1) { const lf = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 4), toon(i % 2 ? '#f5a623' : '#ffd17c')); const a = Math.PI * 0.15 + (i / 6) * Math.PI * 0.7; lf.position.set(Math.cos(a) * 1.6, Math.sin(a) * 1.6, 0); lf.rotation.z = a - Math.PI / 2; portal.add(lf); }
     add(portal, 4.2, 1.6, 0.5, g).rotation.y = -0.5;
+    const ondelA = createOndelOndel('#d9442b', 0.72); add(ondelA, -3.2, 0, 1.9, g).userData.sway = 0;
+    const ondelB = createOndelOndel('#f4efe6', 0.72); add(ondelB, -4.4, 0, 1.2, g).userData.sway = 1.5;
   }
 };
 
@@ -393,7 +408,7 @@ function buildLandmark(id) {
   if (id === 0) g.position.set(f.x, 0, f.z);
   else g.position.set(f.x, 0, f.z - f.rz * 0.5);
   scene.add(g);
-  g.traverse((o) => { if (o.userData.spin || o.userData.bob || o.userData.pulse || o.userData.orbit || o.userData.smoke !== undefined || o.userData.blink) animated.push(o); });
+  g.traverse((o) => { if (o.userData.spin || o.userData.bob || o.userData.pulse || o.userData.orbit || o.userData.smoke !== undefined || o.userData.blink || o.userData.sway !== undefined || o.userData.gong) animated.push(o); });
 }
 
 function buildBridges() {
@@ -425,6 +440,15 @@ function buildBridges() {
       return r;
     });
     bridges3d.push({ br, tiles, rails, open: null, lightUp: -1 });
+    [a, b].forEach((end, k) => {
+      const back = k === 0 ? -1 : 1;
+      [-1, 1].forEach((side) => {
+        const p = createPenjor(0.7);
+        p.position.set(end.x + Math.cos(yaw) * side * (width * 0.7 + 0.3) - dir.x * back * 0.6, 0, end.z - Math.sin(yaw) * side * (width * 0.7 + 0.3) - dir.z * back * 0.6);
+        p.rotation.y = yaw + (side > 0 ? Math.PI : 0);
+        scene.add(p);
+      });
+    });
   });
 }
 
@@ -497,6 +521,30 @@ function buildSkyAndClouds() {
     add(new THREE.Mesh(new THREE.IcosahedronGeometry(3.4, 0), toon('#4f9e64')), 0, h + 0.5, 0, g);
     add(g, Math.cos(a) * r, -18, Math.sin(a) * r);
   }
+  // Layang-layang warna-warni di atas kepulauan
+  const kiteColors = [['#e2553f', '#f5b72b'], ['#1fc3d3', '#ffffff'], ['#2fa36b', '#f5b72b'], ['#f472b6', '#ffffff'], ['#2b4c7e', '#f5b72b'], ['#f08a3c', '#2fa36b']];
+  kiteColors.forEach(([c1, c2], i) => {
+    const k = createKite(c1, c2);
+    const a = (i / kiteColors.length) * Math.PI * 2;
+    k.userData.kite = { a, r: 18 + (i % 3) * 9, y: 14 + (i % 2) * 5, s: 0.05 + (i % 3) * 0.02 };
+    k.scale.setScalar(1.3);
+    scene.add(k);
+    animated.push(k);
+  });
+  // Perahu pinisi berlayar di lautan awan
+  [0, Math.PI].forEach((a, i) => {
+    const p = createPinisi(1.4);
+    p.userData.pinisi = { a, r: 62 + i * 14, s: 0.02 + i * 0.008 };
+    scene.add(p);
+    animated.push(p);
+  });
+  // Matahari
+  const sunDisc = new THREE.Mesh(new THREE.CircleGeometry(9, 32), new THREE.MeshBasicMaterial({ color: '#fff3b0', fog: false }));
+  sunDisc.position.set(-120, 70, -160); sunDisc.lookAt(0, 0, 0);
+  scene.add(sunDisc);
+  const sunGlow = new THREE.Mesh(new THREE.CircleGeometry(16, 32), new THREE.MeshBasicMaterial({ color: '#ffe68a', transparent: true, opacity: 0.35, fog: false }));
+  sunGlow.position.copy(sunDisc.position).multiplyScalar(1.01); sunGlow.lookAt(0, 0, 0);
+  scene.add(sunGlow);
   // Awan tinggi yang melayang
   for (let i = 0; i < 10; i += 1) {
     const c = new THREE.Group();
@@ -1112,9 +1160,18 @@ function animateWorld(dt) {
     if (o.userData.bob) o.position.y = o.userData.bob + Math.sin(t * 1.5) * 0.15;
     if (o.userData.pulse) o.material.opacity = 0.45 + Math.sin(t * 3) * 0.15;
     if (o.userData.blink) o.visible = Math.sin(t * 4) > -0.3;
+    if (o.userData.sway !== undefined) { o.rotation.y = Math.sin(t * 1.6 + o.userData.sway) * 0.35; o.rotation.z = Math.sin(t * 3.2 + o.userData.sway) * 0.05; }
+    if (o.userData.gong) { const near = self.obj && Math.hypot(self.x - (o.parent.parent.position.x + o.parent.position.x), self.z - (o.parent.parent.position.z + o.parent.position.z)) < 3; o.scale.setScalar(near ? 1 + Math.abs(Math.sin(t * 10)) * 0.06 : 1); }
     if (o.userData.orbit) { const r = o.userData.orbit; o.position.set(Math.cos(t * r.s + r.o) * r.r, r.y + Math.sin(t * 2 + r.o) * 0.3, Math.sin(t * r.s + r.o) * r.r + 0.6); o.rotation.y += dt * 2; }
     if (o.userData.smoke !== undefined) { const k = (t * 0.35 + o.userData.smoke) % 1; o.position.set(-1.2 + k * 0.4, 1.6 + k * 2.4, -0.6); o.scale.setScalar(0.6 + k * 1.4); }
     if (o.userData.drift) { o.position.x += o.userData.drift * dt; if (o.position.x > 120) o.position.x = -120; }
+    if (o.userData.kite) {
+      const k = o.userData.kite; k.a += k.s * dt;
+      o.position.set(Math.cos(k.a) * k.r, k.y + Math.sin(t * 1.3 + k.r) * 1.2, Math.sin(k.a) * k.r);
+      o.rotation.set(Math.sin(t * 2 + k.r) * 0.15, -k.a, Math.sin(t * 1.7 + k.r) * 0.25);
+      o.userData.tail.forEach((b, j) => { b.position.x = Math.sin(t * 5 + j * 0.8) * 0.12 * j; });
+    }
+    if (o.userData.pinisi) { const p = o.userData.pinisi; p.a += p.s * dt; o.position.set(Math.cos(p.a) * p.r, -11.2 + Math.sin(t + p.r) * 0.3, Math.sin(p.a) * p.r); o.rotation.y = -p.a; o.rotation.z = Math.sin(t * 0.9 + p.r) * 0.04; }
   });
   waterfalls.forEach((tex) => { tex.offset.y -= dt * 1.2; });
   if (cloudSea) cloudSea.rotation.y += dt * 0.004;

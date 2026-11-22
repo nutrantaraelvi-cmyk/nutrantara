@@ -1,6 +1,6 @@
 {
   "name": "nutrantara",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "NUTRANTARA — Misi Pangan Nusantara: game petualangan 3D multipemain untuk Biologi SMA dengan panel kendali guru",
   "main": "server.js",

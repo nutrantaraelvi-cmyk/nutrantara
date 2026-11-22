@@ -58,6 +58,10 @@ Pengguna meminta game 3D bergaya platformer petualangan (terinspirasi genre Supe
 
 Pengguna memberi konsep peta (kepulauan melayang di atas awan, 6 pos di pulau-pulau sekeliling, Nara putih-oranye) dan meminta: semua misi/tantangan di dalam peta dunia; alur beranda → daftar akun → login → loading → lobi → MAIN → pilih map → terjun ke Pos 1; animasi interaktif. Implementasi: `world-data.js` kini berisi pulau + jembatan + `allowedIslands` (dipakai server untuk membatasi gerak); akun nama pengguna + kata sandi (scrypt) lewat `/api/register|login|logout|me|status`, kode kelas opsional; `app.js` (alur & lobi 3D), `quest.js` (terminal/papan/altar), `fx.js`; pos 6 masih membuka layar Dapur Juara (DOM). Mode tamu luring tanpa server.
 
+## Versi 0.6: tema Nusantara Ceria (22 November 2026)
+
+Pengguna memberi poster judul (logo krem, papan kayu, tombol MULAI GAME toska-emas, Nara putih bermata cyan, pura/meru, jagung-tempe-pepaya) dan meminta warna lebih cerah dan ceria dengan budaya populer Indonesia, dengan prinsip ATM (amati-tiru-modifikasi), bukan salinan persis. Implementasi: konversi palet gelap→terang di CSS, `theme.css`, `culture.js`, Nara diperbarui.
+
 ## Catatan saat melanjutkan
 
 Ada percakapan awal yang sempat membahas Godot, Supabase, login Google, multiplayer dan target 3.000 pengguna. Dokumen desain yang diberikan kemudian secara eksplisit menetapkan prototipe versi uji tanpa engine/backend/multiplayer. Jadikan dokumen tersebut acuan scope saat ini; jangan menganggap percakapan eksplorasi sebelumnya sebagai keputusan final. Jika pengguna mengubah scope, bahas implikasi platform, data peserta, beban operasional, dan biaya sebelum implementasi.

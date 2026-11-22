@@ -1,0 +1,114 @@
+/*
+ * Tema "Nusantara Ceria" — lapisan ornamen di atas styles.css/app.css/landing.css.
+ * Motif: batik kawung (latar), tumpal (tepi panel), kayu & emas (papan judul), toska-emas (tombol utama).
+ */
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap');
+
+:root{
+  --display:'Baloo 2','Manrope',sans-serif;
+  --sky:#8fd8f5; --sky2:#d9f3ff; --leaf:#3fb56b; --wood:#9a5b2e; --wood2:#c98a4b; --gold:#f5b72b; --maroon:#8b2f1d;
+  --kawung:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'%3E%3Cg fill='none' stroke='%23b0743a' stroke-opacity='.13' stroke-width='1.4'%3E%3Cellipse cx='24' cy='12' rx='7' ry='11'/%3E%3Cellipse cx='24' cy='36' rx='7' ry='11'/%3E%3Cellipse cx='12' cy='24' rx='11' ry='7'/%3E%3Cellipse cx='36' cy='24' rx='11' ry='7'/%3E%3Ccircle cx='24' cy='24' r='2'/%3E%3C/g%3E%3C/svg%3E");
+  --tumpal:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='8' viewBox='0 0 16 8'%3E%3Cpath d='M0 8 L8 0 L16 8Z' fill='%23e2553f'/%3E%3Cpath d='M4 8 L8 4 L12 8Z' fill='%23f5b72b'/%3E%3C/svg%3E");
+}
+
+html{background:var(--bg)}
+body{background:var(--kawung),linear-gradient(180deg,#e6f7ff 0,#fff6e3 420px,#fff6e3 100%)!important;background-attachment:fixed}
+h1,h2,h3,.block-title,.lobby-play span,.ov-top h2{font-family:var(--display)!important;letter-spacing:-.01em!important}
+h1 em,h2 em,h3 em,.block-title em{color:var(--leaf)}
+
+/* Tombol: toska berbingkai emas seperti tombol pembuka permainan */
+.button-primary{background:linear-gradient(180deg,#1fc3d3,#0f93a6)!important;color:#fff!important;border:2px solid var(--gold)!important;box-shadow:0 4px 0 #0b6f7d,0 8px 18px rgba(15,147,166,.28);text-shadow:0 1px 0 rgba(0,0,0,.18)}
+.button-primary:hover{filter:brightness(1.06)}
+.button-primary:active{transform:translateY(3px);box-shadow:0 1px 0 #0b6f7d}
+.button-secondary{background:#fffaf0!important;color:var(--text)!important;border:2px solid rgba(154,91,46,.35)!important}
+.button-secondary:hover{border-color:var(--wood)!important}
+
+/* Kartu & panel: putih kertas dengan tepi tumpal */
+.pos-card,.char-card,.world-card,.holo,.auth-card,.passport-record,.mission-card,.decision-panel,.evidence-panel,.admin-section,.feature-list li,.steps li,.privacy{position:relative;background-color:#fffdf8!important;box-shadow:0 10px 30px rgba(120,70,20,.10)}
+.lobby-profile,.lobby-side,.ov-info{background-color:#fffdf8!important;box-shadow:0 10px 30px rgba(120,70,20,.12)}
+.pos-card::after,.char-card::after,.lobby-profile::after,.lobby-side::after,.ov-info::after,.holo::after,.auth-card::after,.privacy::after{content:"";position:absolute;left:0;right:0;bottom:0;height:8px;background:var(--tumpal) repeat-x;border-radius:0 0 12px 12px;opacity:.9;pointer-events:none}
+
+/* Logo judul: huruf krem tebal bergaris coklat, dihiasi tunas daun */
+.logo-nutra{display:inline-block;position:relative;font:800 clamp(46px,7vw,92px)/.95 var(--display);letter-spacing:.01em;color:#fff4dc;-webkit-text-stroke:3px #7a3f1c;paint-order:stroke fill;text-shadow:0 5px 0 #7a3f1c,0 9px 0 rgba(122,63,28,.35),0 14px 24px rgba(0,0,0,.18)}
+.logo-nutra .sprout{position:absolute;top:-.34em;font-size:.42em;-webkit-text-stroke:0;text-shadow:none}
+.logo-nutra .sprout.a{left:.75em;transform:rotate(-12deg)}
+.logo-nutra .sprout.b{right:1.3em;transform:rotate(14deg)}
+.ribbon{display:inline-block;margin-top:14px;padding:10px 34px;font:700 clamp(18px,2.2vw,26px) var(--display);color:#3b2a1a;background:linear-gradient(180deg,#f7d9a8,#e9bd7c);border:3px solid #8a4b22;border-radius:12px;box-shadow:0 4px 0 #8a4b22,0 10px 18px rgba(0,0,0,.12);position:relative}
+.ribbon::before,.ribbon::after{content:"🌿";position:absolute;top:50%;transform:translateY(-50%);font-size:18px}
+.ribbon::before{left:8px}.ribbon::after{right:8px;transform:translateY(-50%) scaleX(-1)}
+.tagline{margin:18px 0 0;font:700 clamp(17px,1.9vw,23px)/1.35 var(--display);color:#2b4c7e}
+.tagline em{font-style:normal;color:#e07a10;background:linear-gradient(transparent 70%,rgba(245,183,43,.45) 70%)}
+
+/* Tombol utama gaya ornamen (MULAI GAME / MAIN) */
+.btn-ornate{display:inline-flex;align-items:center;gap:14px;padding:16px 38px;border-radius:999px;text-decoration:none;font:800 clamp(20px,2.4vw,30px) var(--display);letter-spacing:.04em;color:#fff6d8!important;background:radial-gradient(ellipse at 50% 0,#2fd4e0,#0b7f8f 70%);border:4px solid var(--gold);box-shadow:0 0 0 3px #8a5a14,0 6px 0 #6a3f0c,0 14px 30px rgba(11,127,143,.4),inset 0 2px 0 rgba(255,255,255,.35);text-shadow:0 2px 0 rgba(0,0,0,.25);position:relative;transition:transform .12s,box-shadow .12s;cursor:pointer}
+.btn-ornate::before,.btn-ornate::after{content:"";position:absolute;width:16px;height:16px;background:var(--gold);transform:rotate(45deg);box-shadow:0 0 10px rgba(245,183,43,.8)}
+.btn-ornate::before{top:-11px;left:calc(50% - 8px)}.btn-ornate::after{bottom:-11px;left:calc(50% - 8px)}
+.btn-ornate:hover{transform:translateY(-2px) scale(1.02)}
+.btn-ornate:active{transform:translateY(4px);box-shadow:0 0 0 3px #8a5a14,0 2px 0 #6a3f0c}
+.btn-ornate:focus-visible{outline:4px solid #2b4c7e;outline-offset:4px}
+.btn-ornate .tri{width:0;height:0;border-left:20px solid #f5c94a;border-top:12px solid transparent;border-bottom:12px solid transparent;filter:drop-shadow(0 2px 0 rgba(0,0,0,.25))}
+
+/* Topbar */
+.topbar{border-bottom:3px solid transparent;border-image:var(--tumpal) 0 0 8 0 repeat}
+.wordmark-mark{background:linear-gradient(135deg,#1fc3d3,#0f93a6);color:#fff!important;border-color:var(--gold)!important}
+.wordmark strong{color:#7a3f1c}
+
+/* Landing hero sebagai layar judul */
+.landing .hero{position:relative;padding:40px 0 30px}
+.hero-stage{border-radius:50%!important;aspect-ratio:1!important;border:6px solid #8ff0f5!important;box-shadow:0 0 0 6px rgba(31,195,211,.35),0 0 50px rgba(31,195,211,.55),inset 0 0 40px rgba(31,195,211,.4)!important;background:radial-gradient(circle at 50% 35%,#e6f9ff 0,#9edff5 55%,#59bfe0 100%)!important;animation:portal-glow 3s ease-in-out infinite}
+@keyframes portal-glow{50%{box-shadow:0 0 0 10px rgba(31,195,211,.25),0 0 70px rgba(31,195,211,.7),inset 0 0 50px rgba(31,195,211,.45)}}
+.hero-tag{left:50%!important;transform:translateX(-50%);bottom:22px!important}
+.hero-actions{margin-top:26px;align-items:center}
+.hero-sub{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.hero-sub a{font-size:13px}
+.food-row{display:flex;gap:10px;margin-top:22px;font-size:34px;filter:drop-shadow(0 4px 4px rgba(0,0,0,.15))}
+.food-row span{animation:bob 3s ease-in-out infinite}
+.food-row span:nth-child(2){animation-delay:-.7s}.food-row span:nth-child(3){animation-delay:-1.4s}.food-row span:nth-child(4){animation-delay:-2.1s}.food-row span:nth-child(5){animation-delay:-2.8s}
+@keyframes bob{50%{transform:translateY(-6px) rotate(-4deg)}}
+.stat-strip{background:#fffdf8}
+.stat-strip strong{color:#e07a10!important;font-family:var(--display)}
+
+/* Masuk/daftar, memuat, lobi */
+.phase-auth{background:var(--kawung),linear-gradient(180deg,#7fd3f7 0%,#c9efff 55%,#fff3d6 100%)!important}
+.auth-tabs button[aria-selected="true"]{background:linear-gradient(180deg,#1fc3d3,#0f93a6)!important;color:#fff!important}
+.phase-loading{background:var(--kawung),radial-gradient(ellipse at 50% 30%,#d9f3ff 0%,#9edff5 50%,#58bde0 100%)!important;color:#2b2118}
+.load-step{color:#2b4c7e}
+.load-tip{color:#3b2a1a!important;background:rgba(255,253,248,.85);padding:10px 16px;border-radius:12px}
+.load-bar{background:rgba(255,255,255,.6)!important;border:2px solid #8a4b22!important;height:14px!important}
+.load-bar i{background:linear-gradient(90deg,#3fb56b,#1fc3d3,#f5b72b)!important;background-size:200% 100%!important}
+.lobby-top{background:linear-gradient(rgba(255,250,240,.9),transparent)!important}
+.lobby-play{background:radial-gradient(ellipse at 50% 0,#2fd4e0,#0b7f8f 75%)!important;color:#fff6d8!important;border:4px solid var(--gold)!important;box-shadow:0 0 0 3px #8a5a14,0 7px 0 #6a3f0c,0 18px 40px rgba(11,127,143,.45)!important;border-radius:999px!important}
+.lobby-play small{color:#fff6d8}
+.lobby-btn{background:#fffaf0!important;color:#3b2a1a!important;border:2px solid #9a5b2e!important;box-shadow:0 4px 0 #9a5b2e}
+.lobby-stats b{color:#e07a10!important}
+.lobby-seals span.on{background:var(--gold)!important}
+
+/* Dunia: HUD krem, panel hologram jadi "lontar" cerah */
+.w3-chip{background:rgba(255,250,240,.92)!important;color:#3b2a1a!important;border:2px solid rgba(154,91,46,.35)!important;font-weight:600}
+.w3-chip b{color:#e07a10!important}
+.w3-goal{border-color:#1fc3d3!important}
+.w3-banner b{color:#fff4dc!important;-webkit-text-stroke:2px #7a3f1c;paint-order:stroke fill;font-family:var(--display)!important;text-shadow:0 4px 0 #7a3f1c,0 0 30px rgba(245,183,43,.8)!important}
+.w3-banner span{background:#fffaf0!important;color:#9a5b2e!important;border:2px solid var(--gold)}
+.w3-emotes button{background:#fffaf0!important;border:2px solid #9a5b2e!important}
+.w3-holo-layer{background:rgba(255,246,227,.35)!important}
+.holo{border:3px solid var(--gold)!important;box-shadow:0 0 0 4px rgba(31,195,211,.25),0 20px 50px rgba(120,70,20,.25)!important}
+.holo::before{background:var(--kawung)!important;opacity:.7}
+.holo-choice{background:#fff!important}
+.holo-choice:has(input:checked){background:#fff1cf!important;border-color:var(--gold)!important}
+.scan-bar i{background:linear-gradient(90deg,#1fc3d3,#3fb56b)!important}
+.scan-row b{color:#e07a10!important}
+.ov-card{background:rgba(255,250,240,.94)!important;color:#3b2a1a!important}
+.ov-card small{color:#7a644e!important}
+.ov-top h2{color:#fff4dc!important;-webkit-text-stroke:2px #7a3f1c;paint-order:stroke fill;text-shadow:0 4px 0 #7a3f1c!important}
+.ov-drop{background:radial-gradient(ellipse at 50% 0,#2fd4e0,#0b7f8f 75%)!important;color:#fff6d8!important;border:3px solid var(--gold)!important;box-shadow:0 5px 0 #6a3f0c!important}
+.toast{background:#fffaf0!important;color:#3b2a1a!important;border:2px solid var(--gold)!important}
+.net-banner{background:#fffaf0!important;color:#3b2a1a!important}
+
+@media(prefers-reduced-motion:reduce){.hero-stage,.food-row span{animation:none}}
+
+/* Nara di layar memuat: wajah layar hitam, mata ^ ^ cyan, telinga oranye */
+.load-nara-body{background:#fbfdff!important;box-shadow:inset -6px -8px 0 rgba(0,0,0,.06),0 10px 24px rgba(0,0,0,.12)!important}
+.load-nara-body::before{left:7px!important;top:12px!important;width:46px!important;height:30px!important;border-radius:14px!important;background:#121a1e!important}
+.load-nara-body::after{content:"";position:absolute;top:22px;left:-7px;width:74px;height:14px;background:radial-gradient(circle at 7px 7px,#f08a3c 6px,transparent 7px),radial-gradient(circle at 67px 7px,#f08a3c 6px,transparent 7px)}
+.load-nara-body i{top:20px!important;width:11px!important;height:7px!important;background:none!important;border:3px solid #5ff3ff;border-bottom:0;border-radius:10px 10px 0 0!important;box-shadow:0 -2px 8px rgba(95,243,255,.7)!important}
+.load-nara-body i:first-child{left:15px!important}.load-nara-body i:last-child{right:15px!important}

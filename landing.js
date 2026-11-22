@@ -1,6 +1,7 @@
 /* Landing page NUTRANTARA: diorama 3D, putaran karakter, kartu pos, dan peta SVG. */
 import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, toon, PALETTE } from './characters.js';
+import { createMeru, createPenjor, createKite, createCorn, createTempe, createPapaya, createStupa } from './culture.js';
 
 const MISSIONS = window.NUTRANTARA_MISSIONS || [];
 const W = window.NUTRANTARA_WORLD;
@@ -82,7 +83,7 @@ function heroScene() {
 
   const dio = new THREE.Group();
   scene.add(dio);
-  const water = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 0.3, 48), toon('#2a8fa0'));
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 0.3, 48), toon('#ffffff'));
   water.position.y = -0.55;
   dio.add(water);
   const sand = new THREE.Mesh(new THREE.CylinderGeometry(3.7, 4.1, 0.6, 40), toon('#eed9a2'));
@@ -125,6 +126,12 @@ function heroScene() {
     g.position.set(x, 0.1, z);
     dio.add(shadowAll(g));
   });
+  // Budaya & pangan lokal
+  const meru = shadowAll(createMeru(7, 0.55)); meru.position.set(-2.2, 0.1, -1.6); dio.add(meru);
+  const penjor = shadowAll(createPenjor(0.55)); penjor.position.set(2.6, 0.1, -0.4); penjor.scale.x *= -1; dio.add(penjor);
+  const stupa = shadowAll(createStupa(0.35)); stupa.position.set(2.4, 0.1, 1.8); dio.add(stupa);
+  [[createCorn(0.7), -1.2, 0.45, 2.3, 1.3], [createTempe(0.6), 0.1, 0.2, 2.6, 0], [createPapaya(0.7), 1.2, 0.22, 2.4, 0]].forEach(([o, x, y, z, rz]) => { shadowAll(o); o.position.set(x, y, z); o.rotation.z = rz; dio.add(o); });
+  const kite = createKite('#e2553f', '#f5b72b'); kite.scale.setScalar(0.45); kite.position.set(-2.8, 4.6, -1); scene.add(kite);
   // Blok tempe + kepingan arsip
   const tempe = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.3, 0.9), toon('#e9d8a6'));
   tempe.position.set(-2.1, 1.4, 0.8);
@@ -156,6 +163,7 @@ function heroScene() {
     ring.rotation.z += dt;
     disc.material.opacity = 0.35 + Math.sin(t * 3) * 0.1;
     shard.rotation.y += dt * 2;
+    kite.position.y = 4.6 + Math.sin(t * 1.4) * 0.25; kite.rotation.z = Math.sin(t * 1.1) * 0.25; kite.userData.tail.forEach((b, j) => { b.position.x = Math.sin(t * 5 + j) * 0.1 * j; });
     shard.position.y = 2 + Math.sin(t * 2) * 0.1;
     // Penjelajah melompat kecil sesekali
     const hop = Math.max(0, Math.sin(t * 2.2)) ** 6 * 0.5;

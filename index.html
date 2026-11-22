@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#071516" />
+    <meta name="theme-color" content="#86d4f7" />
     <meta name="description" content="NUTRANTARA — game petualangan 3D multipemain untuk Biologi SMA kelas XI. Jelajahi Pulau Nusantara bersama Nara, pulihkan arsip pangan di enam pos, lalu rancang menu lokal berbasis bukti." />
     <meta property="og:title" content="NUTRANTARA — Misi Pangan Nusantara" />
     <meta property="og:description" content="Game petualangan 3D multipemain tentang sistem pencernaan dan menu pangan lokal, dengan panel kendali guru." />
@@ -12,6 +12,7 @@
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="landing.css" />
+    <link rel="stylesheet" href="theme.css" />
     <script src="missions.js" defer></script>
     <script src="world-data.js" defer></script>
     <script type="module" src="landing.js"></script>
@@ -37,19 +38,20 @@
       <main id="konten">
         <section class="hero" aria-labelledby="hero-title">
           <div class="hero-copy">
-            <div class="eyebrow"><span class="eyebrow-line"></span> GAME PETUALANGAN 3D · BIOLOGI SMA KELAS XI</div>
-            <h1 id="hero-title">Jelajahi pulau.<br /><em>Pulihkan arsip pangan.</em></h1>
-            <p class="lede">Terjun ke Kepulauan NUTRANTARA yang melayang di atas awan. Bersama Nara, pindai terminal arsip, pecahkan tantangan di setiap pulau, segel pos, dan nyalakan jembatan cahaya menuju Dapur Juara.</p>
+            <h1 id="hero-title" class="sr-only">NUTRANTARA — Misi Pangan Nusantara</h1>
+            <div class="logo-nutra" aria-hidden="true"><span class="sprout a">🌱</span>NUTRANTARA<span class="sprout b">🌿</span></div>
+            <div><span class="ribbon">Misi Pangan Nusantara</span></div>
+            <p class="tagline">Jelajahi pulau, taklukkan tantangan, racik <em>Menu Juara!</em></p>
+            <p class="lede">Terjun ke Kepulauan NUTRANTARA yang melayang di atas awan. Bersama Nara, pindai terminal arsip, pecahkan tantangan pencernaan dan gizi, segel pos, lalu nyalakan jembatan cahaya menuju Dapur Juara.</p>
             <div class="hero-actions">
-              <a class="button button-primary" href="play.html?mode=daftar">Daftar &amp; mulai <span aria-hidden="true">↗</span></a>
-              <a class="button button-secondary" href="play.html">Sudah punya akun? Masuk</a>
+              <a class="btn-ornate" href="play.html"><span class="tri" aria-hidden="true"></span>MULAI GAME</a>
+            </div>
+            <div class="hero-sub">
+              <a class="button button-secondary" href="play.html?mode=daftar">Daftar akun</a>
+              <a class="button button-secondary" href="play.html">Masuk</a>
               <a class="button button-secondary" href="admin.html">Panel guru</a>
             </div>
-            <ul class="hero-badges" aria-label="Keunggulan">
-              <li><span aria-hidden="true">◈</span> Multipemain satu kelas</li>
-              <li><span aria-hidden="true">◈</span> Tanpa instalasi · akun tanpa email</li>
-              <li><span aria-hidden="true">◈</span> Dikendalikan guru</li>
-            </ul>
+            <div class="food-row" aria-hidden="true"><span>🌽</span><span>🥥</span><span>🍠</span><span>🥭</span><span>🍚</span></div>
           </div>
           <div class="hero-stage">
             <canvas id="hero-canvas" aria-label="Ilustrasi 3D: Penjelajah Pangan bertopi caping dan Nara si robot pemandu di Pulau NUTRANTARA"></canvas>

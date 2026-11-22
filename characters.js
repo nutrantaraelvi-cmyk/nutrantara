@@ -283,13 +283,23 @@ export function createNara() {
 
   const shell = toon(PALETTE.white);
   bodyG.add(mesh(new THREE.CapsuleGeometry(0.42, 0.42, 6, 16), shell, 0, 1.15, 0));
-  // Visor
-  const visor = mesh(new THREE.BoxGeometry(0.62, 0.3, 0.2), toon('#0b1f21'), 0, 1.38, 0.33);
-  bodyG.add(visor);
-  const eyeMat = toon(PALETTE.green, { emissive: PALETTE.green, emissiveIntensity: 1.2, unique: true });
-  const eyeGeo = new THREE.BoxGeometry(0.1, 0.12, 0.02);
-  const eyeL = mesh(eyeGeo, eyeMat, -0.13, 1.39, 0.44); const eyeR = mesh(eyeGeo, eyeMat, 0.13, 1.39, 0.44);
+  // Layar wajah hitam mengilap dengan mata cyan tersenyum (^ ^)
+  const face = mesh(new THREE.SphereGeometry(0.3, 18, 12), toon('#121a1e'), 0, 1.38, 0.27);
+  face.scale.set(1.18, 0.82, 0.5);
+  bodyG.add(face);
+  const eyeMat = toon('#5ff3ff', { emissive: '#3fe6f5', emissiveIntensity: 1.4, unique: true });
+  const eyeGeo = new THREE.TorusGeometry(0.065, 0.024, 6, 14, Math.PI);
+  const eyeL = mesh(eyeGeo, eyeMat, -0.12, 1.36, 0.42); const eyeR = mesh(eyeGeo, eyeMat, 0.12, 1.36, 0.42);
   bodyG.add(eyeL, eyeR);
+  // Penutup telinga oranye dengan lingkar cyan
+  [-1, 1].forEach((side) => {
+    const pod = mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.1, 18), toon('#f08a3c'), side * 0.43, 1.38, 0);
+    pod.rotation.z = Math.PI / 2;
+    bodyG.add(pod);
+    const ringEar = mesh(new THREE.TorusGeometry(0.08, 0.02, 6, 16), toon('#3fe6f5', { emissive: '#3fe6f5', emissiveIntensity: 0.8 }), side * 0.49, 1.38, 0);
+    ringEar.rotation.y = Math.PI / 2;
+    bodyG.add(ringEar);
+  });
   // Lambang berlian N
   const emblem = mesh(new THREE.OctahedronGeometry(0.1, 0), toon(PALETTE.green, { emissive: PALETTE.green, emissiveIntensity: 0.8 }), 0, 0.98, 0.42);
   emblem.scale.z = 0.4;

@@ -570,7 +570,7 @@ const STATIC = {
   '/styles.css': 'styles.css', '/admin.css': 'admin.css', '/landing.css': 'landing.css',
   '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
   '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js',
-  '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js',
+  '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/theme.css': 'theme.css',
   '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };
 const IMMUTABLE = new Set(['vendor/three/three.module.min.js']);

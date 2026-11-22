@@ -5,6 +5,7 @@
  */
 import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, toon, PALETTE } from './characters.js';
+import { createPenjor, createKite, createStupa, createCorn, createTempe, kawungTexture } from './culture.js';
 
 const net = window.NutraNet;
 const game = window.NutraGame;
@@ -163,7 +164,7 @@ function showAuth() {
 
 // ---------- Lobi ----------
 const lobby = (() => {
-  let renderer; let scene; let camera; let hero; let nara; let ring; let clouds = [];
+  let renderer; let scene; let camera; let hero; let nara; let ring; let clouds = []; let kites = [];
   let running = false;
   let yaw = 0.3;
   let drag = null;
@@ -177,8 +178,8 @@ const lobby = (() => {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     scene = new THREE.Scene();
-    scene.background = new THREE.Color('#a8e3f0');
-    scene.fog = new THREE.Fog('#a8e3f0', 20, 60);
+    scene.background = new THREE.Color('#86d4f7');
+    scene.fog = new THREE.Fog('#bfe9fb', 22, 65);
     camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
     scene.add(new THREE.HemisphereLight('#f0fbff', '#4d8a5e', 1.7));
     const sun = new THREE.DirectionalLight('#fff0d0', 2.2);
@@ -195,7 +196,14 @@ const lobby = (() => {
     cliff.rotation.x = Math.PI; cliff.position.y = -2.8;
     island.add(top, sand, cliff);
     scene.add(island);
-    ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.3, 40), new THREE.MeshBasicMaterial({ color: PALETTE.cyan, transparent: true, opacity: 0.7 }));
+    const plaza = new THREE.Mesh(new THREE.CircleGeometry(1.9, 40), new THREE.MeshToonMaterial({ map: kawungTexture('#f6e3b8', '#b0743a', 2) }));
+    plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.01; plaza.receiveShadow = true; scene.add(plaza);
+    [[-2.6, -1.4, false], [2.6, -1.4, true]].forEach(([x, z, flip]) => { const p = createPenjor(0.8); if (flip) p.scale.x *= -1; p.position.set(x, 0, z); scene.add(p); });
+    const stupa = createStupa(0.4); stupa.position.set(2.1, 0, 1.2); scene.add(stupa);
+    const corn = createCorn(0.7); corn.position.set(-1.4, 0.18, 1.6); corn.rotation.z = 1.3; scene.add(corn);
+    const tempe = createTempe(0.6); tempe.position.set(-0.8, 0.1, 2.0); scene.add(tempe);
+    kites = [['#e2553f', '#f5b72b', -4, 5], ['#1fc3d3', '#ffffff', 4.5, 6], ['#2fa36b', '#f5b72b', 1, 7.5]].map(([a, b, x, y]) => { const k = createKite(a, b); k.scale.setScalar(0.6); k.position.set(x, y, -5); scene.add(k); return k; });
+    ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.3, 40), new THREE.MeshBasicMaterial({ color: '#1fc3d3', transparent: true, opacity: 0.7 }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.02;
     scene.add(ring);
     hero = createExplorer(user ? user.color : PALETTE.cyan);
@@ -236,6 +244,7 @@ const lobby = (() => {
     nara.rotation.y = Math.atan2(camera.position.x - nara.position.x, camera.position.z - nara.position.z) * 0.6;
     ring.scale.setScalar(1 + Math.sin(t * 2) * 0.06);
     clouds.forEach((c) => { c.position.x += c.userData.drift * dt; if (c.position.x > 30) c.position.x = -30; });
+    kites.forEach((k, i) => { k.position.y += Math.sin(t * 1.3 + i) * 0.004; k.rotation.z = Math.sin(t * 1.1 + i) * 0.3; k.userData.tail.forEach((b, j) => { b.position.x = Math.sin(t * 5 + j + i) * 0.1 * j; }); });
     idleT -= dt;
     if (idleT <= 0) { idleT = 7 + Math.random() * 5; hero.userData.emote(['wave', 'think', 'cheer'][Math.floor(Math.random() * 3)]); }
     renderer.render(scene, camera);

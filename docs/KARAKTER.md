@@ -64,6 +64,15 @@ Tata letak mengikuti [`world-data.js`](../world-data.js), yang dipakai bersama o
 
 Mengikuti konsep peta pengguna: pulau-pulau melayang di atas lautan awan dengan tebing berlapis, akar menggantung, dan air terjun. Penanda tiap pulau: **Pos 1** kantin sekolah dengan lengkung bersulur, **Pos 2** pasar tradisional + kubah lab pencernaan, **Pos 3** pohon raksasa dengan gerbang emas, **Pos 4** menara kota terapung + bola molekul, **Pos 5** meja studio iklan dengan kaca pembesar, **Pos 6** pendopo dapur dengan portal daun emas. **Alun-alun Nusantara** di tengah: gapura, sawah bertingkat, kolam, dan blok tempe.
 
+## Tema "Nusantara Ceria" & budaya (v0.6)
+
+Mengikuti poster referensi pengguna (amati, tiru, modifikasi, tidak disalin persis):
+
+- **UI cerah**: latar krem dengan pola **batik kawung**, tepi panel bermotif **tumpal**, judul berhuruf tebal (Baloo 2), logo krem bergaris coklat dengan tunas daun, papan kayu untuk subjudul, dan tombol utama **toska berbingkai emas** (MULAI GAME / MAIN). Lapisan ini ada di `theme.css`.
+- **Nara** kini berwajah layar hitam dengan **mata cyan tersenyum (^ ^)** dan **penutup telinga oranye**. Antena daun padi dan lambang "N" tetap dipertahankan.
+- **Budaya populer di dunia** (`culture.js`): **candi bentar** (gerbang Alun-alun), **meru** bertingkat, **penjor** di gerbang dan ujung jembatan, **gong gamelan** (bergetar saat didekati), pelataran **batik kawung**, **stupa** ala Borobudur (Alun-alun & Pos 3), **rumah gadang** Minangkabau (Pos 2), **gunungan wayang** di kelir dengan blencong (Pos 5), **ondel-ondel** Betawi yang bergoyang (Pos 6), **layang-layang** warna-warni di langit, dan **perahu pinisi** berlayar di lautan awan.
+- **Pangan lokal**: jagung, tempe, dan pepaya di kantin, pasar, lobi, dan landing page.
+
 ## Pengembangan berikutnya
 
 - Ganti model prosedural dengan aset dari desainer (format glTF) tanpa mengubah logika: cukup ganti `createExplorer` dan `createNara`.
