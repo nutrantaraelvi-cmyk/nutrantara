@@ -54,6 +54,16 @@ Tata letak mengikuti [`world-data.js`](../world-data.js), yang dipakai bersama o
 - **Blok tempe melayang** menyimpan **12 kepingan arsip**. Koleksi ini hanya untuk kesenangan (tersimpan di browser) dan tidak memengaruhi skor belajar.
 - Latar belakang: pulau gunung api di utara, awan, dan laut berombak (ombak hanya di grafis Tinggi).
 
+## Animasi (v0.5)
+
+- **Penjelajah**: pose terjun bebas, melayang dengan **parasut daun pisang**, mendarat (tekan-pulih), emote **lambai / sorak / tari / pikir**.
+- **Nara**: **merayakan** (berputar sambil melompat, bulir antena menyala) saat jawaban benar, **menggeleng** dengan mata kuning saat salah, **berbicara** (antena bergoyang), mengikuti penjelajah sebagai pendamping.
+- **Dunia**: konfeti, debu, kilau, pilar cahaya segel, gelombang pindai, jembatan yang menyala berurutan, kubah kunci yang memudar, air terjun, awan, panah emas penunjuk tujuan.
+
+## Kepulauan (v0.5)
+
+Mengikuti konsep peta pengguna: pulau-pulau melayang di atas lautan awan dengan tebing berlapis, akar menggantung, dan air terjun. Penanda tiap pulau: **Pos 1** kantin sekolah dengan lengkung bersulur, **Pos 2** pasar tradisional + kubah lab pencernaan, **Pos 3** pohon raksasa dengan gerbang emas, **Pos 4** menara kota terapung + bola molekul, **Pos 5** meja studio iklan dengan kaca pembesar, **Pos 6** pendopo dapur dengan portal daun emas. **Alun-alun Nusantara** di tengah: gapura, sawah bertingkat, kolam, dan blok tempe.
+
 ## Pengembangan berikutnya
 
 - Ganti model prosedural dengan aset dari desainer (format glTF) tanpa mengubah logika: cukup ganti `createExplorer` dan `createNara`.

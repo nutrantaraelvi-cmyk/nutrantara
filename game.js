@@ -1,6 +1,8 @@
 (() => {
-  const APP_VERSION = '0.4';
-  const STORAGE_KEY = 'nutrantara-save-v1';
+  const APP_VERSION = '0.5';
+  const STORAGE_PREFIX = 'nutrantara-save-v2:';
+  let userKey = '';
+  const saveKey = () => STORAGE_PREFIX + userKey;
   const LEADERBOARD_KEY = 'nutrantara-leaderboard-v1';
   const SCHEMA_VERSION = 2;
   const SEAL_POINTS = 20;
@@ -19,7 +21,7 @@
     { key: 'fiber', label: 'Serat', unit: 'g' }
   ];
   const NODE_CLASSES = ['node-one', 'node-two', 'node-three', 'node-four', 'node-five', 'node-six'];
-  const screens = ['welcome', 'world', 'map', 'mission', 'kitchen', 'passport', 'leaderboard'];
+  const screens = ['world', 'map', 'mission', 'kitchen', 'passport', 'leaderboard'];
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -64,7 +66,8 @@
 
   function loadState() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!userKey) return freshState();
+      const raw = localStorage.getItem(saveKey());
       if (!raw) return freshState();
       return normalizeState(JSON.parse(raw));
     } catch {
@@ -90,7 +93,7 @@
     }
   }
 
-  let state = loadState();
+  let state = freshState();
   let toastTimer;
   let selectedPos = null;
   let challengeView = 0;
@@ -102,7 +105,8 @@
     state.updatedAt = new Date().toISOString();
     if (net && state.alias) net.pushProgress(state, state.currentScreen);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (userKey) localStorage.setItem(saveKey(), JSON.stringify(state));
+      document.dispatchEvent(new CustomEvent('nutra:state'));
       return true;
     } catch {
       showToast('Penyimpanan perangkat tidak tersedia. Unduh Paspor untuk mencadangkan progres.');
@@ -177,7 +181,7 @@
 
   function goTo(screen, persist = true) {
     if (!screens.includes(screen)) return;
-    if (screen !== 'welcome' && !state.alias) screen = 'welcome';
+    if (!state.alias) return;
     if ((screen === 'mission' || screen === 'kitchen') && !isUnlocked(state.activePos)) {
       showToast(lockMessage(state.activePos));
       screen = 'map';
@@ -224,7 +228,8 @@
     $('#player-chip').hidden = !state.alias;
     $('#player-name').textContent = state.alias || '';
     $('#player-score').textContent = state.alias ? `${computeScore()} POIN · ${sealCount()}/6` : '';
-    $('#alias').value = state.alias || '';
+    const aliasInput = $('#alias');
+    if (aliasInput) aliasInput.value = state.alias || '';
     const chip = $('#player-chip');
     const online = Boolean(net && net.online);
     chip.dataset.online = String(online);
@@ -233,36 +238,25 @@
     if (privacy) privacy.lastChild.textContent = net && net.status().connected ? ' Progres tersimpan di perangkat ini dan di server kelas guru. Jangan gunakan nama lengkap.' : ' Progres tersimpan di perangkat ini. Jangan gunakan nama lengkap.';
   }
 
-  let pendingJoin = null;
-
-  function enterAs(alias, switching) {
-    if (switching) state = freshState();
-    state.alias = alias;
+  /** Mulai sesi permainan untuk akun (atau tamu luring). Dipanggil oleh app.js setelah masuk. */
+  function begin(username) {
+    userKey = String(username).toLocaleLowerCase('id');
+    state = loadState();
+    state.alias = username;
     selectedPos = null;
-    goTo('world');
+    saveState();
+    updatePlayerChip();
   }
 
-  $('#start-form').addEventListener('submit', (event) => {
-    event.preventDefault();
-    const alias = $('#alias').value.trim();
-    if (!alias) return;
-    const hasProgress = MISSIONS.some((m) => post(m.id).started);
-    const switching = Boolean(state.alias && state.alias.toLocaleLowerCase() !== alias.toLocaleLowerCase() && hasProgress);
-    if (switching) {
-      const confirmed = window.confirm('Perangkat ini memiliki progres tersimpan untuk penjelajah lain. Mengganti alias akan memulai progres baru di perangkat ini. Unduh Paspor lama terlebih dahulu jika ingin menyimpannya.');
-      if (!confirmed) return;
-    }
-    if (net && net.status().connected) {
-      pendingJoin = { alias, switching };
-      net.join(alias);
-      return;
-    }
-    enterAs(alias, switching);
-  });
+  function end() {
+    userKey = '';
+    state = freshState();
+    selectedPos = null;
+  }
 
   // ---------- Server kelas (multipemain) ----------
 
-  const visibleScreen = () => screens.find((name) => !$(`#screen-${name}`).hidden) || 'welcome';
+  const visibleScreen = () => screens.find((name) => !$(`#screen-${name}`).hidden) || 'none';
   const hasLocalProgress = () => MISSIONS.some((m) => post(m.id).started);
 
   function adoptProgress(progress, alias) {
@@ -274,35 +268,19 @@
 
   if (net) {
     net.on('welcome', ({ progress, you }) => {
-      const sameAlias = state.alias && state.alias.toLocaleLowerCase('id') === you.alias.toLocaleLowerCase('id');
-      if (pendingJoin) {
-        const { switching } = pendingJoin;
-        pendingJoin = null;
-        if (switching || !sameAlias) { state = freshState(); }
-        state.alias = you.alias;
-        selectedPos = null;
-      } else if (!sameAlias) {
-        state = freshState();
-        state.alias = you.alias;
-      }
+      if (!state.alias || state.alias.toLocaleLowerCase('id') !== you.alias.toLocaleLowerCase('id')) begin(you.alias);
       // Pakai progres yang paling baru: server (perangkat lain) atau perangkat ini.
       if (progress && (!hasLocalProgress() || String(progress.updatedAt || '') > String(state.updatedAt || ''))) adoptProgress(progress, you.alias);
       saveState();
-      const screen = visibleScreen();
-      goTo(screen === 'welcome' ? 'world' : screen, false);
-      showToast(`Tersambung ke server kelas sebagai ${you.alias}.`);
+      updatePlayerChip();
     });
 
-    net.on('join-error', (err) => {
-      showToast(err.message);
-      if (!pendingJoin && visibleScreen() !== 'welcome') goTo('welcome', false);
-      pendingJoin = null;
-    });
+    net.on('join-error', (err) => { showToast(err.message); });
 
     net.on('progress-sync', (msg) => {
       adoptProgress(msg.progress, state.alias);
       saveState();
-      goTo(visibleScreen(), false);
+      if (!document.body.classList.contains('in-world')) goTo(visibleScreen(), false);
       showToast(msg.message);
     });
 
@@ -998,21 +976,65 @@
     $('#leaderboard-list').innerHTML = `<table class="leaderboard-table"><caption class="sr-only">Papan peringkat lokal</caption><thead><tr><th scope="col">#</th><th scope="col">Penjelajah</th><th scope="col">Skor</th><th scope="col">Lencana</th><th scope="col">Selesai</th></tr></thead><tbody>${board.map((row, i) => `<tr${row.alias === state.alias ? ' class="me"' : ''}><td>${i + 1}</td><td>${escapeHtml(row.alias)}${row.alias === state.alias ? ' <span class="you">(kamu)</span>' : ''}</td><td>${row.score}</td><td>${row.badges} / ${MISSIONS.length}</td><td>${new Date(row.finishedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}</td></tr>`).join('')}</tbody></table>`;
   }
 
-  // ---------- Start ----------
+  // ---------- API misi di dalam dunia (dipakai quest.js) ----------
 
-  // Antarmuka untuk world.js (dunia RPG).
+  function scanEvidence(id, row) {
+    const p = post(id);
+    if (!p || !p.challenges) return [];
+    p.started = true;
+    p.evidence = Array.from(new Set([...(p.evidence || []), row])).sort((a, b) => a - b);
+    state.activePos = id;
+    saveState();
+    return p.evidence;
+  }
+
+  function submitAnswer(id, index, response) {
+    const m = missionById(id);
+    const def = m && m.challenges && m.challenges[index];
+    const c = def && post(id).challenges[index];
+    if (!def) return { error: true };
+    if (c.complete) return { correct: true, points: c.points, attempts: c.attempts, success: def.success, already: true };
+    const empty = response === null || response === undefined || (Array.isArray(response) && !response.length) || (def.type === 'sort' && !Object.values(response || {}).every(Boolean));
+    if (empty) return { empty: true, message: EMPTY_PROMPT[def.type] || 'Lengkapi jawabanmu terlebih dahulu.' };
+    c.attempts += 1;
+    const correct = isCorrect(def, response);
+    c.response = response;
+    c.draft = null;
+    c.log.push({ attempt: c.attempts, response, correct, at: new Date().toISOString(), where: 'dunia' });
+    if (correct) { c.complete = true; c.points = awardForAttempt(c.attempts); }
+    post(id).started = true;
+    state.activePos = id;
+    saveState();
+    updatePlayerChip();
+    return { correct, points: c.points, attempts: c.attempts, success: def.success, hint: correct ? null : def.hints[Math.min(c.attempts, def.hints.length) - 1] };
+  }
+
+  function sealPost(id, reason) {
+    const m = missionById(id);
+    const p = post(id);
+    if (!m || m.type !== 'analysis') return { ok: false, message: 'Pos ini tidak bisa disegel di sini.' };
+    if (p.sealed) return { ok: true, already: true };
+    if (!isUnlocked(id)) return { ok: false, message: lockMessage(id) };
+    if (!p.challenges.every((c) => c.complete)) return { ok: false, message: 'Selesaikan semua tantangan di Papan Laporan terlebih dahulu.' };
+    const text = String(reason || '').trim();
+    if (text.length < MIN_REASON) return { ok: false, message: `Tulis alasanmu minimal ${MIN_REASON} karakter (sekarang ${text.length}).` };
+    p.reason = text.slice(0, 500);
+    p.sealed = true;
+    p.sealedAt = new Date().toISOString();
+    saveState();
+    recordLeaderboard();
+    updatePlayerChip();
+    return { ok: true, points: SEAL_POINTS, score: computeScore(), next: id < MISSIONS.length ? id + 1 : null };
+  }
+
   window.NutraGame = {
-    openPos, isUnlocked, posStatus, showToast, goTo,
-    computeScore, sealCount,
+    begin, end, openPos, isUnlocked, posStatus, showToast, goTo, renderPassport,
+    computeScore, sealCount, missionById, scanEvidence, submitAnswer, sealPost, responseText, lockMessage,
+    missions: MISSIONS,
     get state() { return state; },
-    get visibleScreen() { return visibleScreen(); }
+    get visibleScreen() { return visibleScreen(); },
+    minReason: MIN_REASON
   };
 
   $('#app-version').textContent = APP_VERSION;
-  saveState();
-  updatePlayerChip();
-  if (state.alias) {
-    goTo(state.currentScreen === 'welcome' ? 'world' : state.currentScreen, false);
-    if (net) net.join(state.alias);
-  } else goTo('welcome', false);
 })();

@@ -20,29 +20,22 @@ document.getElementById('pos-grid').innerHTML = MISSIONS.map((m, i) => `
 
 // ---------- Peta SVG dari world-data ----------
 (function drawMap() {
-  const { cx, cy, rx, ry } = W.island;
-  const path = [W.spawn, ...W.stations].map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join(' ');
-  const palms = W.trees.map(([x, y]) => `<g transform="translate(${x} ${y})"><circle r="9" fill="#3f9a5a"/><circle r="5" cx="-3" cy="-3" fill="#56b77a"/></g>`).join('');
-  const nodes = W.stations.map((s) => {
-    const m = MISSIONS.find((mm) => mm.id === s.id);
-    return `<g transform="translate(${s.x} ${s.y})"><circle r="22" fill="#0e2426" stroke="#68dce7" stroke-width="4"/><text y="6" text-anchor="middle" class="m-num">${s.id}</text><text y="40" text-anchor="middle" class="m-lbl">${esc(m ? `${m.title} ${m.titleEm}` : s.name).toUpperCase()}</text></g>`;
+  const COL = { 0: '#78f4bd', 1: '#ff9f91', 2: '#ffd17c', 3: '#f59e5b', 4: '#68dce7', 5: '#c58cf0', 6: '#ffd17c' };
+  const clouds = Array.from({ length: 16 }, (_, k) => `<ellipse cx="${(k * 137) % W.width}" cy="${40 + ((k * 89) % 540)}" rx="${50 + (k % 4) * 14}" ry="16" fill="#fff" opacity=".7"/>`).join('');
+  const bridges = W.bridges.map((br) => `<line x1="${br.a[0]}" y1="${br.a[1]}" x2="${br.b[0]}" y2="${br.b[1]}" stroke="#68dce7" stroke-width="${br.w * 0.8}" stroke-linecap="round" opacity=".85"/><line x1="${br.a[0]}" y1="${br.a[1]}" x2="${br.b[0]}" y2="${br.b[1]}" stroke="#fff" stroke-width="3" stroke-dasharray="8 10" class="m-route"/>`).join('');
+  const islands = W.islands.map((isl) => {
+    const m = MISSIONS.find((mm) => mm.id === isl.id);
+    return `<g><ellipse cx="${isl.cx}" cy="${isl.cy + 16}" rx="${isl.rx * 0.8}" ry="${isl.ry * 0.9}" fill="#6f5a48"/><ellipse cx="${isl.cx}" cy="${isl.cy}" rx="${isl.rx + 6}" ry="${isl.ry + 6}" fill="#ecd8a0"/><ellipse cx="${isl.cx}" cy="${isl.cy}" rx="${isl.rx}" ry="${isl.ry}" fill="url(#g-grass)"/>
+      ${isl.id ? `<g transform="translate(${isl.cx} ${isl.cy - 6})"><circle r="22" fill="#0e2426" stroke="${COL[isl.id]}" stroke-width="4"/><text y="7" text-anchor="middle" class="m-num" style="fill:${COL[isl.id]}">${isl.id}</text></g>` : ''}
+      <text x="${isl.cx}" y="${isl.cy + (isl.id ? 34 : 6)}" text-anchor="middle" class="m-lbl">${esc(m ? `${m.title} ${m.titleEm}` : isl.name).toUpperCase()}</text></g>`;
   }).join('');
-  const tempe = [[552, 275], [582, 253], [618, 234], [109, 371], [99, 330], [570, 515], [534, 538], [808, 248], [832, 214]].map(([x, y]) => `<rect x="${x - 9}" y="${y - 9}" width="18" height="18" rx="3" fill="#e9d8a6" stroke="#c9b37a"/>`).join('');
   document.getElementById('map-svg').innerHTML = `
     <svg viewBox="0 0 ${W.width} ${W.height}" aria-hidden="true">
-      <defs><radialGradient id="g-grass" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="#5cbf72"/><stop offset="1" stop-color="#3f9a5a"/></radialGradient></defs>
-      <rect width="${W.width}" height="${W.height}" fill="#0a2a30"/>
-      <ellipse cx="${cx}" cy="${cy}" rx="${rx + 30}" ry="${ry + 30}" fill="#8ff0e8" opacity=".15"/>
-      <ellipse cx="${cx}" cy="${cy}" rx="${rx + 14}" ry="${ry + 14}" fill="#eed9a2"/>
-      <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#g-grass)"/>
-      <g opacity=".9">${[0, 1, 2].map((r) => [0, 1, 2].map((c) => `<rect x="${120 + c * 33}" y="${180 + r * 26}" width="30" height="22" fill="#7fd3d6" stroke="#6b8f3a" stroke-width="3"/>`).join('')).join('')}</g>
-      <path d="${path}" fill="none" stroke="#efdcaa" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="${path}" fill="none" stroke="#ffd17c" stroke-width="3" stroke-dasharray="8 10" class="m-route"/>
-      ${palms}${tempe}
-      <g transform="translate(${W.spawn.x - 40} ${W.spawn.y + 20})"><rect x="-26" y="-30" width="52" height="8" fill="#b5523b"/><rect x="-24" y="-22" width="5" height="26" fill="#8a5a35"/><rect x="19" y="-22" width="5" height="26" fill="#8a5a35"/><text y="20" text-anchor="middle" class="m-lbl">GAPURA</text></g>
+      <defs><radialGradient id="g-grass" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="#6ccb72"/><stop offset="1" stop-color="#3f9a5a"/></radialGradient>
+      <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fdbe6"/><stop offset="1" stop-color="#e8f7fa"/></linearGradient></defs>
+      <rect width="${W.width}" height="${W.height}" fill="url(#g-sky)"/>
+      ${clouds}${bridges}${islands}
       <g transform="translate(${W.nara.x} ${W.nara.y})"><circle r="11" fill="#f2fff8"/><rect x="-7" y="-4" width="14" height="6" rx="2" fill="#0b1f21"/><text y="-18" text-anchor="middle" class="m-nara">NARA</text></g>
-      ${nodes}
-      <g transform="translate(${W.width - 70} 60)" class="m-compass"><circle r="24" fill="none" stroke="#ebfff6" opacity=".4"/><text y="-30" text-anchor="middle">U</text><path d="M0 -18 L6 0 L0 18 L-6 0Z" fill="#ffd17c"/></g>
     </svg>`;
 })();
 

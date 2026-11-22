@@ -163,20 +163,67 @@ export function createExplorer(color = PALETTE.cyan) {
   blob.renderOrder = 1;
   root.add(blob);
 
+  // Parasut daun pisang (dipakai saat terjun dari langit)
+  const leaf = createLeafGlider();
+  leaf.position.y = 2.35;
+  leaf.visible = false;
+  root.add(leaf);
+
   let phase = 0;
   let blinkT = 2;
+  let emote = null;
+  let emoteT = 0;
+  let squash = 0;
+  const EMOTE_TIME = { wave: 1.8, dance: 2.6, cheer: 1.6, think: 2.2 };
   root.userData = {
-    body, head, blob, scanner, accentMat,
-    /** state: { speed (0..1), airborne, height } */
+    body, head, blob, scanner, accentMat, leaf,
+    /** state: { speed (0..1), airborne, height, pose: 'skydive' | 'glide' | null } */
     animate(dt, state = {}) {
       const speed = state.speed || 0;
       phase += dt * (6 + speed * 8);
       const swing = Math.sin(phase) * 0.7 * speed;
-      legL.rotation.x = swing; legR.rotation.x = -swing;
-      armL.rotation.x = -swing * 0.8; armR.rotation.x = swing * 0.8;
-      if (state.airborne) { legL.rotation.x = -0.6; legR.rotation.x = 0.3; armL.rotation.z = -0.9; armR.rotation.z = 0.9; }
-      else { armL.rotation.z = 0.05; armR.rotation.z = -0.05; }
-      body.position.y = state.airborne ? 0 : Math.abs(Math.sin(phase)) * 0.06 * speed + Math.sin(phase * 0.35) * 0.015 * (1 - speed);
+      legL.rotation.set(swing, 0, 0); legR.rotation.set(-swing, 0, 0);
+      armL.rotation.set(-swing * 0.8, 0, 0.05); armR.rotation.set(swing * 0.8, 0, -0.05);
+      body.rotation.set(0, 0, 0);
+      head.rotation.set(0, 0, 0);
+      leaf.visible = state.pose === 'glide';
+      let bodyY = Math.abs(Math.sin(phase)) * 0.06 * speed + Math.sin(phase * 0.35) * 0.015 * (1 - speed);
+
+      if (state.pose === 'skydive') {
+        // Terjun bebas: badan mendatar, tangan & kaki terentang, berkibar.
+        body.rotation.x = 1.25;
+        armL.rotation.z = -1.45 + Math.sin(phase * 3) * 0.08; armR.rotation.z = 1.45 - Math.sin(phase * 3) * 0.08;
+        legL.rotation.set(0.25, 0, -0.35); legR.rotation.set(0.25, 0, 0.35);
+        bodyY = 0.6;
+      } else if (state.pose === 'glide') {
+        // Melayang memegang daun pisang di atas kepala.
+        armL.rotation.z = -2.75; armR.rotation.z = 2.75;
+        legL.rotation.x = 0.25 + Math.sin(phase * 2) * 0.25; legR.rotation.x = -0.15 - Math.sin(phase * 2) * 0.25;
+        leaf.rotation.z = Math.sin(phase * 1.3) * 0.12;
+        leaf.rotation.x = Math.cos(phase * 1.1) * 0.1;
+        bodyY = 0;
+      } else if (state.airborne) {
+        legL.rotation.x = -0.6; legR.rotation.x = 0.3; armL.rotation.z = -0.9; armR.rotation.z = 0.9;
+        bodyY = 0;
+      } else if (emote && speed < 0.2) {
+        emoteT -= dt;
+        const k = emoteT;
+        if (emote === 'wave') { armR.rotation.z = 2.5 + Math.sin(k * 14) * 0.45; head.rotation.z = Math.sin(k * 7) * 0.08; }
+        if (emote === 'cheer') { armL.rotation.z = -2.8; armR.rotation.z = 2.8; bodyY = Math.abs(Math.sin(k * 9)) * 0.35; }
+        if (emote === 'dance') {
+          body.rotation.y = Math.sin(k * 8) * 0.6;
+          body.rotation.z = Math.sin(k * 16) * 0.12;
+          armL.rotation.z = -1.2 - Math.sin(k * 16) * 0.8; armR.rotation.z = 1.2 - Math.sin(k * 16) * 0.8;
+          legL.rotation.x = Math.max(0, Math.sin(k * 16)) * 0.7; legR.rotation.x = Math.max(0, -Math.sin(k * 16)) * 0.7;
+          bodyY = Math.abs(Math.sin(k * 16)) * 0.08;
+        }
+        if (emote === 'think') { armR.rotation.x = -2.0; armR.rotation.z = 0.45; head.rotation.z = 0.2; head.rotation.x = -0.1; }
+        if (emoteT <= 0) emote = null;
+      } else if (emote && speed >= 0.2) emote = null;
+
+      // Mendarat: tekan-pulih (squash & stretch)
+      if (squash > 0) { squash = Math.max(0, squash - dt * 3); const s = Math.sin(squash * Math.PI) * 0.28; body.scale.set(1 + s * 0.6, 1 - s, 1 + s * 0.6); } else body.scale.set(1, 1, 1);
+      body.position.y = bodyY;
       blinkT -= dt;
       const blink = blinkT < 0.12;
       eyeL.scale.y = eyeR.scale.y = blink ? 0.2 : 1.35;
@@ -185,10 +232,46 @@ export function createExplorer(color = PALETTE.cyan) {
       const h = state.height || 0;
       blob.position.y = 0.02 - h;
       blob.scale.setScalar(Math.max(0.4, 1 - h * 0.15));
+      blob.visible = h < 12;
     },
+    emote(name) { if (EMOTE_TIME[name]) { emote = name; emoteT = EMOTE_TIME[name]; } },
+    land() { squash = 1; },
+    get emoting() { return emote; },
     setColor(c) { accentMat.color.copy(colorFrom(c)); }
   };
   return root;
+}
+
+/** Daun pisang lebar untuk melayang turun. */
+export function createLeafGlider() {
+  const g = new THREE.Group();
+  const shape = new THREE.Shape();
+  shape.moveTo(0, -1.25);
+  shape.bezierCurveTo(0.95, -0.8, 1.0, 0.7, 0, 1.3);
+  shape.bezierCurveTo(-1.0, 0.7, -0.95, -0.8, 0, -1.25);
+  const geo = new THREE.ShapeGeometry(shape, 12);
+  // Lengkungkan daun seperti payung
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i += 1) { const x = pos.getX(i); pos.setZ(i, -x * x * 0.32); }
+  geo.computeVertexNormals();
+  const blade = new THREE.Mesh(geo, toon('#4caf50', { side: THREE.DoubleSide }));
+  blade.rotation.x = -Math.PI / 2;
+  blade.castShadow = true;
+  g.add(blade);
+  const rib = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 2.5), toon('#9ccc65'));
+  rib.position.y = 0.02;
+  g.add(rib);
+  for (let i = -3; i <= 3; i += 1) {
+    if (!i) continue;
+    const vein = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.02, 0.03), toon('#81c784'));
+    vein.position.set(Math.sign(i) * 0.38, 0.03, i * 0.3);
+    vein.rotation.y = Math.sign(i) * 0.35;
+    g.add(vein);
+  }
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6), toon('#8d6e63'));
+  stem.position.y = -0.4;
+  g.add(stem);
+  return g;
 }
 
 /** Nara, robot pemandu. */
@@ -203,7 +286,7 @@ export function createNara() {
   // Visor
   const visor = mesh(new THREE.BoxGeometry(0.62, 0.3, 0.2), toon('#0b1f21'), 0, 1.38, 0.33);
   bodyG.add(visor);
-  const eyeMat = toon(PALETTE.green, { emissive: PALETTE.green, emissiveIntensity: 1.2 });
+  const eyeMat = toon(PALETTE.green, { emissive: PALETTE.green, emissiveIntensity: 1.2, unique: true });
   const eyeGeo = new THREE.BoxGeometry(0.1, 0.12, 0.02);
   const eyeL = mesh(eyeGeo, eyeMat, -0.13, 1.39, 0.44); const eyeR = mesh(eyeGeo, eyeMat, 0.13, 1.39, 0.44);
   bodyG.add(eyeL, eyeR);
@@ -228,7 +311,7 @@ export function createNara() {
   const leaf = mesh(new THREE.ShapeGeometry(leafShape), toon(PALETTE.leaf, { side: THREE.DoubleSide }), 0.02, 0.22, 0);
   leaf.rotation.z = -0.7;
   antenna.add(leaf);
-  const grain = mesh(new THREE.SphereGeometry(0.07, 8, 6), toon(PALETTE.gold, { emissive: PALETTE.gold, emissiveIntensity: 0.6 }), 0, 0.33, 0);
+  const grain = mesh(new THREE.SphereGeometry(0.07, 8, 6), toon(PALETTE.gold, { emissive: PALETTE.gold, emissiveIntensity: 0.6, unique: true }), 0, 0.33, 0);
   grain.scale.y = 1.4;
   antenna.add(grain);
   bodyG.add(antenna);
@@ -244,21 +327,50 @@ export function createNara() {
 
   let t = Math.random() * 10;
   let blinkT = 3;
+  let react = null;
+  let reactT = 0;
+  const eyeColor = eyeMat.color.clone();
   root.userData = {
     animate(dt) {
       t += dt;
       bodyG.position.y = Math.sin(t * 2) * 0.08;
+      bodyG.rotation.set(0, 0, 0);
       ring.position.y = 0.42 + Math.sin(t * 2) * 0.04;
       ring.scale.setScalar(1 + Math.sin(t * 4) * 0.04);
       handL.position.y = 1.0 + Math.sin(t * 2 + 1) * 0.06;
       handR.position.y = 1.0 + Math.sin(t * 2 + 2) * 0.06;
       antenna.rotation.z = Math.sin(t * 1.5) * 0.12;
+      grain.material.emissiveIntensity = 0.6;
+      eyeMat.color.copy(eyeColor);
+      eyeMat.emissive.copy(eyeColor);
+      if (react) {
+        reactT -= dt;
+        const k = 1 - Math.max(0, reactT);
+        if (react === 'celebrate') {
+          // Berputar sambil melompat, tangan terangkat, bulir antena menyala terang.
+          bodyG.position.y = Math.abs(Math.sin(k * Math.PI * 3)) * 0.6;
+          bodyG.rotation.y = k * Math.PI * 4;
+          handL.position.y = handR.position.y = 1.5;
+          grain.material.emissiveIntensity = 2;
+        } else if (react === 'shake') {
+          // Menggeleng pelan dengan mata kuning: "belum tepat, coba lagi".
+          bodyG.rotation.y = Math.sin(k * Math.PI * 6) * 0.35;
+          eyeMat.color.set(PALETTE.gold);
+          eyeMat.emissive.set(PALETTE.gold);
+        } else if (react === 'talk') {
+          antenna.rotation.z = Math.sin(t * 9) * 0.3;
+          grain.material.emissiveIntensity = 1.2 + Math.sin(t * 12) * 0.6;
+          handR.position.y = 1.15 + Math.sin(t * 6) * 0.1;
+        }
+        if (reactT <= 0) react = null;
+      }
       blinkT -= dt;
       eyeL.scale.y = eyeR.scale.y = blinkT < 0.12 ? 0.15 : 1;
       if (blinkT < 0) blinkT = 2.5 + Math.random() * 3;
       glow.material.opacity = 0.14 + Math.sin(t * 3) * 0.05;
     },
-    wave(dt) { handR.position.y = 1.25 + Math.sin(t * 10) * 0.12; }
+    wave() { handR.position.y = 1.25 + Math.sin(t * 10) * 0.12; },
+    react(name, seconds = 1.2) { react = name; reactT = seconds; }
   };
   return root;
 }

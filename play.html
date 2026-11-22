@@ -8,14 +8,92 @@
     <title>Main — NUTRANTARA</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="app.css" />
     <script src="missions.js" defer></script>
     <script src="world-data.js" defer></script>
     <script src="net.js" defer></script>
     <script src="game.js" defer></script>
     <script src="world.js" defer></script>
     <script type="module" src="world3d.js"></script>
+    <script type="module" src="app.js"></script>
   </head>
-  <body>
+  <body class="app" data-phase="boot">
+    <div class="phase phase-auth" id="phase-auth" hidden>
+      <div class="auth-sky" aria-hidden="true"><i></i><i></i><i></i><b></b><b></b></div>
+      <div class="auth-card">
+        <a class="wordmark" href="index.html" aria-label="Kembali ke beranda NUTRANTARA"><span class="wordmark-mark" aria-hidden="true">N</span><span><strong>NUTRANTARA</strong><small>MISI PANGAN NUSANTARA</small></span></a>
+        <div class="auth-tabs" role="tablist" aria-label="Masuk atau daftar">
+          <button type="button" role="tab" id="tab-login" aria-selected="true" aria-controls="form-login">Masuk</button>
+          <button type="button" role="tab" id="tab-register" aria-selected="false" aria-controls="form-register">Daftar akun</button>
+        </div>
+        <form id="form-login" class="auth-form" role="tabpanel" aria-labelledby="tab-login" novalidate>
+          <h1>Selamat datang kembali, <em>penjelajah.</em></h1>
+          <label for="login-user">Nama pengguna</label>
+          <input id="login-user" class="text-input" autocomplete="username" maxlength="20" required />
+          <label for="login-pass">Kata sandi</label>
+          <div class="pass-row"><input id="login-pass" class="text-input" type="password" autocomplete="current-password" maxlength="72" required /><button type="button" class="pass-toggle" data-toggle="login-pass" aria-label="Tampilkan kata sandi">👁</button></div>
+          <p class="auth-error" role="alert" hidden></p>
+          <button class="button button-primary full-width" type="submit">Masuk ↗</button>
+          <p class="auth-hint">Lupa kata sandi? Minta guru mengatur ulang dari panel guru.</p>
+        </form>
+        <form id="form-register" class="auth-form" role="tabpanel" aria-labelledby="tab-register" hidden novalidate>
+          <h1>Buat akun <em>penjelajah.</em></h1>
+          <label for="reg-user">Nama pengguna <span>(3–20 karakter, jangan nama lengkap)</span></label>
+          <input id="reg-user" class="text-input" autocomplete="username" maxlength="20" placeholder="Contoh: penjelajah07" required />
+          <label for="reg-pass">Kata sandi <span>(minimal 6 karakter)</span></label>
+          <div class="pass-row"><input id="reg-pass" class="text-input" type="password" autocomplete="new-password" maxlength="72" required /><button type="button" class="pass-toggle" data-toggle="reg-pass" aria-label="Tampilkan kata sandi">👁</button></div>
+          <label for="reg-pass2">Ulangi kata sandi</label>
+          <input id="reg-pass2" class="text-input" type="password" autocomplete="new-password" maxlength="72" required />
+          <div id="reg-code-wrap" hidden><label for="reg-code">Kode kelas <span>(dari guru)</span></label><input id="reg-code" class="text-input" maxlength="24" autocomplete="off" /></div>
+          <fieldset class="color-pick"><legend>Warna rompi &amp; syal</legend><div id="reg-colors"></div></fieldset>
+          <p class="auth-error" role="alert" hidden></p>
+          <button class="button button-primary full-width" type="submit">Daftar &amp; mulai ↗</button>
+          <p class="auth-hint">Tanpa email. Data kelas disimpan di server sekolah/guru.</p>
+        </form>
+        <div class="auth-offline" id="auth-offline" hidden>
+          <p><b>Server kelas tidak tersedia.</b> Kamu tetap bisa bermain sendiri; progres tersimpan di browser ini.</p>
+          <form id="form-guest" class="auth-guest"><label for="guest-name" class="sr-only">Nama tamu</label><input id="guest-name" class="text-input" maxlength="20" placeholder="Nama tamu / kode" required /><button class="button button-secondary" type="submit">Main sebagai tamu</button></form>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase phase-loading" id="phase-loading" hidden aria-live="polite">
+      <div class="load-islands" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="load-nara" aria-hidden="true"><div class="load-nara-body"><i></i><i></i></div><div class="load-nara-leaf"></div><div class="load-nara-ring"></div></div>
+      <p class="load-step" id="load-step">Menyiapkan ekspedisi…</p>
+      <div class="load-bar" role="progressbar" aria-label="Memuat" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="load-fill"></i></div>
+      <p class="load-tip" id="load-tip"></p>
+    </div>
+
+    <div class="phase phase-lobby" id="phase-lobby" hidden>
+      <canvas id="lobby-canvas" aria-label="Karaktermu di lobi NUTRANTARA"></canvas>
+      <header class="lobby-top">
+        <div class="wordmark"><span class="wordmark-mark" aria-hidden="true">N</span><span><strong>NUTRANTARA</strong><small>LOBI EKSPEDISI</small></span></div>
+        <div class="lobby-conn" id="lobby-conn">—</div>
+        <button type="button" class="button button-secondary" id="lobby-logout">Keluar</button>
+      </header>
+      <section class="lobby-profile" aria-label="Profil penjelajah">
+        <p class="lobby-kicker">PENJELAJAH</p>
+        <h2 id="lobby-name">—</h2>
+        <div class="lobby-stats"><div><b id="lobby-score">0</b><span>poin</span></div><div><b id="lobby-seals">0/6</b><span>segel</span></div><div><b id="lobby-shards">0</b><span>kepingan</span></div></div>
+        <div class="lobby-seals" id="lobby-badges" aria-label="Lencana segel"></div>
+        <p class="lobby-kicker">EMOTE</p>
+        <div class="lobby-emotes" role="group" aria-label="Coba emote"><button type="button" data-lemote="wave">👋 Lambai</button><button type="button" data-lemote="cheer">🎉 Sorak</button><button type="button" data-lemote="dance">💃 Tari</button><button type="button" data-lemote="think">🤔 Pikir</button></div>
+      </section>
+      <section class="lobby-side" aria-label="Kelas">
+        <div class="lobby-ann" id="lobby-ann" hidden></div>
+        <p class="lobby-kicker">TEMAN KELAS DARING <b id="lobby-count">0</b></p>
+        <ul class="lobby-friends" id="lobby-friends"></ul>
+        <p class="lobby-kicker">MISI BERIKUTNYA</p>
+        <div class="lobby-next" id="lobby-next"></div>
+      </section>
+      <nav class="lobby-actions" aria-label="Menu lobi">
+        <button type="button" class="lobby-btn" data-go="passport">Paspor</button>
+        <button type="button" class="lobby-play" id="lobby-play"><span>MAIN</span><small>Pilih map &amp; terjun</small></button>
+        <button type="button" class="lobby-btn" data-go="leaderboard">Peringkat</button>
+      </nav>
+    </div>
+
     <div class="shell">
       <header class="topbar">
         <a class="wordmark" href="index.html" aria-label="NUTRANTARA, kembali ke beranda">
@@ -23,6 +101,7 @@
           <span><strong>NUTRANTARA</strong><small>MISI PANGAN NUSANTARA</small></span>
         </a>
         <nav class="top-nav" aria-label="Navigasi utama">
+          <button class="nav-link nav-lobby" type="button" id="nav-lobby">⌂ Lobi</button>
           <button class="nav-link active" data-screen="world">Dunia</button>
           <button class="nav-link" data-screen="map">Peta</button>
           <button class="nav-link" data-screen="passport">Paspor</button>
@@ -32,28 +111,6 @@
       </header>
 
       <main>
-        <section class="screen welcome-screen" id="screen-welcome" aria-labelledby="welcome-title">
-          <div class="welcome-copy">
-            <div class="eyebrow"><span class="eyebrow-line"></span> EKSPEDISI DIMULAI</div>
-            <h1 id="welcome-title">Arsip pangan<br /><em>menunggu dipulihkan.</em></h1>
-            <p class="lede">Ikuti jejak bukti bersama Nara melalui enam pos. Pulihkan arsip pangan, lalu rancang menu lokal terbaikmu di Dapur Juara.</p>
-            <form id="start-form" class="start-form">
-              <label for="alias">Nama penjelajah <span>(gunakan alias atau kode)</span></label>
-              <div class="input-row"><input id="alias" name="alias" maxlength="24" autocomplete="off" placeholder="Contoh: Penjelajah 07" required /><button class="button button-primary" type="submit">Masuk ekspedisi <span aria-hidden="true">↗</span></button></div>
-              <small class="privacy-note"><span aria-hidden="true">◈</span> Progres tersimpan di perangkat ini. Jangan gunakan nama lengkap.</small>
-            </form>
-          </div>
-          <div class="welcome-art" aria-label="Ilustrasi peta pulau dan portal ekspedisi">
-            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
-            <div class="island island-main"><span class="island-ridge"></span><span class="island-label">NUSANTARA</span></div>
-            <div class="island island-small"></div>
-            <div class="portal portal-one"><span>01</span></div><div class="portal portal-two"><span>06</span></div>
-            <div class="art-caption"><span class="pulse"></span> ENAM DIMENSI — SATU MENU JUARA</div>
-            <div class="coordinate coordinate-a">06°12' S<br />106°49' E</div><div class="coordinate coordinate-b">ARSIP<br />BELUM LENGKAP</div>
-          </div>
-          <div class="welcome-footer"><span>06 POS</span><span>PERJALANAN INVESTIGASI PANGAN</span><span>▲ BIOLOGI SMA · KELAS XI</span></div>
-        </section>
-
         <section class="screen world-screen" id="screen-world" hidden aria-labelledby="world-title">
           <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> PULAU EKSPEDISI</div><h1 id="world-title">Dunia <em>bersama.</em></h1></div><div class="world-mode" id="world-mode">MODE SATU PEMAIN</div></div>
           <div class="world-layout">

@@ -47,6 +47,11 @@
 
   function saveSelf() { try { localStorage.setItem(POS_KEY, JSON.stringify({ x: Math.round(self.x), y: Math.round(self.y) })); } catch { /* abaikan */ } }
 
+  function allowed() {
+    const sealed = (window.NUTRANTARA_MISSIONS || []).filter((m) => game.state.posts[m.id] && game.state.posts[m.id].sealed).map((m) => m.id);
+    return W.allowedIslands(sealed, net && net.online ? net.settings.openPosts : null);
+  }
+
   const canMove = () => !(net && net.online && (net.settings.paused || net.settings.movementLocked));
 
   // ---------- Masukan ----------
@@ -75,7 +80,7 @@
     canvas.focus();
     const p = toWorld(e);
     const station = W.stations.find((s) => Math.hypot(s.x - p.x, s.y - p.y) < 30);
-    target = W.clamp(station ? station.x : p.x, station ? station.y + 30 : p.y);
+    target = W.clamp(station ? station.x : p.x, station ? station.y + 30 : p.y, allowed());
   });
 
   actionBtn.addEventListener('click', interact);
@@ -118,7 +123,7 @@
     const len = Math.hypot(vx, vy);
     if (len) {
       const step = (W.speed * dt) / len;
-      const c = W.clamp(self.x + vx * step, self.y + vy * step);
+      const c = W.clamp(self.x + vx * step, self.y + vy * step, allowed());
       self.x = c.x;
       self.y = c.y;
       if (vx) self.dir = vx > 0 ? 1 : -1;
@@ -185,46 +190,55 @@
   function drawWorld() {
     const sx = canvas.width / W.width;
     ctx.setTransform(sx, 0, 0, sx, 0, 0);
-    const { cx, cy, rx, ry } = W.island;
+    const open = allowed();
 
-    // Laut
-    const sea = ctx.createLinearGradient(0, 0, 0, W.height);
-    sea.addColorStop(0, '#08262b');
-    sea.addColorStop(1, '#04161a');
-    ctx.fillStyle = sea;
+    // Langit & awan
+    const sky = ctx.createLinearGradient(0, 0, 0, W.height);
+    sky.addColorStop(0, '#9fdbe6');
+    sky.addColorStop(1, '#e8f7fa');
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W.width, W.height);
-    ctx.strokeStyle = 'rgba(104,220,231,.08)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 14; i += 1) {
-      const y = 20 + i * 44;
-      ctx.beginPath();
-      for (let x = 0; x <= W.width; x += 16) ctx.lineTo(x, y + Math.sin(x / 40 + t * 1.2 + i) * 3);
-      ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    for (let k = 0; k < 18; k += 1) {
+      const x = ((k * 137 + t * 8) % (W.width + 120)) - 60;
+      const y = 40 + ((k * 61) % 520);
+      ctx.beginPath(); ctx.ellipse(x, y, 46, 14, 0, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Pulau
-    ctx.fillStyle = '#c9b887';
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx + 10, ry + 10, 0, 0, Math.PI * 2); ctx.fill();
-    const grass = ctx.createRadialGradient(cx, cy - 60, 40, cx, cy, rx);
-    grass.addColorStop(0, '#2f7a57');
-    grass.addColorStop(1, '#1d5a42');
-    ctx.fillStyle = grass;
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx - 4, ry - 4, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(120,244,189,.07)';
-    for (let gx = cx - rx; gx < cx + rx; gx += 40) { ctx.beginPath(); ctx.moveTo(gx, cy - ry); ctx.lineTo(gx, cy + ry); ctx.stroke(); }
-
-    // Jalur antar-pos
-    const path = [W.spawn, ...W.stations];
+    // Jembatan cahaya
     ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(235,216,160,.35)';
-    ctx.lineWidth = 16;
-    ctx.beginPath(); path.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
-    ctx.setLineDash([6, 10]);
-    ctx.lineDashOffset = -t * 20;
-    ctx.strokeStyle = 'rgba(255,209,124,.55)';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); path.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
-    ctx.setLineDash([]);
+    W.bridges.forEach((br) => {
+      const on = open.has(br.from) && open.has(br.to);
+      ctx.strokeStyle = on ? 'rgba(104,220,231,.9)' : 'rgba(110,125,122,.6)';
+      ctx.lineWidth = br.w;
+      ctx.beginPath(); ctx.moveTo(br.a[0], br.a[1]); ctx.lineTo(br.b[0], br.b[1]); ctx.stroke();
+      if (on) {
+        ctx.setLineDash([6, 10]);
+        ctx.lineDashOffset = -t * 20;
+        ctx.strokeStyle = 'rgba(255,255,255,.85)';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(br.a[0], br.a[1]); ctx.lineTo(br.b[0], br.b[1]); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    });
+
+    // Pulau melayang
+    W.islands.forEach((isl) => {
+      ctx.fillStyle = '#7a5f48';
+      ctx.beginPath(); ctx.ellipse(isl.cx, isl.cy + 14, isl.rx + 6, isl.ry + 8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#e6d29b';
+      ctx.beginPath(); ctx.ellipse(isl.cx, isl.cy, isl.rx + 6, isl.ry + 6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = isl.id === 0 ? '#5cbf72' : '#4fae66';
+      ctx.beginPath(); ctx.ellipse(isl.cx, isl.cy, isl.rx, isl.ry, 0, 0, Math.PI * 2); ctx.fill();
+      if (!open.has(isl.id)) {
+        ctx.fillStyle = 'rgba(80,95,92,.55)';
+        ctx.beginPath(); ctx.ellipse(isl.cx, isl.cy, isl.rx, isl.ry, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.font = '700 11px "DM Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(7,21,22,.8)';
+      ctx.fillText(isl.id ? `POS ${isl.id} · ${isl.name.toUpperCase()}` : isl.name.toUpperCase(), isl.cx, isl.cy - isl.ry + 18);
+    });
 
     // Pohon
     W.trees.forEach(([x, y]) => {
@@ -385,7 +399,9 @@
 
   function stop() { running = false; keys.clear(); target = null; nearby = null; }
 
-  window.NutraWorld2D = { start, stop, get running() { return running; } };
+  function placeAt(x, y) { self.x = x; self.y = y; target = null; saveSelf(); }
+
+  window.NutraWorld2D = { start, stop, placeAt, get running() { return running; } };
 
   document.addEventListener('nutra:screen', (e) => { if (e.detail === 'world') start(); else stop(); });
 

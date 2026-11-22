@@ -4,7 +4,6 @@
  * Bila dibuka sebagai berkas lokal atau di hosting statis, permainan tetap berjalan sebagai satu pemain.
  */
 window.NutraNet = (() => {
-  const TOKEN_KEY = 'nutrantara-net-token-v1';
   const ALL_POSTS = (window.NUTRANTARA_MISSIONS || []).map((m) => m.id);
   const listeners = {};
   const players = new Map();
@@ -13,7 +12,6 @@ window.NutraNet = (() => {
   let joined = false;
   let everConnected = false;
   let failures = 0;
-  let wantAlias = '';
   let me = null;
   let muted = false;
   let stopped = false;
@@ -28,11 +26,46 @@ window.NutraNet = (() => {
   function on(event, fn) { (listeners[event] ||= []).push(fn); }
   function emit(event, data) { (listeners[event] || []).forEach((fn) => { try { fn(data); } catch (err) { console.error(err); } }); }
 
-  function tokens() { try { return JSON.parse(localStorage.getItem(TOKEN_KEY)) || {}; } catch { return {}; } }
-  function saveToken(alias, token) {
-    const all = tokens();
-    all[alias.toLocaleLowerCase('id')] = token;
-    try { localStorage.setItem(TOKEN_KEY, JSON.stringify(all)); } catch { /* penyimpanan penuh */ }
+  // ---------- Akun & sesi ----------
+  const SESSION_KEY = 'nutrantara-session-v1';
+  let wantSession = '';
+
+  function getSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; } }
+  function setSession(s) { try { if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); } catch { /* abaikan */ } }
+
+  async function api(route, data, token) {
+    if (!canConnect) return { status: 0, error: 'Server kelas tidak tersedia.' };
+    try {
+      const res = await fetch(`/api/${route}`, {
+        method: data ? 'POST' : 'GET',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: data ? JSON.stringify(data) : undefined
+      });
+      const body = await res.json().catch(() => ({}));
+      return { status: res.status, ...body };
+    } catch {
+      return { status: 0, error: 'Server kelas tidak dapat dihubungi.' };
+    }
+  }
+
+  async function serverStatus() { const r = await api('status'); return r.status === 200 ? r : null; }
+  async function register(data) { const r = await api('register', data); if (r.token) setSession({ token: r.token, user: r.user }); return r; }
+  async function login(data) { const r = await api('login', data); if (r.token) setSession({ token: r.token, user: r.user }); return r; }
+  async function resume() {
+    const s = getSession();
+    if (!s || !s.token) return null;
+    const r = await api('me', null, s.token);
+    if (r.status === 200) { setSession({ token: s.token, user: r.user }); return { token: s.token, user: r.user }; }
+    if (r.status === 401) setSession(null);
+    return r.status === 0 ? { offline: true, ...s } : null;
+  }
+  async function logout() {
+    const s = getSession();
+    if (s && s.token) await api('logout', {}, s.token);
+    setSession(null);
+    wantSession = '';
+    stopped = true;
+    if (ws) ws.close();
   }
 
   function send(msg) {
@@ -52,7 +85,7 @@ window.NutraNet = (() => {
       everConnected = true;
       failures = 0;
       emit('status', status());
-      if (wantAlias) join(wantAlias);
+      if (wantSession) join(wantSession);
     });
     ws.addEventListener('message', (event) => {
       let msg;
@@ -80,7 +113,6 @@ window.NutraNet = (() => {
         joined = true;
         me = msg.you;
         muted = Boolean(msg.you.muted);
-        if (msg.token) saveToken(me.alias, msg.token);
         settings = msg.settings;
         players.clear();
         msg.players.forEach((p) => players.set(p.id, { ...p, tx: p.x, ty: p.y }));
@@ -116,11 +148,21 @@ window.NutraNet = (() => {
         emit('players', players);
         break;
       case 'positions':
-        msg.list.forEach(([id, x, y, seals, activePos, h]) => {
+        msg.list.forEach(([id, x, y, seals, activePos, h, inWorld]) => {
           if (me && id === me.id) { me.seals = seals; return; }
           const p = players.get(id);
-          if (p) { p.tx = x; p.ty = y; p.th = (h || 0) / 10; p.seals = seals; p.activePos = activePos; }
+          if (p) { p.tx = x; p.ty = y; p.th = (h || 0) / 10; p.seals = seals; p.activePos = activePos; p.zone = inWorld ? 'world' : 'lobby'; }
         });
+        break;
+      case 'spawned':
+        if (me) { me.x = msg.x; me.y = msg.y; }
+        emit('spawned', msg);
+        break;
+      case 'spawn-denied':
+        emit('spawn-denied', msg);
+        break;
+      case 'emote':
+        emit('emote', msg);
         break;
       case 'teleport':
         if (me) { me.x = msg.x; me.y = msg.y; }
@@ -173,11 +215,17 @@ window.NutraNet = (() => {
     }
   }
 
-  function join(alias) {
-    wantAlias = alias;
+  function join(session) {
+    wantSession = session;
+    stopped = false;
     if (!canConnect) return false;
-    return send({ type: 'join', alias, token: tokens()[alias.toLocaleLowerCase('id')] || null });
+    if (!ws || ws.readyState > 1) { connect(); return true; }
+    return send({ type: 'join', session });
   }
+
+  function sendZone(zone) { if (joined) send({ type: 'zone', zone }); }
+  function spawn(island) { return joined && send({ type: 'spawn', island }); }
+  function emote(name) { return joined && send({ type: 'emote', emote: name }); }
 
   function pushProgress(state, screen) {
     pendingProgress = { state, screen };
@@ -250,10 +298,9 @@ window.NutraNet = (() => {
 
   on('status', renderPause);
   on('settings', renderPause);
-  connect();
-
   return {
     on, join, pushProgress, sendMove, sendChat, isPostOpen, status,
+    api, serverStatus, register, login, resume, logout, getSession, sendZone, spawn, emote,
     get me() { return me; },
     get players() { return players; },
     get settings() { return settings; },

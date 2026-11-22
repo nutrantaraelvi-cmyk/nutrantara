@@ -4,12 +4,22 @@ Game pembelajaran berbasis web untuk **Biologi SMA kelas XI (Fase F)**, topik **
 
 > Bagaimana kita merancang satu porsi menu berbahan pangan lokal untuk siswa SMA dengan mempertimbangkan komposisi, porsi, dan fungsi zat gizi berdasarkan bukti?
 
-**Status:** prototipe 0.4. Petualangan 3D multipemain di Pulau NUTRANTARA, dengan landing page, desain karakter orisinal, dan panel kendali guru. Game otomatis beralih ke dunia 2D bila perangkat tidak mendukung WebGL, dan ke mode satu pemain bila server kelas tidak tersedia.
+**Status:** prototipe 0.5 — **Kepulauan NUTRANTARA**: pulau-pulau melayang di atas awan (mengikuti konsep peta), dengan akun siswa, lobi, pilih map, terjun ke pulau, dan **semua misi Pos 1–5 dimainkan langsung di dalam dunia 3D**. Tanpa WebGL, game beralih ke dunia 2D; tanpa server kelas, tersedia mode tamu luring.
+
+## Alur bermain
+
+1. **Beranda** (`/`) → **Daftar akun** atau **Masuk** (nama pengguna + kata sandi, tanpa email; bisa wajib kode kelas).
+2. **Memuat**: animasi Nara, bilah progres, dan tips gizi.
+3. **Lobi**: karakter 3D-mu (bisa emote), skor, segel, kepingan, teman kelas yang daring, pengumuman guru, dan misi berikutnya.
+4. **MAIN** → **Pilih map**: tampilan udara kepulauan; pulau terkunci tertutup kubah.
+5. **Terjun**: jatuh bebas menembus awan, membuka **parasut daun pisang** (Spasi), lalu mendarat dengan debu dan guncangan kamera.
+6. **Misi di dalam dunia** (Pos 1–5): pindai **Terminal Arsip** (bukti), jawab tantangan di **Papan Laporan**, tulis alasan dan segel di **Altar Segel**. Saat pos disegel, **jembatan cahaya** ke pulau berikutnya menyala dan kubah kuncinya memudar. Pos 6 dikerjakan di **Meja Dapur Juara**.
+7. **Animasi interaktif**: konfeti dan Nara berputar saat jawaban benar, Nara menggeleng dan memberi petunjuk saat salah, pilar cahaya saat menyegel, panah emas penunjuk tujuan, emote 1–4 (lambai/sorak/tari/pikir) yang terlihat pemain lain, debu langkah, air terjun, dan awan bergerak.
 
 | Halaman | Alamat |
 | :-- | :-- |
 | Landing page | `/` (`index.html`) |
-| Game | `/play` (`play.html`) |
+| Game (masuk → lobi → dunia) | `/play` (`play.html`) |
 | Panel guru | `/admin` (`admin.html`) |
 
 ## Menjalankan
@@ -58,10 +68,9 @@ Buka `play.html` langsung di browser, atau unggah ke hosting statis (`index.html
 | Peta langsung | Melihat posisi siswa; pilih siswa lalu klik peta untuk memindahkannya, atau "Kumpulkan semua di Nara" |
 | Tabel penjelajah | Skor, segel, progres per pos, jumlah percobaan, layar aktif, catatan validasi (⚠) |
 | Detail | Jawaban, alasan Paspor, rancangan menu, dan refleksi siswa |
-| Atur ulang / lepas alias / keluarkan / hapus | Mengelola akun alias siswa |
+| Kode kelas | Pendaftaran akun baru wajib memakai kode dari guru |
+| Atur ulang kata sandi / progres, keluarkan, hapus | Mengelola akun siswa (kata sandi sementara ditampilkan ke guru) |
 | Ekspor JSON / CSV | Data kelas untuk penilaian dan penelitian |
-
-**Lepas alias:** satu alias terikat ke satu perangkat melalui token. Jika siswa berganti laptop, guru menekan "Lepas alias" agar perangkat baru bisa melanjutkan progres yang sama.
 
 **Validasi skor:** server menghitung ulang skor dari jawaban yang tersimpan terhadap kunci di `missions.js`. Server juga membatalkan segel yang tidak memenuhi syarat dan menandainya (⚠) di panel guru. Batasannya: pemeriksaan jawaban masih berjalan di browser dan kunci jawaban ikut terkirim ke klien. Siswa yang paham teknis tetap bisa mengakali jumlah percobaan.
 
@@ -72,7 +81,10 @@ Buka `play.html` langsung di browser, atau unggah ke hosting statis (`index.html
 | `index.html`, `landing.css`, `landing.js` | Landing page (diorama 3D, enam pos, peta, karakter, info guru) |
 | `play.html` | Game: sambutan, dunia, peta, misi, Dapur Juara, Paspor, peringkat |
 | `characters.js` | Model 3D Penjelajah Pangan dan Nara, serta label/gelembung |
-| `world3d.js` | Dunia 3D: pulau, portal, platform, kamera, kontrol, multipemain |
+| `world3d.js` | Kepulauan 3D: pulau melayang, jembatan, pilih map, terjun, kamera, kontrol, multipemain |
+| `quest.js` | Misi di dalam dunia: terminal arsip, papan laporan, altar segel, panel hologram |
+| `fx.js` | Efek: konfeti, debu, kilau, pilar cahaya, gelombang |
+| `app.js`, `app.css` | Alur aplikasi: masuk/daftar, memuat, lobi 3D, pilih map |
 | `vendor/three/` | Three.js r170 (MIT), disimpan lokal agar jalan tanpa internet |
 | `Dockerfile`, `render.yaml`, `docs/DEPLOY.md` | Deploy server kelas |
 | `styles.css` | Seluruh gaya visual game |
@@ -108,7 +120,7 @@ Jawaban salah memunculkan petunjuk bertahap dari Nara. Tidak ada nyawa, dan pema
 
 ## Data dan privasi
 
-- **Mode kelas:** progres setiap siswa disimpan di browser **dan** di `data/classroom.json` pada laptop guru, berisi alias, posisi, progres, skor, obrolan, serta hash token perangkat. Folder `data/` dikecualikan dari Git. Tidak ada layanan cloud.
+- **Mode kelas:** setiap siswa punya akun (nama pengguna + kata sandi, **tanpa email**). Kata sandi disimpan sebagai hash *scrypt*, dan sesi berlaku 30 hari. Progres disimpan di browser **dan** di `data/classroom.json` pada server guru (nama pengguna, posisi, progres, skor, obrolan). Guru bisa mengatur **kode kelas** agar orang luar tidak bisa mendaftar, dan bisa **mengatur ulang kata sandi** siswa yang lupa. Folder `data/` dikecualikan dari Git. Tidak ada layanan cloud.
 - **Mode satu pemain:** progres hanya ada di `localStorage` (`nutrantara-save-v1`).
 - Tetap gunakan alias, bukan nama lengkap. Obrolan dapat dibaca guru, dan siswa diberi tahu di layar.
 - Tombol **Unduh JSON** di Paspor tetap tersedia di kedua mode.

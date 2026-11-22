@@ -49,7 +49,7 @@ function freshDb() {
   return {
     version: 1,
     createdAt: new Date().toISOString(),
-    settings: { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '' },
+    settings: { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', classCode: '' },
     players: {},
     chat: []
   };
@@ -112,6 +112,52 @@ function safeEqual(a, b) {
   const y = Buffer.from(sha256(b));
   return crypto.timingSafeEqual(x, y);
 }
+
+// ---------- Akun (nama pengguna + kata sandi, tanpa email) ----------
+
+const USERNAME_RE = /^[A-Za-z0-9_.-]{3,20}$/;
+const PLAYER_COLORS = ['#68dce7', '#78f4bd', '#ffd17c', '#ff9f91', '#c58cf0', '#7fa8ff', '#f59e5b', '#f472b6'];
+const SESSION_DAYS = 30;
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(password, salt, 32);
+  return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
+}
+
+function checkPassword(password, stored) {
+  const [kind, salt, hash] = String(stored || '').split('$');
+  if (kind !== 'scrypt' || !salt || !hash) return false;
+  const expected = Buffer.from(hash, 'hex');
+  const actual = crypto.scryptSync(String(password), Buffer.from(salt, 'hex'), expected.length);
+  return crypto.timingSafeEqual(actual, expected);
+}
+
+function issueSession(player) {
+  const token = newToken();
+  player.sessions = (player.sessions || []).filter((s) => s.exp > Date.now()).slice(-4);
+  player.sessions.push({ hash: sha256(token), exp: Date.now() + SESSION_DAYS * 864e5 });
+  return token;
+}
+
+function playerBySession(token) {
+  if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
+  const hash = sha256(token);
+  return Object.values(db.players).find((p) => (p.sessions || []).some((s) => s.exp > Date.now() && s.hash === hash)) || null;
+}
+
+const accountView = (p) => ({ id: p.id, username: p.alias, color: p.color, score: p.score, seals: p.seals, createdAt: p.createdAt });
+
+function tempPassword() {
+  const words = ['tempe', 'jagung', 'sagu', 'kelor', 'pisang', 'ubi', 'beras', 'kacang'];
+  return `${words[crypto.randomInt(words.length)]}-${crypto.randomInt(1000, 10000)}`;
+}
+
+function sealedIds(p) {
+  const posts = (p.progress && p.progress.posts) || {};
+  return ALL_POSTS.filter((id) => posts[id] && posts[id].sealed);
+}
+const allowedFor = (p) => WORLD.allowedIslands(sealedIds(p), db.settings.openPosts);
 
 // ---------- Validasi progres (server menghitung ulang skor) ----------
 
@@ -176,7 +222,7 @@ const conns = new Map(); // ws -> { role, playerId, ip }
 const onlineIds = () => new Set([...conns.values()].filter((c) => c.role === 'player').map((c) => c.playerId));
 
 function publicPlayer(p) {
-  return { id: p.id, alias: p.alias, color: p.color, x: Math.round(p.x), y: Math.round(p.y), seals: p.seals, activePos: p.activePos || null };
+  return { id: p.id, alias: p.alias, color: p.color, x: Math.round(p.x), y: Math.round(p.y), seals: p.seals, activePos: p.activePos || null, zone: p.zone || 'lobby' };
 }
 
 function leaderboard() {
@@ -205,7 +251,7 @@ function adminPlayer(p, online) {
     score: p.score,
     muted: Boolean(p.muted),
     blocked: Boolean(p.blocked),
-    bound: Boolean(p.tokenHash),
+    hasPassword: Boolean(p.passHash),
     screen: p.screen || null,
     flags: p.flags || [],
     lastSeen: p.lastSeen,
@@ -252,37 +298,18 @@ function settingsChanged() {
   scheduleSave();
 }
 
-const publicSettings = () => ({ ...db.settings });
+const publicSettings = () => { const { classCode, ...rest } = db.settings; return rest; };
 
 // ---------- Penanganan pesan pemain ----------
 
 function handleJoin(ws, conn, msg) {
-  const alias = cleanText(msg.alias, 24);
-  if (alias.length < 2) return send(ws, { type: 'error', code: 'alias-invalid', message: 'Alias minimal 2 karakter.' });
-  const key = alias.toLocaleLowerCase('id');
-  let player = Object.values(db.players).find((p) => p.aliasKey === key);
-  let token = null;
-
-  if (player) {
-    if (player.blocked) return send(ws, { type: 'error', code: 'blocked', message: 'Alias ini sedang dikeluarkan oleh guru. Minta guru mengizinkan kembali.' });
-    const tokenOk = player.tokenHash && typeof msg.token === 'string' && safeEqual(sha256(msg.token), player.tokenHash);
-    if (!tokenOk) {
-      if (player.tokenHash) return send(ws, { type: 'error', code: 'alias-taken', message: 'Alias sudah dipakai penjelajah lain. Gunakan alias lain, atau minta guru melepas alias ini jika kamu berganti perangkat.' });
-      token = newToken(); // alias dilepas guru: perangkat baru mengklaimnya
-      player.tokenHash = sha256(token);
-    }
-    // Tab lain dengan pemain yang sama ditutup.
-    socketsOf(player.id).forEach((other) => { if (other !== ws) { send(other, { type: 'replaced' }); other.close(4001, 'replaced'); } });
-  } else {
-    if (Object.keys(db.players).length >= MAX_PLAYERS) return send(ws, { type: 'error', code: 'full', message: 'Kelas sudah penuh. Hubungi guru.' });
-    token = newToken();
-    player = {
-      id: newId(), alias, aliasKey: key, tokenHash: sha256(token), color: colorFor(alias),
-      x: WORLD.spawn.x + (Math.random() * 40 - 20), y: WORLD.spawn.y + (Math.random() * 40 - 20),
-      createdAt: now(), lastSeen: now(), progress: null, progressUpdatedAt: null, score: 0, seals: 0, flags: [], muted: false, blocked: false
-    };
-    db.players[player.id] = player;
-  }
+  const player = playerBySession(msg.session);
+  if (!player) return send(ws, { type: 'error', code: 'auth', message: 'Sesi masuk sudah berakhir. Silakan masuk lagi.' });
+  if (player.blocked) return send(ws, { type: 'error', code: 'blocked', message: 'Akun ini sedang dikeluarkan oleh guru. Minta guru mengizinkan kembali.' });
+  // Tab/perangkat lain dengan akun yang sama ditutup.
+  socketsOf(player.id).forEach((other) => { if (other !== ws) { send(other, { type: 'replaced' }); other.close(4001, 'replaced'); } });
+  player.zone = 'lobby';
+  const token = null;
 
   conn.role = 'player';
   conn.playerId = player.id;
@@ -308,7 +335,7 @@ function handleJoin(ws, conn, msg) {
 
 function handleMove(conn, msg) {
   const p = db.players[conn.playerId];
-  if (!p || db.settings.paused || db.settings.movementLocked) return;
+  if (!p || p.zone !== 'world' || db.settings.paused || db.settings.movementLocked) return;
   let x = Number(msg.x);
   let y = Number(msg.y);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -318,11 +345,46 @@ function handleMove(conn, msg) {
   const dist = Math.hypot(dx, dy);
   const maxStep = 60;
   if (dist > maxStep) { x = p.x + (dx / dist) * maxStep; y = p.y + (dy / dist) * maxStep; }
-  const c = WORLD.clamp(x, y);
+  const c = WORLD.clamp(x, y, allowedFor(p));
   p.x = c.x;
   p.y = c.y;
   p.h = Math.max(0, Math.min(80, Math.round(Number(msg.h)) || 0)); // tinggi lompatan (×0,1 unit), hanya tampilan
   positionsDirty = true;
+}
+
+function handleZone(conn, msg) {
+  const p = db.players[conn.playerId];
+  if (!p || !['lobby', 'world'].includes(msg.zone)) return;
+  p.zone = msg.zone;
+  positionsDirty = true;
+  adminDirty = true;
+}
+
+// Terjun ke pulau pilihan: server memeriksa apakah pulau itu terbuka untuk pemain.
+function handleSpawn(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  const id = Number(msg.island);
+  if (!p) return;
+  const allowed = allowedFor(p);
+  if (!allowed.has(id)) return send(ws, { type: 'spawn-denied', island: id, message: 'Pulau ini belum terbuka untukmu.' });
+  const isl = WORLD.islands.find((i) => i.id === id);
+  const st = WORLD.stations.find((x) => x.id === id);
+  const base = id === 0 ? WORLD.spawn : { x: isl.cx, y: st ? st.y + 22 : isl.cy };
+  const c = WORLD.clamp(base.x + (Math.random() * 30 - 15), base.y + (Math.random() * 16 - 8), allowed);
+  p.x = c.x; p.y = c.y; p.h = 0; p.zone = 'world';
+  positionsDirty = true;
+  adminDirty = true;
+  send(ws, { type: 'spawned', island: id, x: p.x, y: p.y });
+}
+
+const EMOTES = new Set(['wave', 'dance', 'cheer', 'think']);
+function handleEmote(conn, msg) {
+  const p = db.players[conn.playerId];
+  if (!p || !EMOTES.has(msg.emote) || db.settings.paused) return;
+  const t = Date.now();
+  if (conn.lastEmote && t - conn.lastEmote < 1200) return;
+  conn.lastEmote = t;
+  broadcast({ type: 'emote', id: p.id, emote: msg.emote }, (c) => c.role === 'player');
 }
 
 function handleProgress(ws, conn, msg) {
@@ -449,11 +511,20 @@ function handleAdmin(ws, msg) {
       target.blocked = false;
       adminDirty = true; scheduleSave();
       return done(`${target.alias} boleh bergabung kembali.`);
-    case 'release':
+    case 'reset-password': {
       if (!needTarget()) return;
-      target.tokenHash = null;
+      const pw = tempPassword();
+      target.passHash = hashPassword(pw);
+      target.sessions = [];
+      kickSockets(target.id, 'Kata sandimu diatur ulang oleh guru. Masuk lagi dengan kata sandi baru.');
+      target.blocked = false;
       adminDirty = true; scheduleSave();
-      return done(`Alias ${target.alias} dilepas. Perangkat berikutnya yang masuk dengan alias ini akan melanjutkan progresnya.`);
+      return send(ws, { type: 'admin-password', alias: target.alias, password: pw });
+    }
+    case 'set-class-code':
+      s.classCode = cleanText(msg.code, 24);
+      adminDirty = true; scheduleSave();
+      return done(s.classCode ? `Kode kelas diatur: ${s.classCode}. Pendaftaran baru wajib memakai kode ini.` : 'Kode kelas dihapus. Pendaftaran terbuka.');
     case 'reset':
       if (!needTarget()) return;
       target.progress = null; target.progressUpdatedAt = null; target.score = 0; target.seals = 0; target.finishedAt = null; target.flags = [];
@@ -486,7 +557,7 @@ function handleAdmin(ws, msg) {
       if (!needTarget()) return;
       return send(ws, { type: 'admin-detail', player: { ...adminPlayer(target, onlineIds()), progress: target.progress } });
     case 'export':
-      return send(ws, { type: 'admin-export', data: { exportedAt: now(), game: 'NUTRANTARA', settings: db.settings, players: Object.values(db.players).map(({ tokenHash, aliasKey, ...rest }) => rest), chat: db.chat } });
+      return send(ws, { type: 'admin-export', data: { exportedAt: now(), game: 'NUTRANTARA', settings: db.settings, players: Object.values(db.players).map(({ tokenHash, aliasKey, passHash, sessions, ...rest }) => rest), chat: db.chat } });
     default:
       return send(ws, { type: 'admin-error', message: 'Perintah tidak dikenal.' });
   }
@@ -499,6 +570,7 @@ const STATIC = {
   '/styles.css': 'styles.css', '/admin.css': 'admin.css', '/landing.css': 'landing.css',
   '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
   '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js',
+  '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js',
   '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };
 const IMMUTABLE = new Set(['vendor/three/three.module.min.js']);
@@ -510,8 +582,99 @@ const SECURITY_HEADERS = {
   'Content-Security-Policy': "default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'"
 };
 
+const authAttempts = new Map(); // ip -> { count, reset }
+function authLimited(ip) {
+  const t = Date.now();
+  const rec = authAttempts.get(ip) || { count: 0, reset: t + 60000 };
+  if (t > rec.reset) { rec.count = 0; rec.reset = t + 60000; }
+  rec.count += 1;
+  authAttempts.set(ip, rec);
+  return rec.count > 12;
+}
+
+function clientIp(req) {
+  return TRUST_PROXY && req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.socket.remoteAddress;
+}
+
+function json(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS });
+  res.end(JSON.stringify(body));
+}
+
+function readJson(req) {
+  return new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size > 4096) { req.destroy(); resolve(null); } else chunks.push(c); });
+    req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch { resolve(null); } });
+    req.on('error', () => resolve(null));
+  });
+}
+
+const bearer = (req) => String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+
+async function handleApi(req, res, url) {
+  const route = url.pathname;
+  if (route === '/api/status' && req.method === 'GET') {
+    return json(res, 200, { ok: true, needsClassCode: Boolean(db.settings.classCode), online: onlineIds().size });
+  }
+  if (route === '/api/me' && req.method === 'GET') {
+    const p = playerBySession(bearer(req));
+    return p ? json(res, 200, { user: accountView(p) }) : json(res, 401, { error: 'Sesi berakhir. Silakan masuk lagi.' });
+  }
+  if (req.method !== 'POST') return json(res, 405, { error: 'Metode tidak didukung.' });
+  if (!String(req.headers['content-type'] || '').includes('application/json')) return json(res, 415, { error: 'Format harus JSON.' });
+
+  if (route === '/api/logout') {
+    const token = bearer(req);
+    const p = playerBySession(token);
+    if (p) { const h = sha256(token); p.sessions = p.sessions.filter((x) => x.hash !== h); scheduleSave(); }
+    return json(res, 200, { ok: true });
+  }
+
+  if (route !== '/api/register' && route !== '/api/login') return json(res, 404, { error: 'Tidak ditemukan.' });
+  if (authLimited(clientIp(req))) return json(res, 429, { error: 'Terlalu banyak percobaan. Tunggu satu menit.' });
+  const body = await readJson(req);
+  if (!body) return json(res, 400, { error: 'Data tidak valid.' });
+  const username = String(body.username || '').trim();
+  const password = String(body.password || '');
+  const key = username.toLocaleLowerCase('id');
+
+  if (route === '/api/register') {
+    if (!USERNAME_RE.test(username)) return json(res, 400, { error: 'Nama pengguna 3–20 karakter: huruf, angka, titik, garis bawah, atau tanda hubung. Jangan pakai nama lengkap.' });
+    if (password.length < 6 || password.length > 72) return json(res, 400, { error: 'Kata sandi minimal 6 karakter.' });
+    if (db.settings.classCode && String(body.classCode || '').trim().toLocaleLowerCase('id') !== db.settings.classCode.toLocaleLowerCase('id')) return json(res, 403, { error: 'Kode kelas salah. Tanyakan kepada guru.' });
+    if (Object.values(db.players).some((p) => p.aliasKey === key)) return json(res, 409, { error: 'Nama pengguna sudah dipakai. Pilih nama lain.' });
+    if (Object.keys(db.players).length >= MAX_PLAYERS) return json(res, 403, { error: 'Kelas sudah penuh. Hubungi guru.' });
+    const color = PLAYER_COLORS.includes(body.color) ? body.color : PLAYER_COLORS[crypto.randomInt(PLAYER_COLORS.length)];
+    const player = {
+      id: newId(), alias: username, aliasKey: key, passHash: hashPassword(password), sessions: [], color,
+      x: WORLD.spawn.x, y: WORLD.spawn.y, zone: 'lobby',
+      createdAt: now(), lastSeen: now(), progress: null, progressUpdatedAt: null, score: 0, seals: 0, flags: [], muted: false, blocked: false
+    };
+    db.players[player.id] = player;
+    const token = issueSession(player);
+    adminDirty = true;
+    scheduleSave();
+    return json(res, 201, { token, user: accountView(player) });
+  }
+
+  const player = Object.values(db.players).find((p) => p.aliasKey === key);
+  if (!player || !player.passHash || !checkPassword(password, player.passHash)) {
+    return json(res, 401, { error: player && !player.passHash ? 'Akun ini belum punya kata sandi. Minta guru mengatur ulang kata sandi.' : 'Nama pengguna atau kata sandi salah.' });
+  }
+  if (player.blocked) return json(res, 403, { error: 'Akun ini sedang dikeluarkan oleh guru.' });
+  const token = issueSession(player);
+  scheduleSave();
+  return json(res, 200, { token, user: accountView(player) });
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname.startsWith('/api/')) {
+    handleApi(req, res, url).catch((err) => { console.error('[api]', err); json(res, 500, { error: 'Kesalahan server.' }); });
+    return;
+  }
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
     return res.end(JSON.stringify({ ok: true, players: onlineIds().size }));
@@ -533,7 +696,7 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 });
 
 wss.on('connection', (ws, req) => {
-  const conn = { role: null, playerId: null, ip: TRUST_PROXY && req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.socket.remoteAddress, alive: true, budget: 40 };
+  const conn = { role: null, playerId: null, ip: clientIp(req), alive: true, budget: 40 };
   conns.set(ws, conn);
   ws.on('pong', () => { conn.alive = true; });
 
@@ -550,6 +713,9 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'move') return handleMove(conn, msg);
       if (msg.type === 'progress') return handleProgress(ws, conn, msg);
       if (msg.type === 'chat') return handleChat(ws, conn, msg);
+      if (msg.type === 'zone') return handleZone(conn, msg);
+      if (msg.type === 'spawn') return handleSpawn(ws, conn, msg);
+      if (msg.type === 'emote') return handleEmote(conn, msg);
       if (msg.type === 'ping') return send(ws, { type: 'pong' });
     }
     if (conn.role === 'admin') {
@@ -577,7 +743,7 @@ setInterval(() => {
   if (!positionsDirty) return;
   positionsDirty = false;
   const online = onlineIds();
-  const list = [...online].map((id) => db.players[id]).filter(Boolean).map((p) => [p.id, Math.round(p.x), Math.round(p.y), p.seals, p.activePos || 0, p.h || 0]);
+  const list = [...online].map((id) => db.players[id]).filter(Boolean).map((p) => [p.id, Math.round(p.x), Math.round(p.y), p.seals, p.activePos || 0, p.h || 0, p.zone === 'world' ? 1 : 0]);
   toPlayers({ type: 'positions', list });
   toAdmins({ type: 'positions', list });
 }, 100);

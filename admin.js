@@ -59,6 +59,7 @@
         } else toast(m.message);
         break;
       case 'admin-ok': toast(m.message); break;
+      case 'admin-password': window.alert(`Kata sandi sementara untuk ${m.alias}:\n\n${m.password}\n\nBerikan langsung kepada siswa. Siswa masuk dengan kata sandi ini.`); break;
       case 'admin-state': snapshot = m; render(); break;
       case 'positions': m.list.forEach(([id, x, y]) => positions.set(id, { x, y })); break;
       case 'chat': appendChat(m.entry); break;
@@ -104,6 +105,7 @@
       return `<button type="button" class="post-toggle" data-post="${m.id}" aria-pressed="${open}"><b>POS ${pad(m.id)}</b><span>${esc(m.title)} ${esc(m.titleEm)}</span><i>${open ? '● DIBUKA' : '⌑ DITUTUP'} · ${reached} segel</i></button>`;
     }).join('');
 
+    if (document.activeElement !== $('#class-code')) $('#class-code').value = settings.classCode || '';
     $('#ann-current').textContent = settings.announcement ? `Pengumuman aktif: “${settings.announcement}”` : 'Tidak ada pengumuman aktif.';
     renderPlayers();
   }
@@ -141,11 +143,11 @@
       }).join('');
       const attempts = p.posts.reduce((n, s) => n + s.attempts, 0);
       const flags = p.flags.length ? ` <span class="warn" title="${esc(p.flags.join('\n'))}">⚠</span>` : '';
-      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.bound ? ' <span class="tag">alias dilepas</span>' : ''}`;
+      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}`;
       return `<tr data-id="${p.id}"${selected === p.id ? ' class="selected"' : ''}>
         <th scope="row"><span class="roster-dot" style="background:${esc(p.color)}"></span> ${esc(p.alias)} <small class="${p.online ? 'on' : 'off'}">${p.online ? '● daring' : '○ luring'}</small>${flags}${tags}</th>
         <td>${p.score}</td><td>${p.seals} / 6</td><td class="pcells">${cells}</td><td>${attempts}</td>
-        <td>${esc(SCREEN_LABEL[p.screen] || p.screen || '—')}${p.activePos ? ` · Pos ${p.activePos}` : ''}</td><td>${p.online ? 'sekarang' : ago(p.lastSeen)}</td>
+        <td>${p.online ? (p.zone === 'world' ? `Dunia · ${W.islandAt(p.x, p.y) > 0 ? `Pulau ${W.islandAt(p.x, p.y)}` : W.islandAt(p.x, p.y) === 0 ? 'Alun-alun' : 'jembatan'}` : 'Lobi') : '—'}</td><td>${p.online ? 'sekarang' : ago(p.lastSeen)}</td>
         <td class="row-actions">
           <button type="button" class="admin-small button button-secondary" data-act="select">${selected === p.id ? 'Batal pilih' : 'Pindahkan'}</button>
           <button type="button" class="admin-small button button-secondary" data-act="detail">Detail</button>
@@ -153,7 +155,7 @@
             <button type="button" data-act="message">Kirim pesan pribadi</button>
             <button type="button" data-act="mute">${p.muted ? 'Izinkan mengobrol' : 'Bisukan obrolan'}</button>
             <button type="button" data-act="spawn">Pindahkan ke Nara</button>
-            <button type="button" data-act="release">Lepas alias (ganti perangkat)</button>
+            <button type="button" data-act="reset-password">Atur ulang kata sandi</button>
             <button type="button" data-act="reset" class="danger">Atur ulang progres</button>
             <button type="button" data-act="${p.blocked ? 'unblock' : 'kick'}" class="${p.blocked ? '' : 'danger'}">${p.blocked ? 'Izinkan bergabung kembali' : 'Keluarkan dari sesi'}</button>
             <button type="button" data-act="delete" class="danger">Hapus data penjelajah</button>
@@ -180,7 +182,7 @@
       case 'message': { const text = prompt(`Pesan pribadi untuk ${p.alias}:`); if (text && text.trim()) command('message', { playerId: id, text }); break; }
       case 'mute': command('mute', { playerId: id, value: !p.muted }); break;
       case 'spawn': command('teleport', { playerId: id, x: W.spawn.x, y: W.spawn.y }); break;
-      case 'release': if (confirm(`Lepas alias ${p.alias}? Perangkat berikutnya yang masuk dengan alias ini akan melanjutkan progresnya. Gunakan saat siswa berganti laptop.`)) command('release', { playerId: id }); break;
+      case 'reset-password': if (confirm(`Atur ulang kata sandi ${p.alias}? Siswa akan keluar dan harus masuk dengan kata sandi sementara yang ditampilkan.`)) command('reset-password', { playerId: id }); break;
       case 'reset': if (confirm(`Atur ulang SELURUH progres ${p.alias}? Tindakan ini tidak dapat dibatalkan. Ekspor data terlebih dahulu bila perlu.`)) command('reset', { playerId: id }); break;
       case 'kick': if (confirm(`Keluarkan ${p.alias} dari sesi? Siswa tidak bisa bergabung lagi sampai diizinkan kembali.`)) command('kick', { playerId: id }); break;
       case 'unblock': command('unblock', { playerId: id }); break;
@@ -201,6 +203,7 @@
   });
   $('#btn-open-all').addEventListener('click', () => command('set-posts', { posts: MISSIONS.map((m) => m.id) }));
   $('#btn-only-first').addEventListener('click', () => command('set-posts', { posts: [1] }));
+  $('#btn-class-code').addEventListener('click', () => command('set-class-code', { code: $('#class-code').value.trim() }));
   $('#btn-announce').addEventListener('click', () => {
     const text = $('#ann-text').value.trim();
     if (!text) { toast('Tulis pengumuman terlebih dahulu.'); return; }
@@ -255,22 +258,21 @@
     const s = w / W.width;
     mctx.setTransform(s, 0, 0, s, 0, 0);
     mctx.fillStyle = '#04161a'; mctx.fillRect(0, 0, W.width, W.height);
-    const { cx, cy, rx, ry } = W.island;
-    mctx.fillStyle = '#1d5a42'; mctx.beginPath(); mctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); mctx.fill();
-    mctx.strokeStyle = 'rgba(255,209,124,.4)'; mctx.lineWidth = 3; mctx.beginPath();
-    [W.spawn, ...W.stations].forEach((p, i) => (i ? mctx.lineTo(p.x, p.y) : mctx.moveTo(p.x, p.y))); mctx.stroke();
+    mctx.fillStyle = '#a8e3f0'; mctx.fillRect(0, 0, W.width, W.height);
+    W.bridges.forEach((br) => { mctx.strokeStyle = 'rgba(104,220,231,.9)'; mctx.lineWidth = br.w * 0.7; mctx.lineCap = 'round'; mctx.beginPath(); mctx.moveTo(br.a[0], br.a[1]); mctx.lineTo(br.b[0], br.b[1]); mctx.stroke(); });
+    W.islands.forEach((isl) => { mctx.fillStyle = '#e6d29b'; mctx.beginPath(); mctx.ellipse(isl.cx, isl.cy, isl.rx + 5, isl.ry + 5, 0, 0, Math.PI * 2); mctx.fill(); mctx.fillStyle = '#4fae66'; mctx.beginPath(); mctx.ellipse(isl.cx, isl.cy, isl.rx, isl.ry, 0, 0, Math.PI * 2); mctx.fill(); });
     const openPosts = snapshot ? snapshot.settings.openPosts : [];
     mctx.textAlign = 'center';
     W.stations.forEach((st) => {
       const open = openPosts.includes(st.id);
       mctx.fillStyle = open ? '#68dce7' : '#6c7f79';
-      mctx.beginPath(); mctx.arc(st.x, st.y, 16, 0, Math.PI * 2); mctx.fill();
-      mctx.fillStyle = '#071516'; mctx.font = '700 13px Manrope, sans-serif'; mctx.fillText(open ? String(st.id) : '⌑', st.x, st.y + 5);
-      mctx.fillStyle = '#ebfff6'; mctx.font = '500 11px "DM Mono", monospace'; mctx.fillText(`POS ${st.id}`, st.x, st.y + 32);
+      mctx.beginPath(); mctx.arc(st.x, st.y - 30, 16, 0, Math.PI * 2); mctx.fill();
+      mctx.fillStyle = '#071516'; mctx.font = '700 13px Manrope, sans-serif'; mctx.fillText(open ? String(st.id) : '⌑', st.x, st.y - 25);
+      mctx.fillStyle = '#ebfff6'; mctx.font = '500 11px "DM Mono", monospace'; mctx.fillStyle = '#071516'; mctx.fillText(`POS ${st.id}`, st.x, st.y + 2);
     });
     mctx.fillStyle = '#d9fff0'; mctx.beginPath(); mctx.arc(W.nara.x, W.nara.y, 8, 0, Math.PI * 2); mctx.fill();
     mctx.fillStyle = '#78f4bd'; mctx.font = '600 11px "DM Sans", sans-serif'; mctx.fillText('NARA', W.nara.x, W.nara.y - 14);
-    if (snapshot) snapshot.players.filter((p) => p.online).forEach((p) => {
+    if (snapshot) snapshot.players.filter((p) => p.online && p.zone === 'world').forEach((p) => {
       const pos = positions.get(p.id) || p;
       mctx.fillStyle = p.color; mctx.beginPath(); mctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2); mctx.fill();
       if (selected === p.id) { mctx.strokeStyle = '#ffd17c'; mctx.lineWidth = 3; mctx.beginPath(); mctx.arc(pos.x, pos.y, 13, 0, Math.PI * 2); mctx.stroke(); }

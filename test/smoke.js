@@ -1,15 +1,17 @@
 'use strict';
-/* Uji asap server kelas: dua pemain + admin. Jalankan: npm test */
+/* Uji asap server kelas: akun, dua pemain, pulau, dan admin. Jalankan: npm test */
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const vm = require('vm');
 const WebSocket = require('ws');
 
 const PORT = 3999;
 const PIN = '246810';
+const ROOT = path.join(__dirname, '..');
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nutrantara-test-'));
-const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+const server = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
   env: { ...process.env, PORT: String(PORT), NUTRANTARA_ADMIN_PIN: PIN, NUTRANTARA_DATA_DIR: dataDir },
   stdio: ['ignore', 'pipe', 'inherit']
 });
@@ -17,6 +19,9 @@ const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')]
 let failures = 0;
 const ok = (cond, label) => { console.log(`${cond ? '✓' : '✗'} ${label}`); if (!cond) failures += 1; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const loadBrowser = (file) => { const sb = { window: {} }; vm.runInNewContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sb); return sb.window; };
+const MISSIONS = loadBrowser('missions.js').NUTRANTARA_MISSIONS;
+const W = loadBrowser('world-data.js').NUTRANTARA_WORLD;
 
 function client() {
   const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
@@ -25,76 +30,123 @@ function client() {
   ws.on('message', (raw) => {
     const msg = JSON.parse(raw);
     inbox.push(msg);
-    waiters.slice().forEach((w) => { if (w.pred(msg)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(msg); } });
+    waiters.slice().forEach((w) => { if (w.pred(msg)) { waiters.splice(waiters.indexOf(w), 1); inbox.splice(inbox.indexOf(msg), 1); w.resolve(msg); } });
   });
-  const api = {
-    ws, inbox,
+  return {
+    ws,
     send: (m) => ws.send(JSON.stringify(m)),
     wait: (pred, ms = 3000) => new Promise((resolve, reject) => {
       const found = inbox.find(pred);
       if (found) { inbox.splice(inbox.indexOf(found), 1); return resolve(found); }
       const w = { pred, resolve };
       waiters.push(w);
-      setTimeout(() => { if (waiters.includes(w)) { waiters.splice(waiters.indexOf(w), 1); reject(new Error('timeout')); } }, ms);
+      setTimeout(() => { if (waiters.includes(w)) { waiters.splice(waiters.indexOf(w), 1); reject(new Error(`timeout menunggu pesan`)); } }, ms);
     }),
     open: () => new Promise((r) => ws.once('open', r))
   };
-  return api;
 }
 
 const type = (t) => (m) => m.type === t;
 
+function api(route, data, token) {
+  return fetch(`http://localhost:${PORT}/api/${route}`, {
+    method: data ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: data ? JSON.stringify(data) : undefined
+  }).then(async (r) => ({ status: r.status, ...(await r.json()) }));
+}
+
 function fakeState(overrides) {
-  const missions = (() => { const s = { window: {} }; require('vm').runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'missions.js'), 'utf8'), s); return s.window.NUTRANTARA_MISSIONS; })();
-  const m1 = missions[0];
-  const correct = m1.challenges.map((c) => c.correct);
+  const correct = MISSIONS[0].challenges.map((c) => c.correct);
   return {
     schemaVersion: 2, alias: 'x', activePos: 1, updatedAt: new Date().toISOString(),
     posts: { 1: { started: true, sealed: true, reason: 'Energi sama tetapi protein dan serat berbeda.', challenges: correct.map((r) => ({ complete: true, attempts: 1, response: r, log: [] })) }, ...overrides }
   };
 }
 
+async function adminProbe() {
+  const probe = client();
+  await probe.open();
+  probe.send({ type: 'admin-auth', pin: PIN });
+  const snap = await probe.wait(type('admin-state'));
+  probe.ws.close();
+  return snap;
+}
+
 (async () => {
   await new Promise((r) => server.stdout.on('data', (d) => { if (String(d).includes('PIN')) r(); }));
   try {
+    // ---------- Halaman ----------
     const html = await fetch(`http://localhost:${PORT}/`).then((r) => r.text());
     ok(html.includes('hero-canvas'), 'landing page disajikan di /');
     const play = await fetch(`http://localhost:${PORT}/play`).then((r) => r.text());
-    ok(play.includes('world-canvas') && play.includes('world3d.js'), 'halaman game disajikan di /play');
+    ok(play.includes('world3d.js') && play.includes('app.js'), 'halaman game disajikan di /play');
     const three = await fetch(`http://localhost:${PORT}/vendor/three/three.module.min.js`);
     ok(three.ok && three.headers.get('cache-control').includes('max-age'), 'Three.js lokal disajikan dengan cache');
-    const notFound = await fetch(`http://localhost:${PORT}/server.js`);
-    ok(notFound.status === 404, 'berkas server tidak dapat diunduh');
+    ok((await fetch(`http://localhost:${PORT}/server.js`)).status === 404, 'berkas server tidak dapat diunduh');
 
+    // ---------- Akun ----------
+    const regA = await api('register', { username: 'Penjelajah07', password: 'rahasia123', color: '#ffd17c' });
+    ok(regA.status === 201 && regA.token && regA.user.color === '#ffd17c', 'daftar akun baru');
+    ok((await api('register', { username: 'penjelajah07', password: 'lainnya123' })).status === 409, 'nama pengguna ganda ditolak');
+    ok((await api('register', { username: 'Nama Lengkap Saya', password: 'x' })).status === 400, 'nama pengguna/kata sandi tidak valid ditolak');
+    ok((await api('login', { username: 'Penjelajah07', password: 'salah' })).status === 401, 'kata sandi salah ditolak');
+    const logA = await api('login', { username: 'PENJELAJAH07', password: 'rahasia123' });
+    ok(logA.status === 200 && Boolean(logA.token), 'masuk dengan kata sandi benar');
+    ok((await api('me', null, logA.token)).user.username === 'Penjelajah07', '/api/me mengenali sesi');
+    const regB = await api('register', { username: 'TimTempe', password: 'tempe12345' });
+
+    const bad = client(); await bad.open();
+    bad.send({ type: 'join', session: 'token-palsu-yang-cukup-panjang-123' });
+    ok((await bad.wait(type('error'))).code === 'auth', 'sesi palsu ditolak');
+    bad.ws.close();
+
+    // ---------- Lobi & pulau ----------
     const a = client(); await a.open();
-    a.send({ type: 'join', alias: 'Penjelajah 07' });
+    a.send({ type: 'join', session: logA.token });
     const wa = await a.wait(type('welcome'));
-    ok(wa.token && wa.you.alias === 'Penjelajah 07', 'pemain A bergabung dan menerima token');
+    ok(wa.you.alias === 'Penjelajah07' && wa.you.zone === 'lobby', 'pemain A masuk lobi');
 
     const b = client(); await b.open();
-    b.send({ type: 'join', alias: 'penjelajah 07' });
-    const eb = await b.wait(type('error'));
-    ok(eb.code === 'alias-taken', 'alias yang sama ditolak untuk perangkat lain');
-    b.send({ type: 'join', alias: 'Tim Tempe' });
+    b.send({ type: 'join', session: regB.token });
     const wb = await b.wait(type('welcome'));
-    ok(wb.players.some((p) => p.alias === 'Penjelajah 07'), 'pemain B melihat pemain A');
+    ok(wb.players.some((p) => p.alias === 'Penjelajah07'), 'pemain B melihat pemain A');
 
-    a.send({ type: 'move', x: wa.you.x + 30, y: wa.you.y });
-    const pos = await b.wait((m) => m.type === 'positions' && m.list.some(([id]) => id === wa.you.id));
-    ok(pos.list.find(([id]) => id === wa.you.id)[1] > wa.you.x + 20, 'gerak A tersiar ke B');
+    a.send({ type: 'spawn', island: 3 });
+    ok((await a.wait(type('spawn-denied'))).island === 3, 'terjun ke pulau terkunci ditolak');
+    a.send({ type: 'spawn', island: 1 });
+    const sp = await a.wait(type('spawned'));
+    ok(sp.island === 1 && W.islandAt(sp.x, sp.y) === 1, 'terjun ke Pulau Pos 1');
+    b.send({ type: 'spawn', island: 1 });
+    await b.wait(type('spawned'));
 
-    a.send({ type: 'move', x: 5000, y: 5000 });
-    await sleep(150);
+    a.send({ type: 'move', x: sp.x + 30, y: sp.y });
+    const pos = await b.wait((m) => m.type === 'positions' && m.list.some(([id, x]) => id === wa.you.id && x > sp.x + 20));
+    ok(pos.list.find(([id]) => id === wa.you.id)[6] === 1, 'gerak A tersiar ke B (zona dunia)');
 
+    // Coba berjalan menyeberang laut ke Pulau Pos 3 yang masih terkunci.
+    let cur = { x: sp.x + 30, y: sp.y };
+    for (let i = 0; i < 25; i += 1) { cur = { x: cur.x + 40, y: cur.y - 2 }; a.send({ type: 'move', x: cur.x, y: cur.y }); await sleep(20); }
+    await sleep(200);
+    const meA = (await adminProbe()).players.find((p) => p.alias === 'Penjelajah07');
+    ok(![3, 4].includes(W.islandAt(meA.x, meA.y)) && Math.abs(W.clamp(meA.x, meA.y, new Set([0, 1])).x - meA.x) < 2, 'pemain tidak bisa berjalan ke pulau yang belum terbuka');
+
+    a.send({ type: 'emote', emote: 'wave' });
+    ok((await b.wait(type('emote'))).emote === 'wave', 'emote tersiar');
+
+    // ---------- Progres ----------
     a.send({ type: 'progress', state: fakeState() });
-    const board = await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'Penjelajah 07' && r.score === 80));
+    const board = await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'Penjelajah07' && r.score === 80));
     ok(Boolean(board), 'progres sah Pos 1 dihitung server = 80 poin');
+    a.send({ type: 'spawn', island: 2 });
+    ok((await a.wait(type('spawned'))).island === 2, 'segel Pos 1 membuka Pulau Pos 2');
 
     const forged = fakeState({ 2: { started: true, sealed: true, reason: 'aaaaaaaaaaaaaaaaaaaaaaaaa', challenges: [{ complete: true, attempts: 1, response: 'salah' }, { complete: true, attempts: 1, response: ['salah'] }] } });
     b.send({ type: 'progress', state: forged });
     const sync = await b.wait(type('progress-sync'));
     ok(sync.progress.posts[2].sealed === false, 'progres palsu dikoreksi server');
 
+    // ---------- Admin ----------
     const adm = client(); await adm.open();
     adm.send({ type: 'admin-auth', pin: '000000' });
     ok((await adm.wait(type('admin-error'))).message.includes('PIN'), 'PIN salah ditolak');
@@ -104,18 +156,17 @@ function fakeState(overrides) {
     await adm.wait(type('admin-welcome'));
     const snap = await adm.wait(type('admin-state'));
     ok(snap.settings.paused === false, 'perintah admin sebelum login diabaikan');
-    const pa = snap.players.find((p) => p.alias === 'Penjelajah 07');
-    const pb = snap.players.find((p) => p.alias === 'Tim Tempe');
-    ok(pa && pa.score === 80 && pa.online, 'admin melihat skor dan status daring');
+    const pa = snap.players.find((p) => p.alias === 'Penjelajah07');
+    const pb = snap.players.find((p) => p.alias === 'TimTempe');
+    ok(pa && pa.score === 80 && pa.online && pa.zone === 'world', 'admin melihat skor, status daring, dan zona');
     ok(pb.flags.length > 0, 'admin melihat catatan validasi untuk progres palsu');
 
     adm.send({ type: 'admin', action: 'set-post', pos: 2, open: false });
     const st = await a.wait((m) => m.type === 'settings' && !m.settings.openPosts.includes(2));
-    ok(Boolean(st), 'menutup Pos 2 tersiar ke pemain');
+    ok(!('classCode' in st.settings), 'menutup Pos 2 tersiar ke pemain (tanpa membocorkan kode kelas)');
 
     adm.send({ type: 'admin', action: 'set-paused', value: true });
     ok((await a.wait((m) => m.type === 'settings' && m.settings.paused)).settings.paused, 'jeda tersiar');
-    a.send({ type: 'move', x: 300, y: 300 });
     adm.send({ type: 'admin', action: 'set-paused', value: false });
     await a.wait((m) => m.type === 'settings' && !m.settings.paused);
 
@@ -123,8 +174,7 @@ function fakeState(overrides) {
     ok((await b.wait(type('announce'))).text === 'Kumpul di Pos 3', 'pengumuman diterima pemain');
 
     adm.send({ type: 'admin', action: 'teleport', playerId: pa.id, x: 470, y: 330 });
-    const tp = await a.wait(type('teleport'));
-    ok(Math.round(tp.x) === 470, 'admin memindahkan pemain');
+    ok(Math.round((await a.wait(type('teleport'))).x) === 470, 'admin memindahkan pemain');
 
     b.send({ type: 'chat', text: 'Halo tim!' });
     ok((await a.wait(type('chat'))).entry.text === 'Halo tim!', 'obrolan tersiar');
@@ -139,22 +189,29 @@ function fakeState(overrides) {
 
     adm.send({ type: 'admin', action: 'kick', playerId: pb.id });
     await b.wait(type('kicked'));
-    const b2 = client(); await b2.open();
-    b2.send({ type: 'join', alias: 'Tim Tempe', token: wb.token });
-    ok((await b2.wait(type('error'))).code === 'blocked', 'pemain yang dikeluarkan tidak bisa masuk lagi');
+    ok((await api('login', { username: 'TimTempe', password: 'tempe12345' })).status === 403, 'akun yang dikeluarkan tidak bisa masuk lagi');
+
+    adm.send({ type: 'admin', action: 'set-class-code', code: 'XI-IPA-2' });
+    await adm.wait(type('admin-ok'));
+    ok((await api('status')).needsClassCode === true, 'status memberi tahu kode kelas dibutuhkan');
+    ok((await api('register', { username: 'Tamu01', password: 'abcdef1' })).status === 403, 'daftar tanpa kode kelas ditolak');
+    ok((await api('register', { username: 'Tamu01', password: 'abcdef1', classCode: 'xi-ipa-2' })).status === 201, 'daftar dengan kode kelas diterima');
 
     adm.send({ type: 'admin', action: 'export' });
     const exp = await adm.wait(type('admin-export'));
-    ok(exp.data.players.length === 2 && !('tokenHash' in exp.data.players[0]), 'ekspor tanpa hash token');
+    ok(exp.data.players.length === 3 && exp.data.players.every((p) => !('passHash' in p) && !('sessions' in p)), 'ekspor tanpa kata sandi/sesi');
 
-    // Lanjut di perangkat lain setelah alias dilepas.
-    adm.send({ type: 'admin', action: 'release', playerId: pa.id });
-    await adm.wait(type('admin-ok'));
+    adm.send({ type: 'admin', action: 'reset-password', playerId: pa.id });
+    const pw = await adm.wait(type('admin-password'));
+    await a.wait(type('kicked'));
+    ok((await api('login', { username: 'Penjelajah07', password: 'rahasia123' })).status === 401, 'kata sandi lama tidak berlaku setelah diatur ulang');
+    const relog = await api('login', { username: 'Penjelajah07', password: pw.password });
+    ok(relog.status === 200, 'masuk dengan kata sandi sementara dari guru');
     const c = client(); await c.open();
-    c.send({ type: 'join', alias: 'Penjelajah 07' });
-    ok(Boolean((await c.wait(type('welcome'))).token), 'alias yang dilepas dapat diklaim perangkat baru');
+    c.send({ type: 'join', session: relog.token });
+    ok(Boolean(await c.wait(type('welcome'))), 'bergabung lagi setelah atur ulang kata sandi');
 
-    [a, b2, c, adm].forEach((x) => x.ws.close());
+    [a, b, c, adm].forEach((x) => x.ws.close());
   } catch (err) {
     console.error('✗ Uji berhenti:', err.message);
     failures += 1;

@@ -44,6 +44,8 @@ docker run -d --name nutrantara -p 3000:3000 \
 
 ### Sebelum dibuka ke internet
 
+- Atur **kode kelas** di panel guru agar hanya siswa kelas itu yang bisa mendaftar akun.
+- Wajib HTTPS: kata sandi siswa dikirim saat masuk. Tanpa HTTPS, kata sandi bisa disadap di jaringan.
 - Gunakan PIN yang panjang dan unik, dan ganti PIN setiap semester.
 - Server menyimpan alias siswa, jawaban, dan obrolan. Pastikan lokasi server dan masa simpan data disetujui sekolah.
 - Kunci jawaban masih dikirim ke browser, dan skor divalidasi ulang di server, tetapi siswa yang paham teknis tetap bisa mengakali jumlah percobaan. Untuk penilaian berisiko tinggi, pindahkan pemeriksaan jawaban ke server terlebih dahulu.

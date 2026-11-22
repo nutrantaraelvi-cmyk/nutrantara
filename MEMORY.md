@@ -54,6 +54,10 @@ Belum dikerjakan: validasi jawaban sepenuhnya di server (kunci masih ada di klie
 
 Pengguna meminta game 3D bergaya platformer petualangan (terinspirasi genre Super Bear Adventure, tetapi orisinal, tanpa meniru karakter/level/tampilannya), dengan target prototipe siap deploy, desain karakter bertema NUTRANTARA, peta yang disesuaikan, dan landing page. Implementasi: Three.js r170 disimpan lokal di `vendor/`; `characters.js` (Penjelajah Pangan bercaping + ransel rantang, Nara dengan antena daun padi); `world3d.js` (pulau, portal, penanda pos, blok tempe + 12 kepingan arsip, kamera orbit, kontrol sentuh); 2D tetap sebagai cadangan. Landing page di `index.html`, game pindah ke `play.html`. Deploy: Dockerfile, `render.yaml`, `docs/DEPLOY.md`; NODE_ENV=production mewajibkan `NUTRANTARA_ADMIN_PIN`.
 
+## Versi 0.5: kepulauan & misi di dalam dunia (22 November 2026)
+
+Pengguna memberi konsep peta (kepulauan melayang di atas awan, 6 pos di pulau-pulau sekeliling, Nara putih-oranye) dan meminta: semua misi/tantangan di dalam peta dunia; alur beranda → daftar akun → login → loading → lobi → MAIN → pilih map → terjun ke Pos 1; animasi interaktif. Implementasi: `world-data.js` kini berisi pulau + jembatan + `allowedIslands` (dipakai server untuk membatasi gerak); akun nama pengguna + kata sandi (scrypt) lewat `/api/register|login|logout|me|status`, kode kelas opsional; `app.js` (alur & lobi 3D), `quest.js` (terminal/papan/altar), `fx.js`; pos 6 masih membuka layar Dapur Juara (DOM). Mode tamu luring tanpa server.
+
 ## Catatan saat melanjutkan
 
 Ada percakapan awal yang sempat membahas Godot, Supabase, login Google, multiplayer dan target 3.000 pengguna. Dokumen desain yang diberikan kemudian secara eksplisit menetapkan prototipe versi uji tanpa engine/backend/multiplayer. Jadikan dokumen tersebut acuan scope saat ini; jangan menganggap percakapan eksplorasi sebelumnya sebagai keputusan final. Jika pengguna mengubah scope, bahas implikasi platform, data peserta, beban operasional, dan biaya sebelum implementasi.

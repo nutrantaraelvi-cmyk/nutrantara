@@ -1,72 +1,96 @@
 /*
- * Dunia 3D NUTRANTARA — platformer petualangan low-poly di Pulau Nusantara.
- * Koordinat server tetap 2D (piksel 960×600 dari world-data.js); di sini dipetakan ke ruang 3D.
- * Kontrol: WASD/panah bergerak (relatif kamera), Spasi melompat, E berinteraksi, seret mouse memutar kamera,
- * gulir untuk zoom. Layar sentuh: joystick + tombol lompat/aksi.
- * Bila WebGL tidak tersedia atau pemain memilih 2D, dunia 2D (world.js) dipakai.
+ * Dunia 3D NUTRANTARA — Kepulauan melayang di atas awan.
+ * Alun-alun Nusantara di tengah, enam pulau pos di sekeliling, dihubungkan jembatan cahaya.
+ * Mode: 'overview' (pilih map) → 'drop' (terjun dengan daun pisang) → 'play' (jelajah & misi di dalam dunia).
+ * Koordinat server tetap 2D (world-data.js, 960×600); di sini dipetakan ke ruang 3D (1 px = 0,1 satuan).
  */
 import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, createLabel, createBubble, toon, PALETTE } from './characters.js';
+import { createFx } from './fx.js';
+import { createQuests } from './quest.js';
 
 const W = window.NUTRANTARA_WORLD;
 const game = window.NutraGame;
 const net = window.NutraNet;
 const MISSIONS = window.NUTRANTARA_MISSIONS || [];
 const GFX_KEY = 'nutrantara-gfx';
-const POS_KEY = 'nutrantara-world-pos-v1';
-
-// ---------- Pemetaan koordinat ----------
-const S = 1 / 16;
-const toX = (px) => (px - W.island.cx) * S;
-const toZ = (py) => (py - W.island.cy) * S;
-const toPx = (x) => x / S + W.island.cx;
-const toPy = (z) => z / S + W.island.cy;
-
-const SPEED = 7.2;
+const S = 0.1;
+const CX = W.width / 2;
+const CY = W.height / 2;
+const toX = (px) => (px - CX) * S;
+const toZ = (py) => (py - CY) * S;
+const toPx = (x) => x / S + CX;
+const toPy = (z) => z / S + CY;
+const SPEED = 7.5;
 const GRAVITY = 26;
 const JUMP = 9.6;
-const INTERACT = W.interactRadius * S;
-const STATUS_COLOR = { done: PALETTE.green, ready: PALETTE.cyan, locked: '#6c7f79' };
+const ISLAND_COLORS = { 0: '#78f4bd', 1: '#ff9f91', 2: '#ffd17c', 3: '#f59e5b', 4: '#68dce7', 5: '#c58cf0', 6: '#ffd17c' };
 
 function hasWebGL() {
   try { const c = document.createElement('canvas'); return Boolean(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; }
 }
-
-function defaultGfx() {
-  const coarse = matchMedia('(pointer: coarse)').matches;
-  return coarse || (navigator.hardwareConcurrency || 4) < 4 ? 'low' : 'high';
-}
-
+const defaultGfx = () => (matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 4) < 4 ? 'low' : 'high');
 let gfx = localStorage.getItem(GFX_KEY) || defaultGfx();
 if (!hasWebGL()) gfx = '2d';
 
+const frame = (id) => {
+  const i = W.islands.find((x) => x.id === id);
+  return i ? { id, x: toX(i.cx), z: toZ(i.cy), rx: i.rx * S, rz: i.ry * S, name: i.name } : null;
+};
+const missionOf = (id) => MISSIONS.find((m) => m.id === id);
+const sealedIds = () => MISSIONS.filter((m) => game.state.posts[m.id] && game.state.posts[m.id].sealed).map((m) => m.id);
+const allowedSet = () => W.allowedIslands(sealedIds(), net && net.online ? net.settings.openPosts : null);
+const islandAt3 = (x, z) => W.islandAt(toPx(x), toPy(z));
+
+// ---------- DOM ----------
 const stage = document.querySelector('.world-stage');
 const canvas2d = document.getElementById('world-canvas');
 const promptEl = document.getElementById('world-prompt');
 const actionBtn = document.getElementById('world-action');
 
-// ---------- DOM: wadah 3D, HUD, kontrol sentuh, pemilih grafis ----------
 const wrap = document.createElement('div');
 wrap.className = 'world3d';
 wrap.innerHTML = `
   <div class="w3-hud">
-    <div class="w3-chip" title="Kepingan arsip yang sudah dikumpulkan"><span aria-hidden="true">✦</span> <b id="w3-shards">0</b>/<span id="w3-shards-total">0</span> <small>KEPINGAN ARSIP</small></div>
-    <div class="w3-chip w3-goal" id="w3-goal"></div>
+    <div class="w3-hud-left">
+      <div class="w3-chip w3-place" id="w3-place">—</div>
+      <div class="w3-chip" title="Kepingan arsip yang sudah dikumpulkan"><span aria-hidden="true">✦</span> <b id="w3-shards">0</b>/<span id="w3-shards-total">0</span> <small>KEPINGAN</small></div>
+    </div>
+    <div class="w3-chip w3-goal" id="w3-goal" aria-live="polite"></div>
+  </div>
+  <div class="w3-emotes" role="group" aria-label="Emote">
+    <button type="button" data-emote="wave" title="Melambai (1)">👋</button>
+    <button type="button" data-emote="cheer" title="Bersorak (2)">🎉</button>
+    <button type="button" data-emote="dance" title="Menari (3)">💃</button>
+    <button type="button" data-emote="think" title="Berpikir (4)">🤔</button>
   </div>
   <div class="w3-touch" aria-hidden="true">
     <div class="w3-stick" id="w3-stick"><i></i></div>
     <div class="w3-buttons"><button type="button" id="w3-jump" tabindex="-1">LOMPAT</button><button type="button" id="w3-act" tabindex="-1">AKSI</button></div>
   </div>
-  <div class="w3-loading" id="w3-loading">Memuat pulau…</div>`;
+  <div class="w3-banner" id="w3-banner" aria-live="polite"></div>
+  <div class="w3-drophint" id="w3-drophint" hidden>Tekan <kbd>Spasi</kbd> untuk membuka daun pisang</div>
+  <div class="w3-holo-layer" id="w3-holo" hidden></div>
+  <div class="w3-loading" id="w3-loading">Memuat kepulauan…</div>`;
 stage.insertBefore(wrap, canvas2d);
+
+// Panel pilih map (dipakai juga oleh mode 2D)
+const ov = document.createElement('div');
+ov.className = 'w-overview';
+ov.hidden = true;
+ov.innerHTML = `
+  <div class="ov-top"><div><p class="ov-kicker">PILIH MAP</p><h2>Kepulauan <em>NUTRANTARA</em></h2></div><button type="button" class="button button-secondary" id="ov-back">← Lobi</button></div>
+  <ol class="ov-list" id="ov-list"></ol>
+  <aside class="ov-info" id="ov-info" aria-live="polite"></aside>`;
+stage.append(ov);
 
 const gfxBar = document.createElement('div');
 gfxBar.className = 'w3-gfx';
 gfxBar.setAttribute('role', 'group');
 gfxBar.setAttribute('aria-label', 'Mode grafis');
 gfxBar.innerHTML = '<span>GRAFIS</span><button type="button" data-gfx="high">3D Tinggi</button><button type="button" data-gfx="low">3D Ringan</button><button type="button" data-gfx="2d">2D</button>';
-document.querySelector('.world-keys').before(gfxBar);
 const keysHelp = document.querySelector('.world-keys');
+keysHelp.before(gfxBar);
 
 function renderGfxBar() {
   gfxBar.querySelectorAll('[data-gfx]').forEach((b) => {
@@ -74,71 +98,70 @@ function renderGfxBar() {
     if (b.dataset.gfx !== '2d') b.disabled = !hasWebGL();
   });
   keysHelp.innerHTML = gfx === '2d'
-    ? '<kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd> berjalan · <kbd>E</kbd> berinteraksi · klik/sentuh untuk berjalan · lebih nyaman dengan papan ketik? Gunakan <button type="button" class="link-button" data-screen="map">Peta</button>.'
-    : '<kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd> berjalan · <kbd>Spasi</kbd> melompat · <kbd>E</kbd> berinteraksi · seret mouse memutar kamera · gulir untuk zoom · tanpa 3D? Gunakan <button type="button" class="link-button" data-screen="map">Peta</button>.';
+    ? '<kbd>W A S D</kbd> berjalan · <kbd>E</kbd> berinteraksi · klik/sentuh untuk berjalan · Papan ketik saja? Gunakan <button type="button" class="link-button" data-screen="map">Peta</button>.'
+    : '<kbd>W A S D</kbd> berjalan · <kbd>Spasi</kbd> lompat · <kbd>E</kbd> interaksi · <kbd>1–4</kbd> emote · seret mouse memutar kamera · gulir zoom · Papan ketik saja? <button type="button" class="link-button" data-screen="map">Peta</button>';
 }
 
-gfxBar.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-gfx]');
-  if (!b || b.disabled) return;
-  const prev = gfx;
-  gfx = b.dataset.gfx;
-  localStorage.setItem(GFX_KEY, gfx);
-  applyMode(prev);
-});
-
-// ---------- Three.js dasar ----------
+// ---------- Three.js ----------
 let renderer = null;
 let scene;
 let camera;
 let sun;
-let ocean;
-let oceanBase;
+let fx;
+let quests;
 const clock = new THREE.Clock();
 let running = false;
 let built = false;
+let mode = 'off'; // off | overview | drop | play
+let landed = false;
 
-const cam = { yaw: 0, pitch: 0.48, dist: 10.5 };
-const self = { x: 0, z: 0, h: 0, vy: 0, grounded: true, face: Math.PI, speed: 0, obj: null };
-const others = new Map(); // id -> { obj, label, labelText, x, z, h, face }
-const portals = new Map(); // id -> { group, ring, disc, lock, statusKey, numLabel }
-const shards = []; // { id, obj, x, y, z, taken }
-const platforms = []; // { x, z, hw, hd, top }
-const bubbles = []; // { sprite, follow, until }
+const cam = { yaw: 0, pitch: 0.5, dist: 11 };
+const self = { x: 0, z: 0, h: 0, vy: 0, grounded: true, face: Math.PI, speed: 0, obj: null, island: -1 };
+const others = new Map();
+const platforms = [];
+const shards = [];
+const bubbles = [];
+const animated = [];
+const islandTops = [];
+const domes = new Map();
+const bridges3d = [];
+const waterfalls = [];
+let cloudSea;
 let nara;
-let smoke = [];
-let animated = [];
-let clouds = [];
+let arrow;
+let selectRing;
 let nearby = null;
 let lastSent = 0;
-let lastPxKey = '';
+let lastKey = '';
 let statusTimer = 0;
+let allowedKey = '';
+let panelOpen = false;
+const visited = new Set();
 
 function initRenderer() {
   if (renderer) return true;
   try {
     renderer = new THREE.WebGLRenderer({ antialias: gfx === 'high', powerPreference: 'high-performance' });
-  } catch {
-    renderer = null;
-    return false;
-  }
+  } catch { renderer = null; return false; }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.domElement.className = 'w3-canvas';
   renderer.domElement.tabIndex = 0;
-  renderer.domElement.setAttribute('aria-label', 'Pulau NUTRANTARA 3D. W A S D atau panah untuk berjalan, spasi untuk melompat, E untuk berinteraksi.');
+  renderer.domElement.setAttribute('aria-label', 'Kepulauan NUTRANTARA 3D. W A S D untuk berjalan, spasi melompat, E berinteraksi, 1 sampai 4 untuk emote.');
   renderer.domElement.setAttribute('aria-describedby', 'world-prompt');
   wrap.prepend(renderer.domElement);
   scene = new THREE.Scene();
-  scene.background = new THREE.Color('#9fdbe6');
-  scene.fog = new THREE.Fog('#9fdbe6', 45, 120);
-  camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 300);
-  scene.add(new THREE.HemisphereLight('#e6fbff', '#3c7a52', 1.6));
-  sun = new THREE.DirectionalLight('#fff1d6', 2.1);
-  sun.position.set(18, 30, 14);
+  const sky = new THREE.Color('#a8e3f0');
+  scene.background = sky;
+  scene.fog = new THREE.Fog(sky, 70, 210);
+  camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 500);
+  scene.add(new THREE.HemisphereLight('#f0fbff', '#4d8a5e', 1.7));
+  sun = new THREE.DirectionalLight('#fff0d0', 2.2);
+  sun.position.set(25, 40, 18);
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 22, bottom: -22, near: 1, far: 90 });
+  Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 });
   sun.shadow.bias = -0.0008;
   scene.add(sun, sun.target);
+  fx = createFx(scene);
   bindInput(renderer.domElement);
   return true;
 }
@@ -149,252 +172,281 @@ function applyQuality() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, high ? 2 : 1));
   renderer.shadowMap.enabled = high;
   sun.castShadow = high;
-  scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+  scene.traverse((o) => { if (o.material && !Array.isArray(o.material)) o.material.needsUpdate = true; });
 }
 
-// ---------- Pembangunan dunia ----------
+// ---------- Pembangun ----------
 const rand = (() => { let s = 20261122; return () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; }; })();
-
 function add(obj, x = 0, y = 0, z = 0, parent = scene) {
   obj.position.set(x, y, z);
   parent.add(obj);
-  obj.traverse((o) => { if (o.isMesh && o.castShadow !== false) { o.castShadow = true; o.receiveShadow = true; } });
+  obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return obj;
 }
 const box = (w, h, d, c) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), toon(c));
 const cyl = (rt, rb, h, c, seg = 12) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), toon(c));
 const sph = (r, c, seg = 10) => new THREE.Mesh(new THREE.SphereGeometry(r, seg, Math.max(6, seg - 2)), toon(c));
 
-function buildWorld() {
-  const rx = W.island.rx * S;
-  const rz = W.island.ry * S;
+function waterfallTexture() {
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 32, 0);
+  grad.addColorStop(0, '#bfefff'); grad.addColorStop(0.5, '#ffffff'); grad.addColorStop(1, '#bfefff');
+  g.fillStyle = grad; g.fillRect(0, 0, 32, 128);
+  g.fillStyle = 'rgba(120,200,230,.55)';
+  for (let i = 0; i < 26; i += 1) g.fillRect(Math.random() * 30, Math.random() * 128, 2, 10 + Math.random() * 22);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1, 2);
+  return t;
+}
 
-  // Laut
-  oceanBase = new THREE.PlaneGeometry(320, 320, 48, 48);
-  oceanBase.rotateX(-Math.PI / 2);
-  ocean = new THREE.Mesh(oceanBase, toon('#2a8fa0', { transparent: true, opacity: 0.94 }));
-  ocean.position.y = -0.55;
-  ocean.receiveShadow = true;
-  scene.add(ocean);
-  const shallow = new THREE.Mesh(new THREE.RingGeometry(1, 1.22, 64), new THREE.MeshBasicMaterial({ color: '#8ff0e8', transparent: true, opacity: 0.45, depthWrite: false }));
-  shallow.rotation.x = -Math.PI / 2;
-  shallow.scale.set(rx + 1.6, rz + 1.6, 1);
-  shallow.position.y = -0.5;
-  scene.add(shallow);
-
-  // Pulau: pasir + rumput
-  const sand = cyl(1, 1.08, 1.2, '#eed9a2', 64);
-  sand.scale.set(rx + 1.6, 1, rz + 1.6);
-  add(sand, 0, -0.65, 0).castShadow = false;
-  const grass = cyl(1, 1, 0.6, '#5cbf72', 64);
-  grass.scale.set(rx, 1, rz);
-  add(grass, 0, -0.3, 0).castShadow = false;
-  // Petak rumput lebih tua untuk variasi
-  for (let i = 0; i < 14; i += 1) {
+function buildIsland(isl) {
+  const f = frame(isl.id);
+  const g = new THREE.Group();
+  const sand = cyl(1, 0.97, 0.5, '#ecd8a0', 48); sand.scale.set(f.rx + 0.6, 1, f.rz + 0.6);
+  add(sand, 0, -0.32, 0, g);
+  const top = cyl(1, 1, 0.5, isl.id === 0 ? '#6ccb72' : '#62c46f', 48); top.scale.set(f.rx, 1, f.rz);
+  add(top, 0, -0.25, 0, g);
+  top.userData.islandId = isl.id;
+  islandTops.push(top);
+  // Tebing berlapis
+  const layers = [[1.02, 0.82, 2.4, '#8b6b4e'], [0.82, 0.5, 2.8, '#735a45'], [0.5, 0.12, 3.6, '#5e4a3b']];
+  let y = -0.57;
+  layers.forEach(([rt, rb, h, c]) => {
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 14), toon(c));
+    l.scale.set(f.rx + 0.6, 1, f.rz + 0.6);
+    y -= h / 2;
+    add(l, 0, y, 0, g);
+    y -= h / 2;
+  });
+  for (let i = 0; i < 10; i += 1) {
     const a = rand() * Math.PI * 2;
-    const r = Math.sqrt(rand()) * 0.8;
-    const patch = new THREE.Mesh(new THREE.CircleGeometry(1.4 + rand() * 2, 10), toon('#4fae66'));
-    patch.rotation.x = -Math.PI / 2;
-    patch.position.set(Math.cos(a) * r * rx, 0.011, Math.sin(a) * r * rz);
-    patch.receiveShadow = true;
-    scene.add(patch);
+    const r = add(new THREE.Mesh(new THREE.DodecahedronGeometry(0.5 + rand() * 0.7, 0), toon(rand() < 0.5 ? '#7d6a5a' : '#94857a')), Math.cos(a) * (f.rx + 0.4), -0.9 - rand() * 2, Math.sin(a) * (f.rz + 0.4), g);
+    r.rotation.set(rand(), rand(), rand());
   }
-
-  // Jalur bercahaya antar-pos
-  const pts = [W.spawn, ...W.stations].map((p) => new THREE.Vector3(toX(p.x), 0.02, toZ(p.y)));
-  for (let i = 0; i < pts.length - 1; i += 1) {
-    const a = pts[i]; const b = pts[i + 1];
-    const len = a.distanceTo(b);
-    const seg = box(1.5, 0.04, len, '#efdcaa');
-    seg.position.copy(a).lerp(b, 0.5);
-    seg.lookAt(b.x, 0.02, b.z);
-    seg.castShadow = false; seg.receiveShadow = true;
-    scene.add(seg);
-    // Batu pijakan kecil di pinggir jalur
-    for (let k = 1; k < len; k += 2.2) {
-      const p = a.clone().lerp(b, k / len);
-      const dot = new THREE.Mesh(new THREE.CircleGeometry(0.12, 6), new THREE.MeshBasicMaterial({ color: PALETTE.gold }));
-      dot.rotation.x = -Math.PI / 2;
-      dot.position.set(p.x, 0.05, p.z);
-      scene.add(dot);
-    }
+  // Akar & sulur menggantung
+  for (let i = 0; i < 8; i += 1) {
+    const a = rand() * Math.PI * 2;
+    const len = 1 + rand() * 2.5;
+    add(cyl(0.05, 0.02, len, '#3f8a4c', 4), Math.cos(a) * (f.rx + 0.5), -0.6 - len / 2, Math.sin(a) * (f.rz + 0.5), g);
   }
-  pts.forEach((p) => { const d = cyl(0.95, 0.95, 0.04, '#efdcaa', 16); d.castShadow = false; add(d, p.x, 0.02, p.z); });
+  // Air terjun di beberapa pulau
+  if ([0, 1, 3, 5, 6].includes(isl.id)) {
+    const a = isl.id === 0 ? 1.9 : 1.2 + rand() * 0.7;
+    const wx = Math.cos(a) * (f.rx + 0.62); const wz = Math.sin(a) * (f.rz + 0.62);
+    const tex = waterfallTexture();
+    const fall = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 10), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+    fall.position.set(wx, -5, wz);
+    fall.lookAt(wx * 3, -5, wz * 3);
+    fall.castShadow = false;
+    g.add(fall);
+    waterfalls.push(tex);
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(0.9, 16), new THREE.MeshBasicMaterial({ color: '#8fdcef' }));
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(wx * 0.92, 0.02, wz * 0.92);
+    g.add(pool);
+  }
+  g.position.set(f.x, 0, f.z);
+  scene.add(g);
 
-  buildSpawn();
-  W.stations.forEach(buildStation);
-  buildDecor(rx, rz);
-  buildPlatformsAndShards();
-  buildBackdrop();
-
-  // Penjelajah (kamu)
-  scene.traverse((o) => { if (o.userData.spin || o.userData.bob || o.userData.rise) animated.push(o); });
-  self.obj = createExplorer(net && net.me ? net.me.color : PALETTE.cyan);
-  add(self.obj);
-  built = true;
+  // Kubah kunci
+  if (isl.id > 0) {
+    const dome = new THREE.Group();
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#9fd8e0', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+    shell.scale.set(f.rx + 0.4, Math.min(f.rx, f.rz) * 1.1, f.rz + 0.4);
+    const wire = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 7, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#e8fbff', wireframe: true, transparent: true, opacity: 0.25 }));
+    wire.scale.copy(shell.scale);
+    const lock = createLabel(`🔒 POS ${isl.id} TERKUNCI`, { color: PALETTE.gold, size: 30, scale: 0.014 });
+    lock.position.y = shell.scale.y + 1;
+    dome.add(shell, wire, lock);
+    dome.position.set(f.x, 0, f.z);
+    dome.userData = { shell, wire, lock, fade: 0 };
+    scene.add(dome);
+    domes.set(isl.id, dome);
+  }
+  // Nama pulau
+  const m = missionOf(isl.id);
+  const name = createLabel(m ? `POS ${isl.id} · ${m.title} ${m.titleEm}` : isl.name.toUpperCase(), { color: ISLAND_COLORS[isl.id], size: 30, scale: 0.013 });
+  name.position.set(f.x, isl.id === 0 ? 7 : 8.5, f.z - f.rz * 0.45);
+  scene.add(name);
 }
 
-function buildSpawn() {
-  const nx = toX(W.nara.x); const nz = toZ(W.nara.y);
-  nara = createNara();
-  add(nara, nx, 0, nz);
-  const nl = createLabel('NARA · PEMANDU', { color: PALETTE.green });
-  nl.position.set(nx, 2.45, nz);
-  scene.add(nl);
-
-  // Gapura selamat datang
-  const sx = toX(W.spawn.x) - 2.6; const sz = toZ(W.spawn.y) + 1.5;
-  const gate = new THREE.Group();
-  gate.add(add(box(0.35, 3, 0.35, '#8a5a35'), -2, 1.5, 0, gate), add(box(0.35, 3, 0.35, '#8a5a35'), 2, 1.5, 0, gate));
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(2.9, 0.9, 4), toon('#b5523b'));
-  roof.rotation.y = Math.PI / 4; roof.scale.z = 0.35;
-  add(roof, 0, 3.4, 0, gate);
-  add(box(3.6, 0.5, 0.15, PALETTE.deep), 0, 2.75, 0.1, gate);
-  const sign = createLabel('PULAU NUTRANTARA', { color: PALETTE.gold, bg: 'rgba(7,21,22,0)', size: 30, scale: 0.009 });
-  sign.position.set(0, 2.76, 0.3);
-  gate.add(sign);
-  gate.rotation.y = 0.5;
-  add(gate, sx, 0, sz);
-
-  // Sawah bertingkat kecil
-  const px = toX(150); const pz = toZ(220);
-  for (let r = 0; r < 3; r += 1) {
-    for (let c = 0; c < 3; c += 1) {
-      const terrace = new THREE.Group();
-      add(box(1.9, 0.18 + r * 0.22, 1.5, '#6b8f3a'), 0, (0.18 + r * 0.22) / 2, 0, terrace);
-      const water = box(1.6, 0.02, 1.2, '#7fd3d6');
-      water.castShadow = false;
-      add(water, 0, 0.19 + r * 0.22, 0, terrace);
-      for (let k = 0; k < 6; k += 1) {
-        const rice = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.4, 4), toon('#9bdc5a'));
-        add(rice, -0.6 + (k % 3) * 0.6, 0.4 + r * 0.22, -0.35 + Math.floor(k / 3) * 0.7, terrace);
-      }
-      add(terrace, px + c * 2.05, 0, pz - r * 1.6);
-    }
-  }
-}
-
-// Penanda khas tiap pos
+// Penanda khas tiap pulau (mengikuti konsep peta)
 const LANDMARKS = {
-  1(g) { // Kantin Nusantara: warung bertenda garis + dua piring menu
-    add(box(3.2, 1, 1.4, '#a0683e'), 0, 0.5, 0, g);
-    add(box(3.4, 0.12, 1.6, '#d9b07a'), 0, 1.06, 0, g);
-    [-1.5, 1.5].forEach((x) => add(cyl(0.08, 0.08, 2.4, '#7a4a2a', 6), x, 1.2, 0.7, g));
-    for (let i = 0; i < 6; i += 1) {
-      const stripe = box(0.58, 0.08, 1.9, i % 2 ? '#fff4e0' : '#e4604b');
-      stripe.rotation.x = -0.35;
-      add(stripe, -1.45 + i * 0.58, 2.35, 0.35, g);
+  0(g) { // Alun-alun: gapura, sawah, kolam, rumah Nara
+    const gate = new THREE.Group();
+    add(box(0.4, 3.4, 0.4, '#8a5a35'), -2.2, 1.7, 0, gate); add(box(0.4, 3.4, 0.4, '#8a5a35'), 2.2, 1.7, 0, gate);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(3.2, 1, 4), toon('#b5523b')); roof.rotation.y = Math.PI / 4; roof.scale.z = 0.35;
+    add(roof, 0, 3.8, 0, gate);
+    add(box(4, 0.55, 0.16, PALETTE.deep), 0, 3.05, 0.12, gate);
+    const sign = createLabel('ALUN-ALUN NUSANTARA', { color: PALETTE.gold, bg: 'rgba(0,0,0,0)', size: 28, scale: 0.0085 });
+    sign.position.set(0, 3.06, 0.35); gate.add(sign);
+    add(gate, 0, 0, 5.5, g);
+    for (let r = 0; r < 3; r += 1) for (let c = 0; c < 4; c += 1) {
+      const t = new THREE.Group();
+      add(box(2.1, 0.2 + r * 0.25, 1.6, '#6b8f3a'), 0, (0.2 + r * 0.25) / 2, 0, t);
+      const water = box(1.8, 0.02, 1.3, '#7fd3d6'); add(water, 0, 0.21 + r * 0.25, 0, t);
+      for (let k = 0; k < 6; k += 1) add(new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.45, 4), toon('#9bdc5a')), -0.6 + (k % 3) * 0.6, 0.45 + r * 0.25, -0.35 + Math.floor(k / 3) * 0.7, t);
+      add(t, -14 + c * 2.2, 0, -5 - r * 1.8, g);
     }
-    add(cyl(0.38, 0.32, 0.08, '#ffffff', 14), -0.6, 1.16, 0.1, g);
-    add(cyl(0.38, 0.32, 0.08, '#ffffff', 14), 0.6, 1.16, 0.1, g);
-    add(sph(0.22, '#f3e6b0', 8), -0.6, 1.25, 0.1, g);
-    add(sph(0.22, '#c78a3c', 8), 0.6, 1.25, 0.1, g);
-    const a = createLabel('MENU A', { size: 22 }); a.position.set(-0.6, 1.7, 0.2); g.add(a);
-    const b = createLabel('MENU B', { size: 22 }); b.position.set(0.6, 1.7, 0.2); g.add(b);
+    const pond = new THREE.Mesh(new THREE.CircleGeometry(2.6, 24), toon('#7fd3e6')); pond.rotation.x = -Math.PI / 2; pond.scale.y = 0.7;
+    add(pond, 11, 0.02, 2, g);
+    const pad = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.5, 32), new THREE.MeshBasicMaterial({ color: PALETTE.cyan, transparent: true, opacity: 0.6 }));
+    pad.rotation.x = -Math.PI / 2; add(pad, toX(W.nara.x) - toX(W.island.cx), 0.03, toZ(W.nara.y) - toZ(W.island.cy), g);
   },
-  2(g) { // Laboratorium Pencernaan: kubah kaca dengan saluran cerna berliku
-    add(cyl(1.7, 1.9, 0.5, '#d4e3df', 20), 0, 0.25, 0, g);
-    const tube = new THREE.Mesh(new THREE.TorusKnotGeometry(0.55, 0.16, 80, 10, 2, 3), toon(PALETTE.coral));
-    add(tube, 0, 1.45, 0, g).userData.spin = 0.5;
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(1.65, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshToonMaterial({ color: PALETTE.cyan, transparent: true, opacity: 0.32, depthWrite: false }));
-    dome.castShadow = false;
-    add(dome, 0, 0.5, 0, g);
-    add(cyl(0.12, 0.12, 1.2, '#d4e3df', 8), 1.9, 0.6, 0.4, g);
-    add(sph(0.28, PALETTE.green, 10), 1.9, 1.3, 0.4, g);
-  },
-  3(g) { // Gerbang Penyerapan: lengkung vili usus dengan butir nutrisi naik
-    for (let i = 0; i <= 8; i += 1) {
-      const a = Math.PI * (i / 8);
-      const v = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.9, 4, 8), toon('#f19a8c'));
-      v.position.set(Math.cos(a) * 2, 0.6 + Math.sin(a) * 2.2, 0);
-      v.rotation.z = a - Math.PI / 2;
-      add(v, v.position.x, v.position.y, 0, g);
-    }
-    for (let i = 0; i < 7; i += 1) {
-      const n = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), toon(PALETTE.gold, { emissive: PALETTE.gold, emissiveIntensity: 0.7 }));
-      n.userData.rise = { base: rand() * 3, x: -1.5 + rand() * 3 };
-      add(n, n.userData.rise.x, 0.5, (rand() - 0.5) * 0.6, g);
-    }
-  },
-  4(g) { // Jejak Sebab Akibat: barisan domino yang mulai jatuh
-    for (let i = 0; i < 6; i += 1) {
-      const d = box(0.3, 1.4, 0.8, i % 2 ? PALETTE.white : '#2c5d57');
-      d.rotation.z = i < 2 ? -0.5 + i * 0.25 : 0;
-      add(d, -2 + i * 0.75, 0.7, 0, g);
-      if (i % 2 === 0) { const dot = sph(0.07, PALETTE.deep, 6); add(dot, -2 + i * 0.75, 1.0, 0.41, g); }
-    }
-  },
-  5(g) { // Pemecah Klaim: kristal klaim + kaca pembesar raksasa
-    [[0, 1.2, 0, 0.9], [-0.9, 0.7, 0.3, 0.55], [0.8, 0.6, -0.2, 0.5], [0.3, 0.45, 0.6, 0.35]].forEach(([x, y, z, r]) => {
-      const c = new THREE.Mesh(new THREE.OctahedronGeometry(r, 0), toon(PALETTE.cyan, { emissive: '#2a9fb0', emissiveIntensity: 0.3 }));
-      c.scale.y = 1.6;
-      add(c, x, y, z, g);
+  1(g) { // Kantin sekolah modern dengan portal lengkung bersulur
+    add(box(6, 2.6, 2.6, '#f6ead2'), 0, 1.3, 0, g);
+    add(box(6.1, 0.35, 2.7, '#f08a3c'), 0, 2.2, 0, g);
+    add(box(6.3, 0.2, 2.9, '#5a6d6b'), 0, 2.7, 0, g);
+    for (let i = 0; i < 5; i += 1) add(box(0.85, 0.9, 0.05, '#1d4d55'), -2.4 + i * 1.2, 1.15, 1.31, g).material = toon('#2f7f8c', { emissive: '#3ad0e0', emissiveIntensity: 0.25 });
+    for (let i = 0; i < 4; i += 1) add(sph(0.35, '#3f9a5a', 7), -2.2 + i * 1.45, 3.05, -0.4, g);
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.18, 10, 28, Math.PI), toon(PALETTE.gold, { emissive: '#c98a1a', emissiveIntensity: 0.35 }));
+    add(arch, 3.9, 0.1, 0.6, g).rotation.y = -0.4;
+    for (let i = 0; i < 8; i += 1) add(sph(0.16, '#4caf6e', 6), 3.9 + Math.cos((i / 7) * Math.PI) * 1.25 * Math.cos(0.4), 0.1 + Math.sin((i / 7) * Math.PI) * 1.25, 0.6 - Math.cos((i / 7) * Math.PI) * 0.5, g);
+    [[-1.6, 2.8], [1.6, 2.8]].forEach(([x, z]) => {
+      add(cyl(0.7, 0.7, 0.08, '#d9b07a', 14), x, 0.8, z, g); add(cyl(0.06, 0.06, 0.8, '#7a4a2a', 6), x, 0.4, z, g);
+      add(cyl(0.04, 0.04, 1.6, '#7a4a2a', 6), x, 1.6, z, g);
+      add(new THREE.Mesh(new THREE.ConeGeometry(1, 0.45, 8), toon(x < 0 ? '#e4604b' : '#68dce7')), x, 2.45, z, g);
     });
-    const lens = new THREE.Group();
-    add(new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.09, 8, 24), toon(PALETTE.gold)), 0, 0, 0, lens);
-    const glass = new THREE.Mesh(new THREE.CircleGeometry(0.66, 24), new THREE.MeshBasicMaterial({ color: '#dff', transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
-    lens.add(glass);
-    const handle = cyl(0.08, 0.1, 1.1, '#7a4a2a', 8);
-    add(handle, 0, -1.2, 0, lens);
-    lens.rotation.z = 0.5;
-    add(lens, 1.6, 1.8, 0.4, g).userData.bob = true;
   },
-  6(g) { // Dapur Juara: pendopo beratap joglo, tungku & wajan, tumpeng
-    add(box(4, 0.25, 3, '#c79a63'), 0, 0.12, 0, g);
-    [[-1.7, -1.2], [1.7, -1.2], [-1.7, 1.2], [1.7, 1.2]].forEach(([x, z]) => add(cyl(0.12, 0.12, 2.4, '#7a4a2a', 6), x, 1.4, z, g));
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(3.2, 1.6, 4), toon('#8b3b2c'));
-    roof.rotation.y = Math.PI / 4;
-    roof.scale.z = 0.8;
-    add(roof, 0, 3.3, 0, g);
-    add(box(1.1, 0.7, 0.8, '#a9a39a'), -0.9, 0.6, -0.4, g);
-    add(new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), toon('#3a3a3a')), -0.9, 1.15, -0.4, g);
-    add(box(1.2, 0.6, 0.8, '#a0683e'), 0.9, 0.55, 0.2, g);
-    add(new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 12), toon('#f2c94c')), 0.9, 1.25, 0.2, g);
-    add(cyl(0.5, 0.5, 0.05, '#4caf6e', 14), 0.9, 0.87, 0.2, g);
-    smoke = [0, 1, 2, 3].map((i) => { const p = sph(0.22, '#f3f6f5', 8); p.castShadow = false; p.userData.off = i / 4; add(p, -0.9, 1.6, -0.4, g); return p; });
+  2(g) { // Pasar tradisional + laboratorium pencernaan
+    [[-2.6, 0, '#e4604b'], [0, -0.4, '#ffd17c'], [2.6, 0, '#68dce7']].forEach(([x, z, c], k) => {
+      add(box(2.1, 0.9, 1.1, '#a0683e'), x, 0.45, z, g);
+      [-0.9, 0.9].forEach((px) => add(cyl(0.05, 0.05, 2.2, '#7a4a2a', 5), x + px, 1.1, z + 0.5, g));
+      for (let i = 0; i < 4; i += 1) { const s = box(0.55, 0.06, 1.4, i % 2 ? '#fff4e0' : c); s.rotation.x = -0.3; add(s, x - 0.8 + i * 0.53, 2.2, z + 0.15, g); }
+      const fruits = ['#ff7043', '#ffd54f', '#8bc34a', '#ab47bc', '#ff8a65'];
+      for (let i = 0; i < 7; i += 1) add(sph(0.16, fruits[(i + k) % fruits.length], 7), x - 0.7 + (i % 4) * 0.45, 1.02 + Math.floor(i / 4) * 0.2, z - 0.1 + Math.floor(i / 4) * 0.2, g);
+    });
+    const lab = new THREE.Group();
+    add(cyl(1.4, 1.5, 0.4, '#d4e3df', 18), 0, 0.2, 0, lab);
+    const tube = new THREE.Mesh(new THREE.TorusKnotGeometry(0.45, 0.13, 70, 8, 2, 3), toon(PALETTE.coral));
+    add(tube, 0, 1.25, 0, lab).userData.spin = 0.6;
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1.35, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshToonMaterial({ color: PALETTE.cyan, transparent: true, opacity: 0.3, depthWrite: false }));
+    add(dome, 0, 0.4, 0, lab);
+    add(lab, 5.6, 0, 0.6, g);
+  },
+  3(g) { // Pohon raksasa dengan gerbang emas (penyerapan)
+    add(cyl(0.9, 1.4, 5, '#7a5134', 10), 0, 2.5, 0, g);
+    [[0, 5.6, 0, 2.4], [-1.6, 5, 0.4, 1.7], [1.7, 5.1, -0.2, 1.8], [0.4, 6.6, -0.6, 1.6], [-0.9, 6.2, -0.9, 1.4]].forEach(([x, y, z, r]) => add(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), toon(rand() < 0.5 ? '#3f9a5a' : '#57b06c')), x, y, z, g));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.16, 10, 30), toon(PALETTE.gold, { emissive: '#e09a2a', emissiveIntensity: 0.6 }));
+    add(ring, 0, 1.55, 1.0, g);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.92, 30), new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0.6 }));
+    add(disc, 0, 1.55, 1.02, g).userData.pulse = true;
+    for (let i = 0; i < 7; i += 1) {
+      const l = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), toon('#9be36b', { emissive: '#6fd04a', emissiveIntensity: 0.5 }));
+      l.userData.orbit = { r: 1.5 + rand(), s: 0.4 + rand() * 0.5, y: 1 + rand() * 4, o: rand() * 6 };
+      add(l, 0, l.userData.orbit.y, 0, g);
+    }
+  },
+  4(g) { // Kota terapung: menara & bola molekul
+    let y = 0;
+    [[1.1, 1.3, 1.6, '#f4f7f6'], [0.95, 1.1, 1.6, '#e2ecea'], [0.8, 0.95, 1.6, '#f4f7f6'], [0.65, 0.8, 1.4, '#e2ecea']].forEach(([rt, rb, h, c]) => { add(cyl(rt, rb, h, c, 14), 0, y + h / 2, 0, g); add(cyl(rb + 0.02, rb + 0.02, 0.12, PALETTE.cyan, 14), 0, y + 0.1, 0, g).material = toon(PALETTE.cyan, { emissive: PALETTE.cyan, emissiveIntensity: 0.6 }); y += h; });
+    add(cyl(1.2, 1.2, 0.2, '#f08a3c', 16), 0, y, 0, g);
+    add(cyl(0.05, 0.05, 1.6, '#c9d3cf', 6), 0, y + 0.9, 0, g);
+    add(sph(0.14, PALETTE.gold, 8), 0, y + 1.75, 0, g).userData.blink = true;
+    const globe = new THREE.Group();
+    const glass = new THREE.Mesh(new THREE.SphereGeometry(1.25, 20, 14), new THREE.MeshToonMaterial({ color: '#c9f3ff', transparent: true, opacity: 0.25, depthWrite: false }));
+    globe.add(glass);
+    const atoms = [[0, 0, 0, 0.28], [0.6, 0.35, 0, 0.2], [-0.55, 0.3, 0.2, 0.2], [0.1, -0.6, 0.35, 0.2], [0, 0.25, -0.6, 0.18]];
+    atoms.forEach(([x, yy, z, r]) => { const a = sph(r, PALETTE.gold, 10); a.position.set(x, yy, z); globe.add(a); if (x || yy || z) { const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, Math.hypot(x, yy, z), 5), toon('#ffffff')); stick.position.set(x / 2, yy / 2, z / 2); stick.lookAt(x, yy, z); stick.rotateX(Math.PI / 2); globe.add(stick); } });
+    add(cyl(0.8, 1, 0.5, '#c9d3cf', 14), -3.3, 0.25, 0.4, g);
+    add(globe, -3.3, 1.9, 0.4, g).userData.spin = 0.5;
+    [[3, 0.2], [3.6, -1.2]].forEach(([x, z]) => { add(box(1.2, 1.6, 1.2, '#e2ecea'), x, 0.8, z, g); add(box(1.25, 0.15, 1.25, PALETTE.cyan), x, 1.65, z, g); });
+  },
+  5(g) { // Studio iklan: meja kerja, berkas, kaca pembesar, papan pin
+    add(box(3.4, 0.18, 1.6, '#a0683e'), 0, 1.05, 0, g);
+    [[-1.5, -0.65], [1.5, -0.65], [-1.5, 0.65], [1.5, 0.65]].forEach(([x, z]) => add(box(0.14, 1, 0.14, '#7a4a2a'), x, 0.5, z, g));
+    for (let i = 0; i < 6; i += 1) { const p = box(0.6, 0.02, 0.8, '#ffffff'); p.rotation.y = rand() - 0.5; add(p, -1.1 + i * 0.45, 1.16 + i * 0.01, (rand() - 0.5) * 0.5, g); }
+    add(box(3.2, 2, 0.15, '#c8a27a'), 0, 2.4, -1.2, g);
+    ['#ffd17c', '#ff9f91', '#68dce7', '#78f4bd', '#ffffff'].forEach((c, i) => add(box(0.5, 0.5, 0.04, c), -1.2 + i * 0.6, 2.4 + (i % 2) * 0.4, -1.1, g));
+    const lens = new THREE.Group();
+    add(new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.08, 8, 24), toon(PALETTE.gold)), 0, 0, 0, lens);
+    lens.add(new THREE.Mesh(new THREE.CircleGeometry(0.56, 24), new THREE.MeshBasicMaterial({ color: '#dff', transparent: true, opacity: 0.35, side: THREE.DoubleSide })));
+    add(cyl(0.07, 0.09, 1, '#7a4a2a', 6), 0, -1.05, 0, lens);
+    lens.rotation.z = 0.6;
+    add(lens, 2.4, 2.3, 0.2, g).userData.bob = 2.3;
+    const onair = createLabel('● ON AIR', { color: PALETTE.coral, size: 26 }); onair.position.set(0, 3.8, -1.2); g.add(onair);
+  },
+  6(g) { // Dapur Juara: pendopo joglo, tungku, dan portal daun emas
+    add(box(4.4, 0.25, 3.2, '#c79a63'), 0, 0.12, 0, g);
+    [[-1.9, -1.3], [1.9, -1.3], [-1.9, 1.3], [1.9, 1.3]].forEach(([x, z]) => add(cyl(0.12, 0.12, 2.6, '#7a4a2a', 6), x, 1.5, z, g));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(3.5, 1.7, 4), toon('#8b3b2c')); roof.rotation.y = Math.PI / 4; roof.scale.z = 0.8;
+    add(roof, 0, 3.6, 0, g);
+    add(box(1.1, 0.7, 0.8, '#a9a39a'), -1.2, 0.6, -0.6, g);
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), toon('#3a3a3a')), -1.2, 1.15, -0.6, g);
+    for (let i = 0; i < 4; i += 1) { const p = sph(0.22, '#f3f6f5', 8); p.castShadow = false; p.userData.smoke = i / 4; add(p, -1.2, 1.6, -0.6, g); }
+    const portal = new THREE.Group();
+    add(new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.18, 10, 30), toon(PALETTE.gold, { emissive: '#e09a2a', emissiveIntensity: 0.5 })), 0, 0, 0, portal);
+    const pd = new THREE.Mesh(new THREE.CircleGeometry(1.15, 30), new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.55 }));
+    portal.add(pd); pd.userData.pulse = true;
+    for (let i = 0; i < 7; i += 1) { const lf = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 4), toon(i % 2 ? '#f5a623' : '#ffd17c')); const a = Math.PI * 0.15 + (i / 6) * Math.PI * 0.7; lf.position.set(Math.cos(a) * 1.6, Math.sin(a) * 1.6, 0); lf.rotation.z = a - Math.PI / 2; portal.add(lf); }
+    add(portal, 4.2, 1.6, 0.5, g).rotation.y = -0.5;
   }
 };
 
-// Penanda wilayah diletakkan di sisi luar pulau (menjauhi jalur), menghadap ke portal.
-function landmarkSpot(st) {
-  const x = toX(st.x); const z = toZ(st.y);
-  const len = Math.hypot(x, z);
-  const dx = len > 3 ? x / len : 0; const dz = len > 3 ? z / len : -1;
-  return { x: x + dx * 3.4, z: z + dz * 3.4, rot: Math.atan2(-dx, -dz) };
+function buildLandmark(id) {
+  const f = frame(id);
+  const g = new THREE.Group();
+  LANDMARKS[id](g);
+  if (id === 0) g.position.set(f.x, 0, f.z);
+  else g.position.set(f.x, 0, f.z - f.rz * 0.5);
+  scene.add(g);
+  g.traverse((o) => { if (o.userData.spin || o.userData.bob || o.userData.pulse || o.userData.orbit || o.userData.smoke !== undefined || o.userData.blink) animated.push(o); });
 }
 
-function buildStation(st) {
-  const x = toX(st.x); const z = toZ(st.y);
-  const m = MISSIONS.find((mm) => mm.id === st.id);
-  const spot = landmarkSpot(st);
-  const lm = new THREE.Group();
-  LANDMARKS[st.id](lm);
-  lm.rotation.y = spot.rot;
-  add(lm, spot.x, 0, spot.z);
+function buildBridges() {
+  W.bridges.forEach((br) => {
+    const a = new THREE.Vector3(toX(br.a[0]), 0, toZ(br.a[1]));
+    const b = new THREE.Vector3(toX(br.b[0]), 0, toZ(br.b[1]));
+    const len = a.distanceTo(b);
+    const n = Math.max(3, Math.ceil(len / 1.15));
+    const width = br.w * S * 0.85;
+    const tiles = [];
+    const dir = b.clone().sub(a).normalize();
+    const yaw = Math.atan2(dir.x, dir.z);
+    for (let i = 0; i < n; i += 1) {
+      const t = (i + 0.5) / n;
+      const p = a.clone().lerp(b, t);
+      const tile = new THREE.Mesh(new THREE.BoxGeometry(width, 0.16, (len / n) * 0.82), new THREE.MeshToonMaterial({ color: '#bff6ff', emissive: PALETTE.cyan, emissiveIntensity: 0.5, transparent: true, opacity: 0.92 }));
+      tile.position.set(p.x, -0.08 + Math.sin(t * Math.PI) * -0.25, p.z);
+      tile.rotation.y = yaw;
+      tile.receiveShadow = true;
+      scene.add(tile);
+      tiles.push(tile);
+    }
+    const rails = [-1, 1].map((side) => {
+      const r = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, len), new THREE.MeshBasicMaterial({ color: PALETTE.cyan, transparent: true, opacity: 0.9 }));
+      const off = new THREE.Vector3(Math.cos(yaw) * side * width * 0.55, 0.5, -Math.sin(yaw) * side * width * 0.55);
+      r.position.copy(a.clone().lerp(b, 0.5)).add(off);
+      r.rotation.y = yaw;
+      scene.add(r);
+      return r;
+    });
+    bridges3d.push({ br, tiles, rails, open: null, lightUp: -1 });
+  });
+}
 
-  // Portal
-  const group = new THREE.Group();
-  const base = cyl(1.5, 1.6, 0.25, '#2c4f4b', 24);
-  add(base, 0, 0.12, 0, group);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.16, 10, 32), toon(PALETTE.cyan, { unique: true, emissive: PALETTE.cyan, emissiveIntensity: 0.6 }));
-  add(ring, 0, 1.55, 0, group);
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: PALETTE.cyan, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }));
-  disc.castShadow = false;
-  add(disc, 0, 1.55, 0, group);
-  const lock = new THREE.Group();
-  [-0.55, 0, 0.55].forEach((bx) => add(cyl(0.06, 0.06, 2.2, '#9aa7a3', 6), bx, 1.55, 0.05, lock));
-  add(box(0.5, 0.42, 0.18, PALETTE.gold), 0, 1.4, 0.18, lock);
-  add(new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.05, 6, 12, Math.PI), toon(PALETTE.gold)), 0, 1.62, 0.18, lock);
-  group.add(lock);
-  const numLabel = createLabel(`POS ${String(st.id).padStart(2, '0')}`, { color: PALETTE.cyan, size: 30 });
-  numLabel.position.set(0, 3.25, 0);
-  group.add(numLabel);
-  const nameLabel = createLabel(m ? `${m.title} ${m.titleEm}` : st.name, { size: 24 });
-  nameLabel.position.set(0, 2.85, 0);
-  group.add(nameLabel);
-  group.rotation.y = spot.rot;
-  add(group, x, 0, z);
-  portals.set(st.id, { group, ring, disc, lock, statusKey: '', numLabel });
+function buildDecor() {
+  W.islands.forEach((isl) => {
+    const f = frame(isl.id);
+    const count = isl.id === 0 ? 26 : 10;
+    for (let i = 0; i < count; i += 1) {
+      const a = rand() * Math.PI * 2;
+      const r = 0.78 + rand() * 0.14;
+      const x = f.x + Math.cos(a) * f.rx * r; const z = f.z + Math.sin(a) * f.rz * r;
+      if (W.bridges.some((br) => { const ax = toX(br.a[0]); const az = toZ(br.a[1]); const bx = toX(br.b[0]); const bz = toZ(br.b[1]); return Math.hypot(ax - x, az - z) < 3 || Math.hypot(bx - x, bz - z) < 3; })) continue;
+      const k = rand();
+      if (k < 0.4) buildPalm(x, z, 0.8 + rand() * 0.4);
+      else if (k < 0.7) add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.35 + rand() * 0.35, 0), toon(rand() < 0.5 ? '#3f9a5a' : '#2f8a4c')), x, 0.25, z);
+      else { const fl = new THREE.Group(); add(cyl(0.02, 0.02, 0.3, '#3f9a5a', 4), 0, 0.15, 0, fl); add(sph(0.11, ['#ff9f91', '#ffd17c', '#ffffff', '#f59e5b'][Math.floor(rand() * 4)], 6), 0, 0.33, 0, fl); add(fl, x, 0, z); }
+    }
+  });
+  W.trees.forEach(([tx, ty]) => {
+    const x = toX(tx); const z = toZ(ty);
+    if (W.islandAt(tx, ty) === 0) buildPalm(x, z, 1 + rand() * 0.3);
+  });
 }
 
 function buildPalm(x, z, s = 1) {
@@ -405,7 +457,6 @@ function buildPalm(x, z, s = 1) {
     const seg = cyl(0.13 - i * 0.012, 0.15 - i * 0.012, 0.55, i % 2 ? '#a8794a' : '#8a5f37', 7);
     px += lean * 0.12;
     add(seg, px, py + 0.27, 0, g);
-    seg.rotation.z = -lean * 0.4;
     py += 0.5;
   }
   for (let i = 0; i < 7; i += 1) {
@@ -415,138 +466,215 @@ function buildPalm(x, z, s = 1) {
     leaf.scale.z = 0.35;
     add(leaf, px, py + 0.1, 0, g);
   }
-  add(sph(0.12, '#6b4a2a', 6), px + 0.12, py - 0.05, 0.08, g);
-  add(sph(0.12, '#6b4a2a', 6), px - 0.1, py - 0.08, -0.06, g);
   g.scale.setScalar(s);
   g.rotation.y = rand() * Math.PI * 2;
   return add(g, x, 0, z);
 }
 
-function buildDecor(rx, rz) {
-  const busy = [...W.stations.map((s) => [toX(s.x), toZ(s.y), 2.6]), ...W.stations.map((s) => { const p = landmarkSpot(s); return [p.x, p.z, 3.4]; }), [toX(W.spawn.x), toZ(W.spawn.y), 3], [toX(W.nara.x), toZ(W.nara.y), 2], [toX(180), toZ(200), 4.5]];
-  const free = (x, z) => busy.every(([bx, bz, r]) => Math.hypot(bx - x, bz - z) > r) && (x * x) / (rx * rx) + (z * z) / (rz * rz) < 0.86;
-  W.trees.forEach(([tx, ty]) => { const x = toX(tx); const z = toZ(ty); if (free(x, z)) buildPalm(x, z, 0.9 + rand() * 0.4); });
-  // Pohon kelapa di pantai
-  for (let i = 0; i < 16; i += 1) {
-    const a = (i / 16) * Math.PI * 2 + rand() * 0.2;
-    const x = Math.cos(a) * (rx + 0.4); const z = Math.sin(a) * (rz + 0.4);
-    if (busy.every(([bx, bz, r]) => Math.hypot(bx - x, bz - z) > r)) buildPalm(x, z, 0.8 + rand() * 0.5);
+function buildSkyAndClouds() {
+  // Lautan awan di bawah kepulauan
+  const geo = new THREE.SphereGeometry(1, 10, 8);
+  const mat = toon('#ffffff');
+  const count = gfx === 'high' ? 220 : 120;
+  cloudSea = new THREE.InstancedMesh(geo, mat, count);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  for (let i = 0; i < count; i += 1) {
+    const a = rand() * Math.PI * 2;
+    const r = Math.sqrt(rand()) * 150;
+    const s = 4 + rand() * 7;
+    m.compose(new THREE.Vector3(Math.cos(a) * r, -14 - rand() * 3, Math.sin(a) * r), q, new THREE.Vector3(s * 1.4, s * 0.5, s));
+    cloudSea.setMatrixAt(i, m);
   }
-  // Semak, batu, bunga
-  for (let i = 0; i < 70; i += 1) {
-    const x = (rand() * 2 - 1) * rx; const z = (rand() * 2 - 1) * rz;
-    if (!free(x, z)) continue;
-    const k = rand();
-    if (k < 0.45) add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.35 + rand() * 0.35, 0), toon(rand() < 0.5 ? '#3f9a5a' : '#2f8a4c')), x, 0.25, z);
-    else if (k < 0.7) add(new THREE.Mesh(new THREE.DodecahedronGeometry(0.25 + rand() * 0.3, 0), toon('#9aa59c')), x, 0.15, z);
-    else {
-      const f = new THREE.Group();
-      add(cyl(0.02, 0.02, 0.3, '#3f9a5a', 4), 0, 0.15, 0, f);
-      add(sph(0.09, ['#ff9f91', '#ffd17c', '#ffffff', '#c58cf0'][Math.floor(rand() * 4)], 6), 0, 0.32, 0, f);
-      add(f, x, 0, z);
-    }
+  scene.add(cloudSea);
+  // Pulau karst di kejauhan
+  for (let i = 0; i < 16; i += 1) {
+    const a = (i / 16) * Math.PI * 2 + rand() * 0.3;
+    const r = 125 + rand() * 60;
+    const h = 10 + rand() * 12;
+    const g = new THREE.Group();
+    add(new THREE.Mesh(new THREE.CylinderGeometry(2 + rand() * 2, 4 + rand() * 3, h, 7), toon(rand() < 0.5 ? '#6f8c7a' : '#7c9a83')), 0, h / 2, 0, g);
+    add(new THREE.Mesh(new THREE.IcosahedronGeometry(3.4, 0), toon('#4f9e64')), 0, h + 0.5, 0, g);
+    add(g, Math.cos(a) * r, -18, Math.sin(a) * r);
+  }
+  // Awan tinggi yang melayang
+  for (let i = 0; i < 10; i += 1) {
+    const c = new THREE.Group();
+    for (let k = 0; k < 4; k += 1) { const p = sph(1.6 + rand() * 1.4, '#ffffff', 8); p.castShadow = false; add(p, k * 2 - 3, rand(), rand() - 0.5, c); }
+    c.userData.drift = 0.5 + rand() * 0.6;
+    add(c, -110 + rand() * 220, 22 + rand() * 12, -100 + rand() * 160);
+    animated.push(c);
   }
 }
 
-function buildPlatformsAndShards() {
+function buildShards() {
   const tempe = '#e9d8a6';
-  const defs = [
-    // [x, z, ukuran, tinggi atas, warna]  — x,z dalam satuan dunia 3D
-    [4.5, -2.8, 1.6, 0.7, tempe], [6.4, -4.2, 1.6, 1.45, tempe], [8.6, -5.4, 2.6, 2.2, '#f5c66b'],
-    [-23.2, 3.2, 1.6, 0.7, tempe], [-23.8, 0.6, 1.8, 1.4, '#f5c66b'],
-    [5.6, 12.2, 1.6, 0.7, tempe], [3.4, 13.6, 2.2, 1.45, '#f5c66b'],
-    [20.5, -4.5, 1.6, 0.75, tempe], [22, -6.6, 2, 1.5, '#f5c66b']
-  ];
-  defs.forEach(([x, z, size, top, color]) => {
+  const f0 = frame(0);
+  [[6, -4, 1.6, 0.7], [8, -5.4, 1.6, 1.45], [10.4, -6.2, 2.4, 2.2], [-9, 6, 1.8, 0.75], [-11, 7.4, 2, 1.5]].forEach(([x, z, size, top]) => {
     const g = new THREE.Group();
-    const slab = box(size, 0.4, size, color);
-    add(slab, 0, top - 0.2, 0, g);
-    // Bintik kedelai pada blok tempe
+    add(box(size, 0.4, size, top > 2 ? '#f5c66b' : tempe), 0, top - 0.2, 0, g);
     for (let i = 0; i < 5; i += 1) add(sph(0.07, '#c9b37a', 5), (rand() - 0.5) * size * 0.8, top + 0.01, (rand() - 0.5) * size * 0.8, g);
     if (top > 0.8) add(cyl(0.12, 0.16, top - 0.4, '#8a5f37', 6), 0, (top - 0.4) / 2, 0, g);
-    add(g, x, 0, z);
-    platforms.push({ x, z, hw: size / 2, hd: size / 2, top });
+    add(g, f0.x + x, 0, f0.z + z);
+    platforms.push({ x: f0.x + x, z: f0.z + z, hw: size / 2, hd: size / 2, top });
   });
-
-  const spots = [
-    [8.6, 3.2, -5.4], [-23.8, 2.4, 0.6], [3.4, 2.45, 13.6], [22, 2.5, -6.6],
-    [toX(250), 0.9, toZ(400)], [toX(400), 0.9, toZ(420)], [toX(540), 0.9, toZ(390)], [toX(690), 0.9, toZ(390)],
-    [toX(730), 0.9, toZ(250)], [toX(560), 0.9, toZ(220)], [toX(330), 0.9, toZ(360)], [toX(120), 0.9, toZ(360)]
-  ];
-  spots.forEach(([x, y, z], i) => {
+  const spots = [[0, 10.4, 3.2, -6.2], [0, -11, 2.5, 7.4], [0, 15, 0.9, 6], [0, -16, 0.9, -1],
+    [1, -0.6, 0.9, 0.55], [2, 0.7, 0.9, 0.55], [3, -0.6, 0.9, 0.5], [4, 0.6, 0.9, 0.5], [5, -0.6, 0.9, 0.55], [6, 0.65, 0.9, 0.5], [0, -4, 0.9, 9], [0, 17, 0.9, -5]];
+  spots.forEach(([isl, lx, y, lz], i) => {
+    const f = frame(isl);
+    const x = isl === 0 ? f.x + lx : f.x + lx * f.rx;
+    const z = isl === 0 ? f.z + lz : f.z + lz * f.rz;
     const g = new THREE.Group();
     const leaf = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), toon(PALETTE.gold, { emissive: '#c98a1a', emissiveIntensity: 0.55 }));
     leaf.scale.set(0.7, 1.15, 0.35);
     g.add(leaf);
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 6, 20), new THREE.MeshBasicMaterial({ color: PALETTE.gold, transparent: true, opacity: 0.6 }));
-    g.add(halo);
+    g.add(new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 6, 20), new THREE.MeshBasicMaterial({ color: PALETTE.gold, transparent: true, opacity: 0.6 })));
     add(g, x, y, z);
-    shards.push({ id: i, obj: g, x, y, z, taken: false });
+    shards.push({ id: i, obj: g, x, y, z, island: isl, taken: false });
   });
   document.getElementById('w3-shards-total').textContent = String(shards.length);
 }
 
-function buildBackdrop() {
-  // Gunung api di pulau seberang
-  const v = new THREE.Group();
-  add(cyl(26, 30, 3, '#6fa56a', 24), 0, -1, 0, v);
-  add(new THREE.Mesh(new THREE.ConeGeometry(18, 20, 18), toon('#6b7f73')), 0, 10, 0, v);
-  add(new THREE.Mesh(new THREE.ConeGeometry(6.5, 5, 18), toon('#8d9a92')), 0, 17.5, 0, v);
-  add(v, 15, -0.5, -95);
-  add(new THREE.Mesh(new THREE.ConeGeometry(10, 9, 12), toon('#7aa77a')), -60, 3.5, -80);
-  // Awan
-  for (let i = 0; i < 9; i += 1) {
-    const c = new THREE.Group();
-    for (let k = 0; k < 4; k += 1) { const p = sph(1.5 + rand() * 1.5, '#ffffff', 8); p.castShadow = false; add(p, k * 2 - 3, rand(), rand() - 0.5, c); }
-    c.userData.drift = 0.4 + rand() * 0.6;
-    add(c, -80 + rand() * 160, 16 + rand() * 8, -60 + rand() * 50);
-    clouds.push(c);
+async function prepare(onProgress = () => {}) {
+  if (built) { onProgress(1); return true; }
+  if (gfx === '2d' || !initRenderer()) { onProgress(1); return false; }
+  const steps = [
+    () => buildSkyAndClouds(),
+    () => W.islands.forEach(buildIsland),
+    () => W.islands.forEach((i) => buildLandmark(i.id)),
+    () => buildBridges(),
+    () => buildDecor(),
+    () => buildShards(),
+    () => {
+      quests = createQuests({
+        scene, fx, game, add,
+        overlay: document.getElementById('w3-holo'),
+        islandFrame: (id) => frame(id),
+        say: (text, reaction = 'talk') => say(nara, text, 2.6, reaction),
+        nara: (r) => nara.userData.react(r, r === 'celebrate' ? 1.4 : 1.1),
+        onPanel: (open) => { panelOpen = open; if (!open && renderer) renderer.domElement.focus(); },
+        onSealed: sealed
+      });
+      nara = createNara();
+      add(nara, toX(W.nara.x), 0, toZ(W.nara.y));
+      arrow = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 4), toon(PALETTE.gold, { emissive: PALETTE.gold, emissiveIntensity: 0.7 }));
+      arrow.rotation.x = Math.PI;
+      arrow.castShadow = false;
+      scene.add(arrow);
+      selectRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 6, 60), new THREE.MeshBasicMaterial({ color: PALETTE.gold, transparent: true, opacity: 0.9 }));
+      selectRing.rotation.x = Math.PI / 2;
+      scene.add(selectRing);
+      self.obj = createExplorer(net && net.me ? net.me.color : PALETTE.cyan);
+      add(self.obj);
+    }
+  ];
+  for (let i = 0; i < steps.length; i += 1) {
+    steps[i]();
+    onProgress((i + 1) / steps.length);
+    await new Promise((r) => setTimeout(r, 16));
   }
+  built = true;
+  applyQuality();
+  document.getElementById('w3-loading').hidden = true;
+  refreshIslands(true);
+  return true;
 }
 
-// ---------- Kepingan arsip (koleksi lokal, tidak memengaruhi skor) ----------
-const shardKey = () => `nutrantara-shards-v1:${(game.state.alias || '').toLocaleLowerCase('id')}`;
-function loadShards() {
-  let taken = [];
-  try { taken = JSON.parse(localStorage.getItem(shardKey())) || []; } catch { /* abaikan */ }
-  shards.forEach((s) => { s.taken = taken.includes(s.id); s.obj.visible = !s.taken; });
-  updateShardHud();
+// ---------- Kunci pulau & jembatan ----------
+function refreshIslands(instant) {
+  const allowed = allowedSet();
+  const key = [...allowed].sort().join(',');
+  if (key === allowedKey && !instant) return;
+  const firstTime = !allowedKey;
+  allowedKey = key;
+  domes.forEach((dome, id) => {
+    const open = allowed.has(id);
+    if (open && dome.visible && !instant && !firstTime) dome.userData.fade = 1; // animasi kubah memudar
+    else dome.visible = !open;
+  });
+  bridges3d.forEach((b) => {
+    const open = allowed.has(b.br.from) && allowed.has(b.br.to);
+    if (b.open === open) return;
+    const animateOpen = open && b.open === false && !instant;
+    b.open = open;
+    b.tiles.forEach((t, i) => {
+      t.material.color.set(open ? '#bff6ff' : '#7d8b88');
+      t.material.emissiveIntensity = open ? (animateOpen ? 0 : 0.5) : 0;
+      t.material.opacity = open ? 0.92 : 0.45;
+      t.userData.delay = animateOpen ? i * 0.12 : -1;
+    });
+    b.rails.forEach((r) => { r.material.color.set(open ? PALETTE.cyan : '#56615f'); r.material.opacity = open ? 0.9 : 0.35; });
+    b.lightT = animateOpen ? 0 : -1;
+  });
 }
-function saveShards() { try { localStorage.setItem(shardKey(), JSON.stringify(shards.filter((s) => s.taken).map((s) => s.id))); } catch { /* abaikan */ } }
-function updateShardHud() { document.getElementById('w3-shards').textContent = String(shards.filter((s) => s.taken).length); }
 
-// ---------- Masukan ----------
+function sealed(id, res) {
+  quests.refresh();
+  setTimeout(() => {
+    refreshIslands();
+    const next = res.next && missionOf(res.next);
+    if (next && allowedSet().has(next.id)) {
+      banner(`JEMBATAN KE POS ${next.id} TERBUKA!`, `${next.title} ${next.titleEm}`);
+      say(nara, `Segel aktif! Jembatan cahaya ke Pos ${next.id} — ${next.title} ${next.titleEm} — sudah menyala. Ikuti panah emas!`, 2.6, 'celebrate');
+    } else if (next) {
+      banner('POS TERSEGEL ✦', `Pos ${next.id} menunggu dibuka guru`);
+    }
+  }, 1600);
+}
+
+// ---------- Interaksi ----------
 const keys = new Set();
 const KEYMAP = { ArrowUp: 'f', KeyW: 'f', ArrowDown: 'b', KeyS: 'b', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
 const stick = { x: 0, y: 0, id: null };
 let jumpQueued = false;
 const typing = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+const EMOTE_KEYS = { Digit1: 'wave', Digit2: 'cheer', Digit3: 'dance', Digit4: 'think' };
 
 window.addEventListener('keydown', (e) => {
-  if (!running || typing(document.activeElement)) return;
+  if (!running || typing(document.activeElement) || panelOpen) return;
   const onCanvas = renderer && (document.activeElement === renderer.domElement || document.activeElement === document.body);
+  if (mode === 'drop' && e.code === 'Space') { e.preventDefault(); drop.openLeaf = true; return; }
+  if (mode !== 'play') return;
   if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); if (onCanvas) e.preventDefault(); }
   if (e.code === 'Space' && onCanvas) { e.preventDefault(); jumpQueued = true; }
+  if (EMOTE_KEYS[e.code]) doEmote(EMOTE_KEYS[e.code]);
   if ((e.code === 'KeyE' || (e.code === 'Enter' && onCanvas)) && nearby) { e.preventDefault(); interact(); }
 });
 window.addEventListener('keyup', (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); });
 window.addEventListener('blur', () => keys.clear());
 
+const raycaster = new THREE.Raycaster();
+function pickIsland(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  const p = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(p, camera);
+  const hit = raycaster.intersectObjects(islandTops, false)[0];
+  return hit ? hit.object.userData.islandId : null;
+}
+
 function bindInput(el) {
   let drag = null;
-  el.addEventListener('pointerdown', (e) => { el.focus(); drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointerdown', (e) => { el.focus(); drag = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: 0 }; el.setPointerCapture(e.pointerId); });
   el.addEventListener('pointermove', (e) => {
+    if (mode === 'overview' && !drag) { const id = pickIsland(e); el.style.cursor = id !== null ? 'pointer' : 'grab'; overview.hover = id; }
     if (!drag || drag.id !== e.pointerId) return;
-    cam.yaw -= (e.clientX - drag.x) * 0.006;
-    cam.pitch = Math.min(1.2, Math.max(0.15, cam.pitch + (e.clientY - drag.y) * 0.004));
+    const dx = e.clientX - drag.x; const dy = e.clientY - drag.y;
+    drag.moved += Math.abs(dx) + Math.abs(dy);
+    if (mode === 'overview') overview.yaw -= dx * 0.005;
+    else { cam.yaw -= dx * 0.006; cam.pitch = Math.min(1.25, Math.max(0.12, cam.pitch + dy * 0.004)); }
     drag.x = e.clientX; drag.y = e.clientY;
   });
-  const end = () => { drag = null; };
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
-  el.addEventListener('wheel', (e) => { e.preventDefault(); cam.dist = Math.min(18, Math.max(5, cam.dist + e.deltaY * 0.01)); }, { passive: false });
+  el.addEventListener('pointerup', (e) => {
+    if (mode === 'overview' && drag && drag.moved < 6) { const id = pickIsland(e); if (id !== null) selectIsland(id); }
+    drag = null;
+  });
+  el.addEventListener('pointercancel', () => { drag = null; });
+  el.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (mode === 'overview') overview.dist = Math.min(120, Math.max(40, overview.dist + e.deltaY * 0.05));
+    else cam.dist = Math.min(20, Math.max(5, cam.dist + e.deltaY * 0.01));
+  }, { passive: false });
 
-  // Joystick sentuh
   const pad = document.getElementById('w3-stick');
   const knob = pad.querySelector('i');
   const moveStick = (e) => {
@@ -563,43 +691,228 @@ function bindInput(el) {
   const release = () => { stick.id = null; stick.x = 0; stick.y = 0; knob.style.transform = ''; };
   pad.addEventListener('pointerup', release);
   pad.addEventListener('pointercancel', release);
-  document.getElementById('w3-jump').addEventListener('pointerdown', (e) => { e.preventDefault(); jumpQueued = true; });
+  document.getElementById('w3-jump').addEventListener('pointerdown', (e) => { e.preventDefault(); if (mode === 'drop') drop.openLeaf = true; else jumpQueued = true; });
   document.getElementById('w3-act').addEventListener('pointerdown', (e) => { e.preventDefault(); interact(); });
 }
 
-actionBtn.addEventListener('click', () => { if (running) interact(); });
+wrap.querySelector('.w3-emotes').addEventListener('click', (e) => { const b = e.target.closest('[data-emote]'); if (b) doEmote(b.dataset.emote); });
+actionBtn.addEventListener('click', () => { if (running && gfx !== '2d') interact(); });
 
-const canMove = () => !(net && net.online && (net.settings.paused || net.settings.movementLocked));
+function doEmote(name) {
+  if (mode !== 'play') return;
+  self.obj.userData.emote(name);
+  if (net) net.emote(name);
+}
+
+const canMove = () => !panelOpen && !(net && net.online && (net.settings.paused || net.settings.movementLocked));
 
 function interact() {
-  if (!nearby) return;
-  if (nearby.kind === 'nara') { naraTalk(); return; }
+  if (!nearby || mode !== 'play' || panelOpen) return;
   keys.clear();
-  game.openPos(nearby.id);
+  if (nearby.kind === 'nara') { naraTalk(); return; }
+  quests.activate(nearby.item);
+}
+
+function nextGoal() {
+  const st = game.state;
+  const target = MISSIONS.find((m) => !st.posts[m.id].sealed);
+  if (!target) return { text: '✓ EKSPEDISI SELESAI — semua segel aktif!', item: null };
+  if (!allowedSet().has(target.id)) return { text: `⌑ Pos ${target.id} menunggu dibuka guru`, item: null };
+  const here = self.island === target.id;
+  if (!here) {
+    const f = frame(target.id);
+    return { text: `➜ Menuju Pulau Pos ${target.id}: ${target.title} ${target.titleEm} — ikuti jembatan cahaya`, point: { x: f.x, z: f.z } };
+  }
+  if (target.type === 'project') return { text: '✦ Rancang menu di Meja Dapur Juara', item: quests.items.find((i) => i.pos === target.id) };
+  const p = st.posts[target.id];
+  const ev = (p.evidence || []).length;
+  const rows = target.stimulus.rows.length;
+  if (ev < rows) {
+    const item = quests.items.find((i) => i.pos === target.id && i.kind === 'terminal' && !(p.evidence || []).includes(i.row));
+    return { text: `⌕ Pindai Terminal Arsip (${ev}/${rows})`, item };
+  }
+  const done = p.challenges.filter((c) => c.complete).length;
+  if (done < target.challenges.length) return { text: `▤ Jawab di Papan Laporan (${done}/${target.challenges.length})`, item: quests.items.find((i) => i.pos === target.id && i.kind === 'board') };
+  return { text: '✦ Tulis alasan & segel di Altar Segel', item: quests.items.find((i) => i.pos === target.id && i.kind === 'altar') };
 }
 
 function naraTalk() {
-  const st = game.state;
-  const next = MISSIONS.find((m) => !st.posts[m.id].sealed);
-  let text;
-  if (!next) text = 'Semua segel aktif! Kamu Penjelajah Juara. Lihat Papan Peringkat, lalu bantu temanmu.';
-  else if (!game.isUnlocked(next.id)) text = `Portal Pos ${next.id} sedang ditutup guru. Sambil menunggu, cari kepingan arsip di atas blok tempe!`;
-  else text = `Tujuan berikutnya: Pos ${next.id} — ${next.title} ${next.titleEm}. Ikuti jalur emas, lalu tekan E di depan portal.`;
-  say(nara, text, 2.7);
-  game.showToast(`Nara: ${text}`);
+  const goal = nextGoal();
+  const m = MISSIONS.find((x) => x.id === self.island);
+  let text = goal.text.replace(/^[^A-Za-z0-9]+/, '');
+  if (m && !game.state.posts[m.id].sealed && m.nara && m.nara.intro && !(game.state.posts[m.id].evidence || []).length) text = m.nara.intro;
+  say(nara, `${text}`, 2.6, 'talk');
 }
 
-function say(obj, text, height = 2.6) {
+function say(obj, text, height = 2.6, reaction) {
+  if (!obj) return;
+  if (obj === nara && reaction) nara.userData.react(reaction, reaction === 'celebrate' ? 1.4 : 1.2);
   const old = bubbles.findIndex((b) => b.follow === obj);
   if (old >= 0) { scene.remove(bubbles[old].sprite); bubbles.splice(old, 1); }
   const sprite = createBubble(text);
   scene.add(sprite);
-  bubbles.push({ sprite, follow: obj, height, until: performance.now() + 6000 });
+  bubbles.push({ sprite, follow: obj, height, until: performance.now() + Math.min(9000, 3500 + text.length * 45) });
 }
 
-// ---------- Simulasi ----------
-function update(dt) {
-  // Gerak relatif kamera
+function banner(title, sub = '') {
+  const el = document.getElementById('w3-banner');
+  el.innerHTML = `<b>${title}</b>${sub ? `<span>${sub}</span>` : ''}`;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+}
+
+// ---------- Mode pilih map (overview) ----------
+const overview = { yaw: 0.6, dist: 78, focus: new THREE.Vector3(), target: new THREE.Vector3(), selected: 1, hover: null, onBack: null, onDrop: null };
+
+function islandStatus(id) {
+  if (id === 0) return { key: 'open', text: 'TERBUKA · TITIK KUMPUL' };
+  const p = game.state.posts[id];
+  if (p && p.sealed) return { key: 'done', text: '✓ TERSEGEL' };
+  if (allowedSet().has(id)) return { key: 'open', text: 'TERBUKA' };
+  return { key: 'locked', text: game.lockMessage(id) };
+}
+
+function renderOverview() {
+  const list = document.getElementById('ov-list');
+  list.innerHTML = W.islands.map((isl) => {
+    const m = missionOf(isl.id);
+    const st = islandStatus(isl.id);
+    return `<li><button type="button" class="ov-card ${st.key}${overview.selected === isl.id ? ' selected' : ''}" data-island="${isl.id}" aria-pressed="${overview.selected === isl.id}" style="--c:${ISLAND_COLORS[isl.id]}"><span class="ov-num">${isl.id ? String(isl.id).padStart(2, '0') : '✳'}</span><span><b>${m ? `${m.title} ${m.titleEm}` : isl.name}</b><small>${st.key === 'locked' ? '⌑ TERKUNCI' : st.text}</small></span></button></li>`;
+  }).join('');
+  const id = overview.selected;
+  const m = missionOf(id);
+  const st = islandStatus(id);
+  const p = m && game.state.posts[id];
+  let progress = '';
+  if (m && m.type === 'analysis') progress = `<ul class="ov-prog"><li>${(p.evidence || []).length}/${m.stimulus.rows.length} bukti terminal</li><li>${p.challenges.filter((c) => c.complete).length}/${m.challenges.length} tantangan</li><li>${p.sealed ? 'Segel aktif ✦' : 'Belum disegel'}</li></ul>`;
+  document.getElementById('ov-info').innerHTML = `
+    <p class="ov-kicker" style="color:${ISLAND_COLORS[id]}">${id ? `POS ${String(id).padStart(2, '0')} · ${m.location}` : 'PULAU TENGAH'}</p>
+    <h3>${m ? `${m.title} <em>${m.titleEm}</em>` : 'Alun-alun <em>Nusantara</em>'}</h3>
+    <p>${m ? m.description : 'Titik kumpul kelas bersama Nara. Ada gapura, sawah bertingkat, kolam, dan blok tempe berisi kepingan arsip.'}</p>
+    ${progress}
+    <p class="ov-status ${st.key}">${st.text}</p>
+    <button type="button" class="button button-primary ov-drop" id="ov-drop"${st.key === 'locked' ? ' disabled' : ''}>${st.key === 'locked' ? '⌑ Terkunci' : 'Terjun ke sini ↓'}</button>`;
+}
+
+function selectIsland(id) {
+  overview.selected = id;
+  renderOverview();
+}
+
+ov.addEventListener('click', (e) => {
+  const card = e.target.closest('[data-island]');
+  if (card) { selectIsland(Number(card.dataset.island)); return; }
+  if (e.target.closest('#ov-drop')) { const id = overview.selected; if (overview.onDrop) overview.onDrop(id); }
+  if (e.target.closest('#ov-back') && overview.onBack) overview.onBack();
+});
+
+function showOverview({ onBack, onDrop } = {}) {
+  overview.onBack = onBack;
+  overview.onDrop = onDrop;
+  const next = MISSIONS.find((m) => !game.state.posts[m.id].sealed && allowedSet().has(m.id));
+  overview.selected = next ? next.id : 0;
+  ov.hidden = false;
+  document.body.classList.add('overview');
+  renderOverview();
+  if (gfx === '2d' || !built) { mode = 'overview'; return; }
+  mode = 'overview';
+  const f = frame(overview.selected);
+  overview.focus.set(f.x, 0, f.z);
+  self.obj.visible = false;
+  start();
+  setTimeout(() => { const b = ov.querySelector('.ov-card.selected'); if (b) b.focus(); }, 60);
+}
+
+function hideOverview() {
+  ov.hidden = true;
+  document.body.classList.remove('overview');
+}
+
+// ---------- Terjun ----------
+const drop = { t: 0, island: 1, openLeaf: false, phase: 'fall', shake: 0 };
+
+function startDrop(id, px, py) {
+  hideOverview();
+  allowedKey = '';
+  refreshIslands(true);
+  const f = frame(id);
+  const st = W.stations.find((s) => s.id === id);
+  const tx = px !== undefined ? toX(px) : st ? toX(st.x) : f.x;
+  const tz = py !== undefined ? toZ(py) : st ? toZ(st.y) + 2 : f.z + 2;
+  self.x = tx; self.z = tz; self.h = 48; self.vy = -20; self.grounded = false;
+  self.island = id;
+  self.obj.visible = true;
+  cam.yaw = 0.25; cam.pitch = 0.55; cam.dist = 11;
+  drop.t = 0; drop.island = id; drop.openLeaf = false; drop.phase = 'fall';
+  mode = 'drop';
+  landed = true;
+  document.getElementById('w3-drophint').hidden = false;
+  const m = missionOf(id);
+  document.getElementById('w3-place').textContent = m ? `POS ${id} · ${frame(id).name}` : 'ALUN-ALUN NUSANTARA';
+  if (camera) camera.position.set(tx + 6, 70, tz + 14);
+  // Nara turun lebih dulu dan menunggu di dekat titik pendaratan.
+  nara.position.set(tx - 1.8, 0, tz + 0.8);
+  start();
+}
+
+function updateDrop(dt) {
+  drop.t += dt;
+  const pose = drop.phase === 'fall' ? 'skydive' : 'glide';
+  if (drop.phase === 'fall') {
+    self.vy = Math.max(-26, self.vy - 18 * dt);
+    if (self.h < 16 || drop.openLeaf) {
+      drop.phase = 'glide';
+      fx.ring({ x: self.x, y: self.h + 2, z: self.z }, { color: '#9ccc65', from: 0.5, to: 3, life: 0.5, y: 0 });
+    }
+  } else {
+    self.vy += (-3.2 - self.vy) * Math.min(1, dt * 3);
+    self.x += Math.sin(drop.t * 1.6) * 0.6 * dt;
+  }
+  self.h += self.vy * dt;
+  self.face += dt * (drop.phase === 'fall' ? 1.2 : 0.4);
+  if (self.h <= 0) {
+    self.h = 0; self.vy = 0; self.grounded = true;
+    self.obj.userData.land();
+    fx.dust({ x: self.x, y: 0.1, z: self.z });
+    fx.ring({ x: self.x, y: 0, z: self.z }, { color: '#ffffff', from: 0.3, to: 3.2, life: 0.6 });
+    drop.shake = 0.35;
+    mode = 'play';
+    document.getElementById('w3-drophint').hidden = true;
+    if (net) net.sendMove(toPx(self.x), toPy(self.z), 0);
+    arrive(drop.island, true);
+  }
+  self.obj.position.set(self.x, self.h, self.z);
+  self.obj.rotation.y = self.face;
+  self.obj.userData.animate(dt, { speed: 0, airborne: true, height: self.h, pose });
+  // Kamera mengikuti dari atas, lalu turun ke posisi bermain.
+  const k = Math.min(1, Math.max(0, 1 - self.h / 48));
+  const target = new THREE.Vector3(self.x, self.h + 1, self.z);
+  const desired = new THREE.Vector3(self.x + Math.sin(cam.yaw) * (7 + k * 4), self.h + 9 - k * 3.5, self.z + Math.cos(cam.yaw) * (7 + k * 4));
+  camera.position.lerp(desired, Math.min(1, dt * 4));
+  camera.lookAt(target);
+}
+
+function arrive(id, fromDrop) {
+  const m = missionOf(id);
+  if (m) {
+    banner(`POS ${String(id).padStart(2, '0')} · ${m.location}`, `${m.title} ${m.titleEm}`);
+    if (!visited.has(id)) {
+      visited.add(id);
+      const p = game.state.posts[id];
+      const intro = p && p.sealed ? `Pos ${id} sudah kamu segel. Lihat-lihat lagi atau lanjut ke pulau berikutnya.` : m.type === 'project' ? m.nara.brief : `${m.nara.intro} Pindai Terminal Arsip untuk mengumpulkan bukti.`;
+      setTimeout(() => say(nara, intro, 2.6, 'talk'), fromDrop ? 500 : 0);
+    }
+  } else if (fromDrop || !visited.has(0)) {
+    visited.add(0);
+    banner('ALUN-ALUN NUSANTARA', 'Titik kumpul kelas');
+    setTimeout(() => say(nara, 'Selamat datang di Alun-alun! Jembatan cahaya menghubungkan semua pulau pos. Ikuti panah emas.', 2.6, 'talk'), 400);
+  }
+  if (m && m.id === id) game.state.activePos = id;
+}
+
+// ---------- Simulasi bermain ----------
+function updatePlay(dt) {
   let ix = 0; let iz = 0;
   if (canMove()) {
     if (keys.has('f')) iz -= 1;
@@ -614,56 +927,128 @@ function update(dt) {
   const mx = ix * cos + iz * sin;
   const mz = -ix * sin + iz * cos;
   const moving = Math.hypot(mx, mz) > 0.05;
+  const allowed = allowedSet();
   if (moving) {
-    const nx = self.x + mx * SPEED * dt;
-    const nz = self.z + mz * SPEED * dt;
-    const c = W.clamp(toPx(nx), toPy(nz));
+    const c = W.clamp(toPx(self.x + mx * SPEED * dt), toPy(self.z + mz * SPEED * dt), allowed);
     self.x = toX(c.x); self.z = toZ(c.y);
-    const target = Math.atan2(mx, mz);
-    let diff = target - self.face;
+    let diff = Math.atan2(mx, mz) - self.face;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     self.face += diff * Math.min(1, dt * 12);
   }
   self.speed += ((moving ? Math.min(1, len) : 0) - self.speed) * Math.min(1, dt * 10);
-
-  // Lompat & gravitasi
   if (jumpQueued && self.grounded && canMove()) { self.vy = JUMP; self.grounded = false; }
   jumpQueued = false;
   const prevH = self.h;
   self.vy -= GRAVITY * dt;
   self.h += self.vy * dt;
   let floor = 0;
-  platforms.forEach((p) => {
-    if (Math.abs(self.x - p.x) <= p.hw + 0.2 && Math.abs(self.z - p.z) <= p.hd + 0.2 && prevH >= p.top - 0.05) floor = Math.max(floor, p.top);
-  });
-  if (self.h <= floor) { self.h = floor; self.vy = 0; self.grounded = true; } else self.grounded = false;
+  platforms.forEach((p) => { if (Math.abs(self.x - p.x) <= p.hw + 0.2 && Math.abs(self.z - p.z) <= p.hd + 0.2 && prevH >= p.top - 0.05) floor = Math.max(floor, p.top); });
+  if (self.h <= floor) {
+    if (!self.grounded && prevH - floor > 0.6) fx.dust({ x: self.x, y: floor + 0.05, z: self.z });
+    self.h = floor; self.vy = 0; self.grounded = true;
+  } else self.grounded = false;
+
+  // Debu langkah
+  if (self.grounded && self.speed > 0.6 && Math.random() < dt * 4) fx.dust({ x: self.x, y: floor + 0.05, z: self.z });
 
   self.obj.position.set(self.x, self.h, self.z);
   self.obj.rotation.y = self.face;
   self.obj.userData.animate(dt, { speed: self.speed, airborne: !self.grounded, height: self.h - floor });
 
-  // Kirim posisi 10×/detik
+  const isl = islandAt3(self.x, self.z);
+  if (isl !== -1 && isl !== self.island) { self.island = isl; arrive(isl, false); }
+  document.getElementById('w3-place').textContent = self.island > 0 ? `POS ${self.island} · ${frame(self.island).name}` : self.island === 0 ? 'ALUN-ALUN NUSANTARA' : 'JEMBATAN CAHAYA';
+
   const now = performance.now();
   const px = Math.round(toPx(self.x)); const py = Math.round(toPy(self.z));
   const key = `${px},${py},${Math.round(self.h * 10)}`;
-  if (now - lastSent > 100 && key !== lastPxKey) {
-    lastSent = now;
-    lastPxKey = key;
-    if (net) net.sendMove(px, py, self.h);
-    try { localStorage.setItem(POS_KEY, JSON.stringify({ x: px, y: py })); } catch { /* abaikan */ }
-  }
+  if (now - lastSent > 100 && key !== lastKey) { lastSent = now; lastKey = key; if (net) net.sendMove(px, py, self.h); }
 
-  updateOthers(dt);
+  // Nara mengikuti di samping penjelajah
+  const off = new THREE.Vector3(-1.5, 0, 1.2).applyAxisAngle(new THREE.Vector3(0, 1, 0), self.face);
+  const nx = self.x + off.x; const nz = self.z + off.z;
+  const nd = Math.hypot(nx - nara.position.x, nz - nara.position.z);
+  if (nd > 0.6) { nara.position.x += (nx - nara.position.x) * Math.min(1, dt * 2.2); nara.position.z += (nz - nara.position.z) * Math.min(1, dt * 2.2); }
+  nara.position.y += ((self.h > 0.5 ? self.h * 0.7 : 0) - nara.position.y) * Math.min(1, dt * 3);
+  const toSelf = Math.atan2(self.x - nara.position.x, self.z - nara.position.z);
+  let nd2 = toSelf - nara.rotation.y; nd2 = Math.atan2(Math.sin(nd2), Math.cos(nd2));
+  nara.rotation.y += nd2 * Math.min(1, dt * 4);
+
   updateShards(dt);
   updateNearby();
   updateCamera(dt);
-  animateWorld(dt);
+}
+
+function updateShards(dt) {
+  shards.forEach((s) => {
+    if (s.taken) return;
+    s.obj.rotation.y += dt * 2;
+    s.obj.position.y = s.y + Math.sin(clock.elapsedTime * 2 + s.id) * 0.12;
+    if (Math.hypot(s.x - self.x, s.z - self.z) < 0.9 && Math.abs(self.h + 0.8 - s.obj.position.y) < 1.3) {
+      s.taken = true;
+      s.obj.visible = false;
+      fx.sparkle({ x: s.x, y: s.obj.position.y, z: s.z });
+      saveShards();
+      updateShardHud();
+      const n = shards.filter((x) => x.taken).length;
+      game.showToast(n === shards.length ? `Semua ${n} kepingan arsip terkumpul! ✦` : `Kepingan arsip ditemukan! (${n}/${shards.length})`);
+    }
+  });
+}
+
+const shardKey = () => `nutrantara-shards-v1:${(game.state.alias || '').toLocaleLowerCase('id')}`;
+function loadShards() {
+  let taken = [];
+  try { taken = JSON.parse(localStorage.getItem(shardKey())) || []; } catch { /* abaikan */ }
+  shards.forEach((s) => { s.taken = taken.includes(s.id); s.obj.visible = !s.taken; });
+  updateShardHud();
+}
+function saveShards() { try { localStorage.setItem(shardKey(), JSON.stringify(shards.filter((s) => s.taken).map((s) => s.id))); } catch { /* abaikan */ } }
+function updateShardHud() { document.getElementById('w3-shards').textContent = String(shards.filter((s) => s.taken).length); }
+
+function updateNearby() {
+  let found = null;
+  const it = quests.nearest(self.x, self.z, self.h);
+  if (it) found = { kind: 'item', item: it, key: `${it.kind}${it.pos}${it.row ?? ''}` };
+  else if (Math.hypot(nara.position.x - self.x, nara.position.z - self.z) < 2.2) found = { kind: 'nara', key: 'nara' };
+  const prev = nearby === undefined ? 'init' : nearby ? nearby.key : 'none';
+  nearby = found;
+  if (found && found.kind === 'item') { promptEl.textContent = quests.hint(found.item); actionBtn.textContent = found.item.kind === 'terminal' ? 'Pindai' : found.item.kind === 'board' ? 'Buka papan' : found.item.kind === 'altar' ? 'Altar segel' : 'Buka dapur'; actionBtn.hidden = false; return; }
+  if ((found ? found.key : 'none') === prev) return;
+  if (!found) { promptEl.textContent = 'Jelajahi pulau. Ikuti panah emas ke tujuan berikutnya, dekati objek bercahaya, lalu tekan E.'; actionBtn.hidden = true; return; }
+  promptEl.textContent = 'Nara ada di sampingmu. Tekan E untuk meminta arahan.';
+  actionBtn.textContent = 'Tanya Nara';
+  actionBtn.hidden = false;
+}
+
+function updateCamera(dt) {
+  const target = new THREE.Vector3(self.x, self.h * 0.6 + 1.3, self.z);
+  const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)).multiplyScalar(cam.dist);
+  camera.position.lerp(target.clone().add(off), Math.min(1, dt * 6));
+  if (drop.shake > 0) { drop.shake -= dt; camera.position.x += (Math.random() - 0.5) * drop.shake; camera.position.y += (Math.random() - 0.5) * drop.shake; }
+  camera.lookAt(target);
+  if (sun.castShadow) { sun.position.set(self.x + 25, 40, self.z + 18); sun.target.position.set(self.x, 0, self.z); }
+}
+
+function updateOverview(dt) {
+  const f = frame(overview.selected);
+  overview.target.set(f.x, 0, f.z);
+  overview.focus.lerp(overview.target, Math.min(1, dt * 2.5));
+  overview.yaw += dt * 0.04;
+  const desired = overview.focus.clone().add(new THREE.Vector3(Math.sin(overview.yaw) * overview.dist * 0.75, overview.dist * 0.62, Math.cos(overview.yaw) * overview.dist * 0.75));
+  camera.position.lerp(desired, Math.min(1, dt * 2.5));
+  camera.lookAt(overview.focus);
+  selectRing.visible = true;
+  selectRing.scale.set(f.rx + 1.2, f.rz + 1.2, 1);
+  selectRing.position.set(f.x, 0.3 + Math.sin(clock.elapsedTime * 3) * 0.15, f.z);
+  if (sun.castShadow) { sun.position.set(overview.focus.x + 25, 40, overview.focus.z + 18); sun.target.position.copy(overview.focus); }
 }
 
 function updateOthers(dt) {
   if (!net) return;
   const seen = new Set();
   net.players.forEach((p, id) => {
+    if (p.zone !== 'world') return;
     seen.add(id);
     let o = others.get(id);
     if (!o) {
@@ -671,11 +1056,13 @@ function updateOthers(dt) {
       add(obj, toX(p.tx ?? p.x), 0, toZ(p.ty ?? p.y));
       o = { obj, label: null, labelText: '', x: obj.position.x, z: obj.position.z, h: 0, face: 0, speed: 0 };
       others.set(id, o);
+      fx.ring({ x: o.x, y: 0, z: o.z }, { color: p.color.startsWith('#') ? p.color : PALETTE.cyan });
     }
     const tx = toX(p.tx ?? p.x); const tz = toZ(p.ty ?? p.y); const th = p.th || 0;
     const k = Math.min(1, dt * 10);
     const dx = (tx - o.x) * k; const dz = (tz - o.z) * k;
-    o.x += dx; o.z += dz; o.h += (th - o.h) * Math.min(1, dt * 14);
+    if (Math.hypot(tx - o.x, tz - o.z) > 12) { o.x = tx; o.z = tz; } else { o.x += dx; o.z += dz; }
+    o.h += (th - o.h) * Math.min(1, dt * 14);
     const sp = Math.hypot(dx, dz) / Math.max(dt, 0.001);
     o.speed += (Math.min(1, sp / SPEED) - o.speed) * Math.min(1, dt * 8);
     if (sp > 0.3) o.face = Math.atan2(dx, dz);
@@ -705,109 +1092,50 @@ function updateSelfLabel() {
   selfLabelText = text;
 }
 
-function updateShards(dt) {
-  shards.forEach((s) => {
-    if (s.taken) return;
-    s.obj.rotation.y += dt * 2;
-    s.obj.position.y = s.y + Math.sin(clock.elapsedTime * 2 + s.id) * 0.12;
-    if (Math.hypot(s.x - self.x, s.z - self.z) < 0.9 && Math.abs(self.h + 0.8 - s.obj.position.y) < 1.3) {
-      s.taken = true;
-      s.obj.visible = false;
-      saveShards();
-      updateShardHud();
-      const n = shards.filter((x) => x.taken).length;
-      game.showToast(n === shards.length ? `Semua ${n} kepingan arsip terkumpul! Arsip Nusantara bersinar.` : `Kepingan arsip ditemukan! (${n}/${shards.length})`);
-    }
-  });
-}
-
-function updateNearby() {
-  let found = null;
-  if (Math.hypot(nara.position.x - self.x, nara.position.z - self.z) < INTERACT) found = { kind: 'nara' };
-  W.stations.forEach((s) => {
-    if (Math.hypot(toX(s.x) - self.x, toZ(s.y) - self.z) < INTERACT && self.h < 1) found = { kind: 'station', id: s.id, name: s.name };
-  });
-  const key = found ? `${found.kind}${found.id || ''}` : '';
-  const prevKey = nearby ? `${nearby.kind}${nearby.id || ''}` : 'none';
-  nearby = found;
-  if (key === prevKey) return;
-  if (!found) {
-    promptEl.textContent = 'Jelajahi pulau. Dekati portal pos atau Nara, lalu tekan E. Kumpulkan kepingan arsip di atas blok tempe!';
-    actionBtn.hidden = true;
-    return;
-  }
-  if (found.kind === 'nara') {
-    promptEl.textContent = 'Nara ada di dekatmu. Tekan E untuk meminta arahan.';
-    actionBtn.textContent = 'Bicara dengan Nara';
-  } else {
-    const status = game.posStatus(found.id);
-    promptEl.textContent = `Portal Pos ${found.id} — ${found.name} (${status === 'done' ? 'selesai' : status === 'ready' ? 'siap dimasuki' : 'terkunci'}). Tekan E untuk masuk.`;
-    actionBtn.textContent = status === 'locked' ? `Pos ${found.id} terkunci` : `Masuk Pos ${found.id}`;
-  }
-  actionBtn.hidden = false;
-}
-
-function updatePortals() {
-  let goal = null;
-  portals.forEach((p, id) => {
-    const status = game.posStatus(id);
-    if (!goal && status === 'ready') goal = id;
-    if (status === p.statusKey) return;
-    p.statusKey = status;
-    const c = STATUS_COLOR[status];
-    p.ring.material.color.set(c);
-    p.ring.material.emissive.set(status === 'locked' ? '#000000' : c);
-    p.disc.material.color.set(c);
-    p.disc.material.opacity = status === 'locked' ? 0.15 : 0.45;
-    p.lock.visible = status === 'locked';
-  });
-  const goalEl = document.getElementById('w3-goal');
-  const m = goal && MISSIONS.find((mm) => mm.id === goal);
-  goalEl.innerHTML = m ? `<span aria-hidden="true">➜</span> TUJUAN: <b>POS ${goal}</b> ${m.title} ${m.titleEm}` : game.sealCount() === MISSIONS.length ? '✓ EKSPEDISI SELESAI' : '⌑ MENUNGGU GURU MEMBUKA POS';
-  updateSelfLabel();
-}
-
-function updateCamera(dt) {
-  const target = new THREE.Vector3(self.x, self.h * 0.6 + 1.2, self.z);
-  const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)).multiplyScalar(cam.dist);
-  const desired = target.clone().add(off);
-  camera.position.lerp(desired, Math.min(1, dt * 6));
-  camera.lookAt(target);
-  if (sun.castShadow) {
-    sun.position.set(self.x + 18, 30, self.z + 14);
-    sun.target.position.set(self.x, 0, self.z);
-  }
+function updateGoal() {
+  const goal = nextGoal();
+  document.getElementById('w3-goal').textContent = goal.text;
+  let p = null;
+  if (goal.item) p = { x: goal.item.x, y: 3.6, z: goal.item.z };
+  else if (goal.point) p = { x: goal.point.x, y: 9, z: goal.point.z };
+  arrow.visible = Boolean(p) && mode === 'play';
+  if (p) arrow.userData.base = p;
 }
 
 function animateWorld(dt) {
   const t = clock.elapsedTime;
   nara.userData.animate(dt);
-  const toSelf = Math.atan2(self.x - nara.position.x, self.z - nara.position.z);
-  nara.rotation.y += (toSelf - nara.rotation.y) * Math.min(1, dt * 3);
-  portals.forEach((p) => {
-    p.ring.rotation.z += dt * (p.statusKey === 'ready' ? 1.2 : 0.2);
-    if (p.statusKey === 'ready') p.disc.material.opacity = 0.35 + Math.sin(t * 3) * 0.12;
-  });
+  if (fx) fx.update(dt);
+  if (quests) quests.update(dt, t);
   animated.forEach((o) => {
     if (o.userData.spin) o.rotation.y += dt * o.userData.spin;
-    if (o.userData.bob) o.position.y = 1.8 + Math.sin(t * 1.5) * 0.15;
-    if (o.userData.rise) { const r = o.userData.rise; o.position.y = 0.4 + ((t * 0.6 + r.base) % 3); }
+    if (o.userData.bob) o.position.y = o.userData.bob + Math.sin(t * 1.5) * 0.15;
+    if (o.userData.pulse) o.material.opacity = 0.45 + Math.sin(t * 3) * 0.15;
+    if (o.userData.blink) o.visible = Math.sin(t * 4) > -0.3;
+    if (o.userData.orbit) { const r = o.userData.orbit; o.position.set(Math.cos(t * r.s + r.o) * r.r, r.y + Math.sin(t * 2 + r.o) * 0.3, Math.sin(t * r.s + r.o) * r.r + 0.6); o.rotation.y += dt * 2; }
+    if (o.userData.smoke !== undefined) { const k = (t * 0.35 + o.userData.smoke) % 1; o.position.set(-1.2 + k * 0.4, 1.6 + k * 2.4, -0.6); o.scale.setScalar(0.6 + k * 1.4); }
+    if (o.userData.drift) { o.position.x += o.userData.drift * dt; if (o.position.x > 120) o.position.x = -120; }
   });
-  smoke.forEach((p) => {
-    const k = (t * 0.35 + p.userData.off) % 1;
-    p.position.set(-0.9 + k * 0.4, 1.6 + k * 2.4, -0.4);
-    p.scale.setScalar(0.6 + k * 1.4);
-    p.material.opacity = 1 - k;
+  waterfalls.forEach((tex) => { tex.offset.y -= dt * 1.2; });
+  if (cloudSea) cloudSea.rotation.y += dt * 0.004;
+  domes.forEach((dome) => {
+    const u = dome.userData;
+    if (u.fade > 0) {
+      u.fade -= dt * 0.8;
+      const k = Math.max(0, u.fade);
+      dome.scale.setScalar(1 + (1 - k) * 0.25);
+      u.shell.material.opacity = 0.22 * k; u.wire.material.opacity = 0.25 * k; u.lock.material.opacity = k;
+      if (u.fade <= 0) { dome.visible = false; dome.scale.setScalar(1); u.shell.material.opacity = 0.22; u.wire.material.opacity = 0.25; u.lock.material.opacity = 1; if (u.fade > -1) fx.sparkle({ x: dome.position.x, y: 2, z: dome.position.z }, PALETTE.cyan); u.fade = -1; }
+    } else if (dome.visible) u.wire.rotation.y += dt * 0.1;
   });
-  clouds.forEach((c) => { c.position.x += c.userData.drift * dt; if (c.position.x > 90) c.position.x = -90; });
-  if (gfx === 'high') {
-    const pos = oceanBase.attributes.position;
-    for (let i = 0; i < pos.count; i += 1) {
-      const x = pos.getX(i); const z = pos.getZ(i);
-      pos.setY(i, Math.sin(x * 0.15 + t * 1.2) * 0.18 + Math.cos(z * 0.18 + t) * 0.15);
-    }
-    pos.needsUpdate = true;
-  }
+  bridges3d.forEach((b) => {
+    if (b.lightT < 0) return;
+    b.lightT += dt;
+    b.tiles.forEach((tile) => { if (tile.userData.delay >= 0) tile.material.emissiveIntensity = Math.min(0.5, Math.max(0, (b.lightT - tile.userData.delay) * 3)) + (b.lightT - tile.userData.delay > 0 && b.lightT - tile.userData.delay < 0.3 ? 1 : 0); });
+    if (b.lightT > b.tiles.length * 0.12 + 0.5) { b.lightT = -1; b.tiles.forEach((tile) => { tile.material.emissiveIntensity = 0.5; }); }
+  });
+  if (arrow && arrow.visible && arrow.userData.base) { const p = arrow.userData.base; arrow.position.set(p.x, p.y + Math.sin(t * 4) * 0.3, p.z); arrow.rotation.y += dt * 3; }
+  if (gfx === 'high' && t % 1 < dt) refreshIslands();
   const now = performance.now();
   for (let i = bubbles.length - 1; i >= 0; i -= 1) {
     const b = bubbles[i];
@@ -819,50 +1147,30 @@ function animateWorld(dt) {
 function resize() {
   const r = wrap.getBoundingClientRect();
   const w = Math.max(320, Math.round(r.width));
-  const h = Math.round(w * 9 / 16);
+  const h = Math.max(240, Math.round(r.height));
   const size = renderer.getSize(new THREE.Vector2());
-  if (size.x !== w || size.y !== h) {
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  }
+  if (size.x !== w || size.y !== h) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 }
 
-function frame() {
+function frameLoop() {
   if (!running) return;
   const dt = Math.min(0.05, clock.getDelta());
   statusTimer -= dt;
-  if (statusTimer <= 0) { statusTimer = 0.5; updatePortals(); }
-  update(dt);
+  if (statusTimer <= 0) { statusTimer = 0.5; quests.refresh(); refreshIslands(); updateSelfLabel(); updateGoal(); }
+  if (mode === 'overview') updateOverview(dt);
+  else if (mode === 'drop') updateDrop(dt);
+  else if (mode === 'play') updatePlay(dt);
+  if (mode !== 'overview') selectRing.visible = false;
+  updateOthers(dt);
+  animateWorld(dt);
   resize();
   renderer.render(scene, camera);
-  requestAnimationFrame(frame);
-}
-
-// ---------- Mode & siklus hidup ----------
-function placeSelf(px, py) {
-  self.x = toX(px); self.z = toZ(py);
-  self.h = 0; self.vy = 0;
-  if (self.obj) self.obj.position.set(self.x, 0, self.z);
-  // Kamera di belakang penjelajah, menghadap tujuan berikutnya.
-  const goal = W.stations.find((s) => game.posStatus(s.id) === 'ready');
-  const gx = goal ? toX(goal.x) : 0; const gz = goal ? toZ(goal.y) : 0;
-  if (Math.hypot(gx - self.x, gz - self.z) > 1) cam.yaw = Math.atan2(self.x - gx, self.z - gz);
-  self.face = cam.yaw + Math.PI;
-  if (camera) camera.position.set(self.x + Math.sin(cam.yaw) * cam.dist, 5, self.z + Math.cos(cam.yaw) * cam.dist);
+  requestAnimationFrame(frameLoop);
 }
 
 function start() {
-  if (gfx === '2d' || running) return;
-  if (!initRenderer()) { gfx = '2d'; applyMode('high'); return; }
-  if (!built) {
-    buildWorld();
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(POS_KEY)); } catch { /* abaikan */ }
-    const me = net && net.me;
-    placeSelf(me ? me.x : saved ? saved.x : W.spawn.x, me ? me.y : saved ? saved.y : W.spawn.y);
-    document.getElementById('w3-loading').hidden = true;
-  }
+  if (gfx === '2d' || !built) return;
+  if (running) return;
   applyQuality();
   loadShards();
   selfLabelText = '';
@@ -870,10 +1178,10 @@ function start() {
   nearby = undefined;
   running = true;
   clock.getDelta();
-  requestAnimationFrame(frame);
+  requestAnimationFrame(frameLoop);
 }
 
-function stop() { running = false; keys.clear(); stick.x = stick.y = 0; nearby = null; }
+function stop() { running = false; keys.clear(); stick.x = stick.y = 0; nearby = null; if (quests) quests.closePanel(true); panelOpen = false; }
 
 function applyMode(prev) {
   const is3d = gfx !== '2d';
@@ -882,35 +1190,63 @@ function applyMode(prev) {
   canvas2d.hidden = is3d;
   document.querySelector('.world-screen').classList.toggle('is-3d', is3d);
   renderGfxBar();
+  if (prev && prev !== gfx) {
+    game.showToast(gfx === '2d' ? 'Mode 2D aktif.' : gfx === 'high' ? 'Grafis 3D tinggi aktif.' : 'Grafis 3D ringan aktif (hemat baterai).');
+    if (is3d && !built) { prepare().then(() => { if (landed && game.visibleScreen === 'world') { mode = 'play'; start(); } }); return; }
+  }
   const visible = game.visibleScreen === 'world';
   if (is3d) {
-    window.NutraWorld2D && window.NutraWorld2D.stop();
-    if (visible) { stop(); start(); }
+    if (window.NutraWorld2D) window.NutraWorld2D.stop();
+    if (visible && landed) { stop(); mode = 'play'; start(); }
   } else {
     stop();
-    if (visible && window.NutraWorld2D) window.NutraWorld2D.start();
+    if (visible && landed && window.NutraWorld2D) window.NutraWorld2D.start();
   }
-  if (prev && prev !== gfx) game.showToast(gfx === '2d' ? 'Mode 2D aktif.' : gfx === 'high' ? 'Grafis 3D tinggi aktif.' : 'Grafis 3D ringan aktif (hemat baterai).');
 }
 
+gfxBar.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-gfx]');
+  if (!b || b.disabled) return;
+  const prev = gfx;
+  gfx = b.dataset.gfx;
+  localStorage.setItem(GFX_KEY, gfx);
+  applyMode(prev);
+});
+
 document.addEventListener('nutra:screen', (e) => {
-  if (e.detail === 'world' && gfx !== '2d') { window.NutraWorld2D && window.NutraWorld2D.stop(); start(); } else stop();
+  if (e.detail === 'world' && landed && gfx !== '2d') { if (window.NutraWorld2D) window.NutraWorld2D.stop(); if (mode === 'off') mode = 'play'; start(); }
+  else if (e.detail !== 'world') stop();
 });
 
 if (net) {
-  net.on('welcome', ({ you }) => {
-    if (!built) return;
-    placeSelf(you.x, you.y);
-    if (self.obj) self.obj.userData.setColor(you.color);
-    loadShards();
-  });
-  net.on('teleport', ({ x, y }) => { if (built && gfx !== '2d') { placeSelf(x, y); game.showToast('Guru memindahkan posisimu.'); } });
+  net.on('welcome', ({ you }) => { if (self.obj) self.obj.userData.setColor(you.color); });
+  net.on('teleport', ({ x, y }) => { if (built && gfx !== '2d' && mode === 'play') { self.x = toX(x); self.z = toZ(y); self.h = 0; fx.ring({ x: self.x, y: 0, z: self.z }); game.showToast('Guru memindahkan posisimu.'); } });
   net.on('chat', (entry) => {
     if (!built || gfx === '2d') return;
     const target = net.me && entry.playerId === net.me.id ? self.obj : others.get(entry.playerId) && others.get(entry.playerId).obj;
     if (target) say(target, entry.text, 2.6);
   });
-  net.on('settings', () => { statusTimer = 0; nearby = undefined; });
+  net.on('emote', ({ id, emote }) => { const o = others.get(id); if (o) o.obj.userData.emote(emote); });
+  net.on('settings', () => { statusTimer = 0; });
 }
+
+window.NutraWorld3D = {
+  get supported() { return gfx !== '2d'; },
+  get mode() { return mode; },
+  get landed() { return landed; },
+  prepare,
+  showOverview,
+  hideOverview,
+  /** Terjun ke pulau (posisi px opsional dari server). */
+  dropTo(id, px, py) {
+    if (gfx === '2d' || !built) { hideOverview(); landed = true; mode = 'play'; return false; }
+    startDrop(id, px, py);
+    return true;
+  },
+  leave() { stop(); mode = 'off'; landed = false; hideOverview(); visited.clear(); },
+  /** Untuk uji otomatis (QA): akses posisi pemain & interaksi. */
+  debug: { get self() { return self; }, get nearby() { return nearby; }, interact: () => interact(), get items() { return quests ? quests.items.map(({ kind, pos, row, x, z }) => ({ kind, pos, row, x, z })) : []; } },
+  stop
+};
 
 applyMode();
