@@ -100,7 +100,7 @@ function renderGfxBar() {
   });
   keysHelp.innerHTML = gfx === '2d'
     ? '<kbd>W A S D</kbd> berjalan · <kbd>E</kbd> berinteraksi · klik/sentuh untuk berjalan · Papan ketik saja? Gunakan <button type="button" class="link-button" data-screen="map">Peta</button>.'
-    : '<kbd>W A S D</kbd> berjalan · <kbd>← →</kbd> memutar arah hadap · <kbd>↑ ↓</kbd> maju/mundur · kursor = arah hadap, klik tanah = jalan ke sana · <kbd>Spasi</kbd> lompat · <kbd>E</kbd> interaksi · <kbd>1–4</kbd> emote · seret = putar kamera · gulir = zoom · <button type="button" class="link-button" data-screen="map">Peta</button>';
+    : '<kbd>W A S D</kbd> berjalan · <kbd>← →</kbd> memutar arah hadap · <kbd>↑ ↓</kbd> maju/mundur · <kbd>R</kbd>/<kbd>F</kbd> menoleh atas/bawah · kursor = arah hadap, klik tanah = jalan ke sana · <kbd>Spasi</kbd> lompat · <kbd>E</kbd> interaksi · <kbd>1–4</kbd> emote · seret = putar kamera · gulir = zoom · <button type="button" class="link-button" data-screen="map">Peta</button>';
 }
 
 // ---------- Three.js ----------
@@ -691,8 +691,11 @@ function sealed(id, res) {
 
 // ---------- Interaksi ----------
 const keys = new Set();
-const KEYMAP = { KeyW: 'f', KeyS: 'b', KeyA: 'l', KeyD: 'r', ArrowUp: 'af', ArrowDown: 'ab', ArrowLeft: 'tl', ArrowRight: 'tr' };
+const KEYMAP = { KeyW: 'f', KeyS: 'b', KeyA: 'l', KeyD: 'r', ArrowUp: 'af', ArrowDown: 'ab', ArrowLeft: 'tl', ArrowRight: 'tr', KeyR: 'lu', PageUp: 'lu', KeyF: 'ld', PageDown: 'ld' };
 const TURN_SPEED = 2.6; // radian per detik
+const PITCH_MIN = -0.5; // menengadah ke langit
+const PITCH_MAX = 1.3;  // menunduk dari atas
+const LOOK_SPEED = 1.3;
 const aim = { point: null, active: false, lastMove: 0 }; // titik tanah di bawah kursor
 const walkTo = { point: null };
 let facingArrow; let aimRing; let walkMarker;
@@ -744,7 +747,7 @@ function bindInput(el) {
     const dx = e.clientX - drag.x; const dy = e.clientY - drag.y;
     drag.moved += Math.abs(dx) + Math.abs(dy);
     if (mode === 'overview') overview.yaw -= dx * 0.005;
-    else { cam.yaw -= dx * 0.006; cam.pitch = Math.min(1.25, Math.max(0.12, cam.pitch + dy * 0.004)); }
+    else { cam.yaw -= dx * 0.006; cam.pitch = Math.min(PITCH_MAX, Math.max(PITCH_MIN, cam.pitch + dy * 0.004)); }
     drag.x = e.clientX; drag.y = e.clientY;
   });
   el.addEventListener('pointerup', (e) => {
@@ -966,7 +969,7 @@ function updateDrop(dt) {
     document.getElementById('w3-drophint').hidden = true;
     if (net) net.sendMove(toPx(self.x), toPy(self.z), 0);
     arrive(drop.island, true);
-    if (!sessionStorage.getItem('nutrantara-tip-arah')) { try { sessionStorage.setItem('nutrantara-tip-arah', '1'); } catch { /* abaikan */ } setTimeout(() => game.showToast('Tip: ← → memutar arah hadap, ↑ ↓ maju/mundur. Arahkan kursor untuk menoleh, klik tanah untuk berjalan.'), 2500); }
+    if (!sessionStorage.getItem('nutrantara-tip-arah')) { try { sessionStorage.setItem('nutrantara-tip-arah', '1'); } catch { /* abaikan */ } setTimeout(() => game.showToast('Tip: ← → memutar arah hadap, ↑ ↓ maju/mundur, R/F menoleh ke atas/bawah. Arahkan kursor untuk menoleh, klik tanah untuk berjalan.'), 2500); }
   }
   self.obj.position.set(self.x, self.h, self.z);
   self.obj.rotation.y = self.face;
@@ -1012,6 +1015,9 @@ function updatePlay(dt) {
     if (keys.has('ab')) ahead -= 1;
     ix += stick.x; iz += stick.y;
   }
+  // R/PageUp menengadah, F/PageDown menunduk.
+  if (keys.has('lu')) cam.pitch = Math.max(PITCH_MIN, cam.pitch - LOOK_SPEED * dt);
+  if (keys.has('ld')) cam.pitch = Math.min(PITCH_MAX, cam.pitch + LOOK_SPEED * dt);
   // Tombol panah ←/→: memutar arah hadap; kamera ikut berputar ke belakang penjelajah.
   if (turn) {
     self.face += turn * TURN_SPEED * dt;
@@ -1069,6 +1075,9 @@ function updatePlay(dt) {
   self.obj.position.set(self.x, self.h, self.z);
   self.obj.rotation.y = self.face;
   self.obj.userData.animate(dt, { speed: self.speed, airborne: !self.grounded, height: self.h - floor });
+  const lookUp = Math.max(0, 0.25 - cam.pitch) / (0.25 - PITCH_MIN); // 0..1
+  const lookDown = Math.max(0, cam.pitch - 0.85) / (PITCH_MAX - 0.85); // 0..1
+  self.obj.userData.head.rotation.x = -lookUp * 0.55 + lookDown * 0.35;
 
   const isl = islandAt3(self.x, self.z);
   if (isl !== -1 && isl !== self.island) { self.island = isl; arrive(isl, false); }
@@ -1153,8 +1162,15 @@ function updateNearby() {
 
 function updateCamera(dt) {
   const target = new THREE.Vector3(self.x, self.h * 0.6 + 1.3, self.z);
-  const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)).multiplyScalar(cam.dist);
-  camera.position.lerp(target.clone().add(off), Math.min(1, dt * 6));
+  const p = Math.max(0.04, cam.pitch);
+  const up = Math.max(0, 0.04 - cam.pitch); // seberapa jauh menengadah (0..0.54)
+  const dist = cam.dist * (1 - up * 0.6);
+  const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(p), Math.sin(p), Math.cos(cam.yaw) * Math.cos(p)).multiplyScalar(dist);
+  const pos = target.clone().add(off);
+  pos.y = Math.max(self.h + 0.5, pos.y - up * 2.2);
+  target.y += up * 26; // titik pandang naik ke langit
+  if (cam.pitch > 1.0) target.y -= (cam.pitch - 1.0) * 3; // menunduk lebih dalam
+  camera.position.lerp(pos, Math.min(1, dt * 6));
   if (drop.shake > 0) { drop.shake -= dt; camera.position.x += (Math.random() - 0.5) * drop.shake; camera.position.y += (Math.random() - 0.5) * drop.shake; }
   camera.lookAt(target);
   if (sun.castShadow) { sun.position.set(self.x + 25, 40, self.z + 18); sun.target.position.set(self.x, 0, self.z); }
