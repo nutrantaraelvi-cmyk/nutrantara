@@ -4,183 +4,158 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#071516" />
-    <meta name="description" content="NUTRANTARA — Misi Pangan Nusantara. Game investigasi pangan untuk Biologi SMA kelas XI." />
+    <meta name="description" content="NUTRANTARA — game petualangan 3D multipemain untuk Biologi SMA kelas XI. Jelajahi Pulau Nusantara bersama Nara, pulihkan arsip pangan di enam pos, lalu rancang menu lokal berbasis bukti." />
+    <meta property="og:title" content="NUTRANTARA — Misi Pangan Nusantara" />
+    <meta property="og:description" content="Game petualangan 3D multipemain tentang sistem pencernaan dan menu pangan lokal, dengan panel kendali guru." />
+    <meta property="og:type" content="website" />
     <title>NUTRANTARA — Misi Pangan Nusantara</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="landing.css" />
     <script src="missions.js" defer></script>
     <script src="world-data.js" defer></script>
-    <script src="net.js" defer></script>
-    <script src="game.js" defer></script>
-    <script src="world.js" defer></script>
+    <script type="module" src="landing.js"></script>
   </head>
-  <body>
+  <body class="landing">
+    <a class="skip-link" href="#konten">Lewati ke konten</a>
     <div class="shell">
       <header class="topbar">
-        <a class="wordmark" href="#home" aria-label="NUTRANTARA, beranda">
+        <a class="wordmark" href="index.html" aria-label="NUTRANTARA, beranda">
           <span class="wordmark-mark" aria-hidden="true">N</span>
           <span><strong>NUTRANTARA</strong><small>MISI PANGAN NUSANTARA</small></span>
         </a>
-        <nav class="top-nav" aria-label="Navigasi utama">
-          <button class="nav-link active" data-screen="world">Dunia</button>
-          <button class="nav-link" data-screen="map">Peta</button>
-          <button class="nav-link" data-screen="passport">Paspor</button>
-          <button class="nav-link" data-screen="leaderboard">Peringkat</button>
+        <nav class="top-nav landing-nav" aria-label="Navigasi beranda">
+          <a class="nav-link" href="#pos">Enam pos</a>
+          <a class="nav-link" href="#peta">Peta</a>
+          <a class="nav-link" href="#karakter">Karakter</a>
+          <a class="nav-link" href="#guru">Untuk guru</a>
         </nav>
-        <div class="player-chip" id="player-chip" hidden><span class="online-dot"></span><span id="player-name"></span><span class="chip-score" id="player-score"></span></div>
+        <a class="button button-primary nav-cta" href="play.html">Main sekarang <span aria-hidden="true">↗</span></a>
       </header>
 
-      <main>
-        <section class="screen welcome-screen" id="screen-welcome" aria-labelledby="welcome-title">
-          <div class="welcome-copy">
-            <div class="eyebrow"><span class="eyebrow-line"></span> EKSPEDISI DIMULAI</div>
-            <h1 id="welcome-title">Arsip pangan<br /><em>menunggu dipulihkan.</em></h1>
-            <p class="lede">Ikuti jejak bukti bersama Nara melalui enam pos. Pulihkan arsip pangan, lalu rancang menu lokal terbaikmu di Dapur Juara.</p>
-            <form id="start-form" class="start-form">
-              <label for="alias">Nama penjelajah <span>(gunakan alias atau kode)</span></label>
-              <div class="input-row"><input id="alias" name="alias" maxlength="24" autocomplete="off" placeholder="Contoh: Penjelajah 07" required /><button class="button button-primary" type="submit">Masuk ekspedisi <span aria-hidden="true">↗</span></button></div>
-              <small class="privacy-note"><span aria-hidden="true">◈</span> Progres tersimpan di perangkat ini. Jangan gunakan nama lengkap.</small>
-            </form>
-          </div>
-          <div class="welcome-art" aria-label="Ilustrasi peta pulau dan portal ekspedisi">
-            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
-            <div class="island island-main"><span class="island-ridge"></span><span class="island-label">NUSANTARA</span></div>
-            <div class="island island-small"></div>
-            <div class="portal portal-one"><span>01</span></div><div class="portal portal-two"><span>06</span></div>
-            <div class="art-caption"><span class="pulse"></span> ENAM DIMENSI — SATU MENU JUARA</div>
-            <div class="coordinate coordinate-a">06°12' S<br />106°49' E</div><div class="coordinate coordinate-b">ARSIP<br />BELUM LENGKAP</div>
-          </div>
-          <div class="welcome-footer"><span>06 POS</span><span>PERJALANAN INVESTIGASI PANGAN</span><span>▲ BIOLOGI SMA · KELAS XI</span></div>
-        </section>
-
-        <section class="screen world-screen" id="screen-world" hidden aria-labelledby="world-title">
-          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> PULAU EKSPEDISI</div><h1 id="world-title">Dunia <em>bersama.</em></h1></div><div class="world-mode" id="world-mode">MODE SATU PEMAIN</div></div>
-          <div class="world-layout">
-            <div class="world-stage">
-              <canvas id="world-canvas" tabindex="0" aria-label="Pulau ekspedisi. Gunakan W A S D atau tombol panah untuk berjalan, E untuk berinteraksi. Klik atau sentuh untuk berjalan ke titik tertentu." aria-describedby="world-prompt"></canvas>
-              <div class="world-hud"><p id="world-prompt" role="status" aria-live="polite">Jelajahi pulau. Dekati portal pos atau Nara, lalu tekan E.</p><button type="button" class="button button-primary" id="world-action" hidden>Masuk</button></div>
-              <p class="field-hint world-keys"><kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd> berjalan · <kbd>E</kbd> berinteraksi · klik/sentuh untuk berjalan · lebih nyaman dengan papan ketik? Gunakan <button type="button" class="link-button" data-screen="map">Peta</button>.</p>
+      <main id="konten">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="eyebrow-line"></span> GAME PETUALANGAN 3D · BIOLOGI SMA KELAS XI</div>
+            <h1 id="hero-title">Jelajahi pulau.<br /><em>Pulihkan arsip pangan.</em></h1>
+            <p class="lede">Bersama Nara, robot pemandu, siswa menjelajahi Pulau Nusantara, membuka enam portal pos, mengumpulkan bukti tentang pencernaan dan penyerapan, lalu merancang satu porsi menu pangan lokal di Dapur Juara.</p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="play.html">Mulai bermain <span aria-hidden="true">↗</span></a>
+              <a class="button button-secondary" href="admin.html">Panel guru</a>
             </div>
-            <aside class="world-side">
-              <section class="world-card" aria-labelledby="roster-title"><div class="panel-heading"><span id="roster-title">PENJELAJAH DI PULAU</span><span class="panel-id" id="world-roster-count">1</span></div><ul class="world-roster" id="world-roster"></ul></section>
-              <section class="world-card chat-card" aria-labelledby="chat-title"><div class="panel-heading"><span id="chat-title">OBROLAN TIM</span></div><ol class="chat-log" id="chat-log" aria-live="polite" aria-label="Pesan obrolan"></ol><form id="chat-form" class="chat-form"><label for="chat-input" class="sr-only">Tulis pesan</label><input id="chat-input" class="text-input" maxlength="200" autocomplete="off" placeholder="Tulis pesan…" /><button class="button button-secondary" type="submit">Kirim</button></form><p class="field-hint" id="chat-state"></p></section>
-            </aside>
+            <ul class="hero-badges" aria-label="Keunggulan">
+              <li><span aria-hidden="true">◈</span> Multipemain satu kelas</li>
+              <li><span aria-hidden="true">◈</span> Tanpa instalasi &amp; tanpa akun</li>
+              <li><span aria-hidden="true">◈</span> Dikendalikan guru</li>
+            </ul>
+          </div>
+          <div class="hero-stage">
+            <canvas id="hero-canvas" aria-label="Ilustrasi 3D: Penjelajah Pangan bertopi caping dan Nara si robot pemandu di Pulau NUTRANTARA"></canvas>
+            <div class="hero-fallback" id="hero-fallback" hidden><span>N</span><p>Pulau NUTRANTARA</p></div>
+            <div class="hero-tag"><span class="pulse"></span> PULAU NUTRANTARA · 06 PORTAL</div>
           </div>
         </section>
 
-        <section class="screen map-screen" id="screen-map" hidden aria-labelledby="map-title">
-          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> ATLAS EKSPEDISI</div><h1 id="map-title">Peta <em>dimensi.</em></h1></div><div class="progress-card"><span>PROGRES EKSPEDISI</span><strong id="map-progress">0 / 6 <small>segel</small></strong><div class="progress-track"><i id="map-progress-bar"></i></div></div></div>
-          <div class="map-layout">
-            <div class="map-board">
-              <div class="map-grid"></div><div class="map-continent continent-a"></div><div class="map-continent continent-b"></div><div class="map-continent continent-c"></div>
-              <svg class="route-lines" viewBox="0 0 760 390" preserveAspectRatio="none" aria-hidden="true"><path d="M110 250 C190 180 225 160 285 190 S405 280 470 205 S570 140 650 110"/><path class="route-dash" d="M110 250 C190 180 225 160 285 190 S405 280 470 205 S570 140 650 110"/></svg>
-              <div id="map-nodes" class="map-nodes"></div>
-              <div class="map-compass">N <span>✳</span></div><div class="map-scale">PETA ARSIP // 001</div>
-            </div>
-            <aside class="mission-card" aria-live="polite">
-              <div class="card-topline"><span class="status-tag" id="card-status"><i></i> POS AKTIF</span><span class="mission-number" id="card-number">MISI 01</span></div>
-              <div class="mission-icon" id="card-icon" aria-hidden="true">⌕</div>
-              <p class="card-kicker" id="card-kicker">KANTIN NUSANTARA</p>
-              <h2 id="card-title">Detektif<br />Menu</h2>
-              <p class="mission-description" id="card-description"></p>
-              <div class="mission-meta"><span id="card-duration">◷ &nbsp;8–12 MENIT</span><span id="card-points">✦ &nbsp;80 POIN</span></div>
-              <button class="button button-primary full-width" id="enter-mission">Masuki pos <span aria-hidden="true">↗</span></button>
-              <p class="locked-note" id="card-note"></p>
-            </aside>
-          </div>
-          <div class="map-footer"><span>● PROGRES TERSIMPAN DI PERANGKAT INI</span><span>GUNAKAN BUKTI. PERIKSA KLAIM.</span></div>
+        <section class="stat-strip" aria-label="Sekilas">
+          <div><strong>06</strong><span>pos investigasi</span></div>
+          <div><strong>420</strong><span>poin maksimal</span></div>
+          <div><strong>2–4</strong><span>pemain per tim diskusi</span></div>
+          <div><strong>0</strong><span>instalasi di laptop siswa</span></div>
         </section>
 
-        <section class="screen mission-screen" id="screen-mission" hidden aria-labelledby="mission-title">
-          <div class="mission-toolbar"><button class="back-button" data-screen="map">← <span>Kembali ke peta</span></button><div class="mission-breadcrumb" id="mission-breadcrumb">POS 01</div><button class="passport-shortcut" data-screen="passport">PASPOR <span>↗</span></button></div>
-          <div class="mission-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> INVESTIGASI ARSIP PANGAN</div><h1 id="mission-title">Detektif <em>Menu.</em></h1></div><div class="mission-step"><span>TAHAP</span><strong id="step-count">01 <i>/ 03</i></strong></div></div>
-          <div class="mission-columns">
-            <div class="evidence-column">
-              <div class="nara-message"><div class="nara-avatar" aria-hidden="true"><span>◉</span><i></i></div><div><strong>NARA <span>· PANDUAN MISI</span></strong><p id="nara-message"></p></div></div>
-              <div class="evidence-panel" id="stimulus-panel"></div>
-              <div class="passport-prompt"><span class="prompt-mark">✳</span><div><strong>CATATAN PASPOR</strong><p>Kesimpulanmu perlu didukung oleh data yang relevan.</p></div></div>
-            </div>
-            <div class="decision-column">
-              <div class="decision-panel">
-                <div class="panel-heading"><span>LAPORAN PENJELAJAH</span><span class="panel-id" id="challenge-counter">01 / 02</span></div>
-                <div id="challenge-area"></div>
-                <div id="passport-entry" class="challenge" hidden>
-                  <p class="challenge-label">REFLEKSI PASPOR <span>· WAJIB DIISI</span></p>
-                  <h2>Jelaskan alasanmu dengan singkat.</h2>
-                  <label class="field-label" for="reason" id="reason-label"></label>
-                  <textarea id="reason" rows="4" maxlength="500"></textarea>
-                  <div class="field-hint">Gunakan bukti dari tabel. Minimal 20 karakter, maksimal 500 karakter.</div>
-                  <button class="button button-primary full-width" id="seal-mission">Simpan &amp; segel pos <span aria-hidden="true">✦</span></button>
-                </div>
+        <section class="question" aria-labelledby="q-title">
+          <p class="eyebrow"><span class="eyebrow-line"></span> PERTANYAAN PROYEK</p>
+          <h2 id="q-title">“Bagaimana merancang satu porsi menu berbahan pangan lokal untuk siswa SMA dengan mempertimbangkan komposisi, porsi, dan fungsi zat gizi <em>berdasarkan bukti</em>?”</h2>
+          <div class="loop" aria-label="Alur bermain">
+            <span>Jelajahi</span><i>→</i><span>Telaah bukti</span><i>→</i><span>Putuskan</span><i>→</i><span>Umpan balik Nara</span><i>→</i><span>Alasan di Paspor</span><i>→</i><span>Segel pos</span>
+          </div>
+        </section>
+
+        <section id="pos" class="block" aria-labelledby="pos-title">
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> ENAM PORTAL</div><h2 id="pos-title" class="block-title">Satu pulau, <em>enam dimensi.</em></h2></div></div>
+          <div class="pos-grid" id="pos-grid"></div>
+          <p class="field-hint">Angka pada Pos 1–5 adalah data simulasi untuk tantangan, bukan rekomendasi gizi.</p>
+        </section>
+
+        <section id="peta" class="block" aria-labelledby="peta-title">
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> PETA PULAU</div><h2 id="peta-title" class="block-title">Ikuti <em>jalur emas.</em></h2></div></div>
+          <div class="map-wrap">
+            <div class="map-svg" id="map-svg" role="img" aria-label="Peta Pulau NUTRANTARA: gapura dan Nara di barat, lalu jalur emas menuju Pos 1 Kantin Nusantara, Pos 2 Laboratorium Pencernaan, Pos 3 Gerbang Penyerapan, Pos 4 Jejak Sebab Akibat, Pos 5 Pemecah Klaim, dan Pos 6 Dapur Juara di utara."></div>
+            <ul class="map-legend">
+              <li><b class="lg lg-gold"></b> <span>Jalur emas menghubungkan gapura dan keenam portal secara berurutan.</span></li>
+              <li><b class="lg lg-cyan"></b> <span>Portal cyan siap dimasuki. Portal hijau sudah disegel. Portal abu-abu dengan gembok masih terkunci.</span></li>
+              <li><b class="lg lg-tempe"></b> <span>Blok tempe melayang menyimpan <strong>kepingan arsip</strong> untuk pemain yang suka melompat.</span></li>
+              <li><b class="lg lg-green"></b> <span>Sawah bertingkat dan gapura di barat menjadi titik kumpul kelas bersama Nara.</span></li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="karakter" class="block" aria-labelledby="char-title">
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> DESAIN KARAKTER</div><h2 id="char-title" class="block-title">Kenalan dengan <em>tim ekspedisi.</em></h2></div></div>
+          <div class="char-grid">
+            <article class="char-card">
+              <canvas class="char-canvas" data-character="explorer" aria-label="Model 3D Penjelajah Pangan berputar"></canvas>
+              <div class="char-info">
+                <p class="char-kicker">KARAKTER PEMAIN</p>
+                <h3>Penjelajah Pangan</h3>
+                <p>Setiap siswa menjadi penjelajah dengan warna khasnya sendiri. Seluruh perlengkapannya diambil dari keseharian Nusantara.</p>
+                <ul class="char-traits">
+                  <li><b>Caping bambu</b>: topi petani berpita hijau, tanda bahwa pangan berawal dari sawah.</li>
+                  <li><b>Ransel rantang</b>: tiga susun untuk menyimpan arsip pangan yang dipulihkan.</li>
+                  <li><b>Syal tumpal</b>: motif segitiga kain Nusantara dengan warna pemain.</li>
+                  <li><b>Pemindai gizi</b>: gelang bercahaya untuk “membaca” data menu.</li>
+                </ul>
+                <div class="swatches" aria-label="Palet karakter"><i style="background:#e3c27a" title="Bambu"></i><i style="background:#68dce7" title="Warna pemain (contoh)"></i><i style="background:#ff9f91" title="Rantang koral"></i><i style="background:#78f4bd" title="Rantang hijau"></i><i style="background:#ffd17c" title="Emas"></i></div>
               </div>
-              <p class="retry-note">Tidak ada nyawa yang hilang. Baca kembali bukti dan coba lagi.</p>
-            </div>
+            </article>
+            <article class="char-card">
+              <canvas class="char-canvas" data-character="nara" aria-label="Model 3D Nara si robot pemandu berputar"></canvas>
+              <div class="char-info">
+                <p class="char-kicker">PEMANDU</p>
+                <h3>Nara</h3>
+                <p>Robot pemandu yang melayang di samping gapura. Nara memberi arahan dan petunjuk bertahap, tetapi tidak pernah langsung memberi jawaban.</p>
+                <ul class="char-traits">
+                  <li><b>Antena daun padi</b>: berujung bulir emas yang menyala saat Nara berpikir.</li>
+                  <li><b>Visor gelap</b>: mata hijau yang berkedip dan selalu menatap penjelajah.</li>
+                  <li><b>Lambang berlian “N”</b>: segel arsip NUTRANTARA di dada.</li>
+                  <li><b>Cincin hover cyan</b>: Nara melayang ringan dan tidak pernah menapak tanah.</li>
+                </ul>
+                <div class="swatches" aria-label="Palet Nara"><i style="background:#f2fff8" title="Cangkang putih"></i><i style="background:#0b1f21" title="Visor"></i><i style="background:#78f4bd" title="Mata hijau"></i><i style="background:#68dce7" title="Cincin cyan"></i><i style="background:#4caf6e" title="Daun padi"></i></div>
+              </div>
+            </article>
           </div>
         </section>
 
-        <section class="screen kitchen-screen" id="screen-kitchen" hidden aria-labelledby="kitchen-title">
-          <div class="mission-toolbar"><button class="back-button" data-screen="map">← <span>Kembali ke peta</span></button><div class="mission-breadcrumb">POS 06 <span>/</span> BENGKEL MENU</div><button class="passport-shortcut" data-screen="passport">PASPOR <span>↗</span></button></div>
-          <div class="mission-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> PROYEK AKHIR</div><h1 id="kitchen-title">Dapur <em>Juara.</em></h1></div><div class="mission-step"><span>TAHAP</span><strong id="kitchen-step-count">01 <i>/ 05</i></strong></div></div>
-          <div class="nara-message"><div class="nara-avatar" aria-hidden="true"><span>◉</span><i></i></div><div><strong>NARA <span>· PANDUAN PROYEK</span></strong><p id="kitchen-nara"></p></div></div>
-          <nav class="kitchen-steps" aria-label="Tahap Dapur Juara" id="kitchen-steps"></nav>
-
-          <div class="kitchen-panel" data-step="brief">
-            <div class="panel-heading"><span>BRIEF PROYEK</span><span class="panel-id">06 / BRIEF</span></div>
-            <h2>Rancang satu porsi menu pangan lokal untuk siswa SMA di lingkungan sekolah.</h2>
-            <p>Pertimbangkan komposisi, porsi, dan fungsi zat gizi berdasarkan bukti. Gunakan bahan yang tersedia di sekitar sekolah, misalnya jagung, tempe, dan sayur lokal.</p>
-            <ol class="brief-list">
-              <li>Tetapkan sasaran dan waktu makan.</li>
-              <li>Untuk setiap bahan, catat nama, bentuk (mentah atau olahan), berat bagian yang digunakan, dan sumber data.</li>
-              <li>Ambil nilai gizi per 100 g dari Tabel Komposisi Pangan Indonesia atau label pangan.</li>
-              <li>Kontribusi tiap bahan = nilai per 100 g × berat porsi (g) ÷ 100. Jumlahkan untuk memperoleh perkiraan per porsi.</li>
-              <li>Jika nilai tidak tersedia, kosongkan kolomnya. Kolom itu akan ditandai <b>belum tersedia</b>, dan kamu perlu menjelaskan dampaknya pada simpulan.</li>
+        <section id="guru" class="block" aria-labelledby="guru-title">
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> UNTUK GURU</div><h2 id="guru-title" class="block-title">Kelas tetap <em>di tangan guru.</em></h2></div></div>
+          <div class="teacher-grid">
+            <ul class="feature-list">
+              <li><b>❚❚ Jeda &amp; bekukan</b><span>Hentikan semua layar siswa untuk diskusi kelas. Progres tetap aman.</span></li>
+              <li><b>⌑ Buka/tutup pos</b><span>Atur ritme pertemuan, misalnya “hanya Pos 1” di pertemuan pertama.</span></li>
+              <li><b>✉ Pengumuman</b><span>Kirim pesan ke semua siswa atau ke satu siswa.</span></li>
+              <li><b>◎ Peta langsung</b><span>Lihat posisi setiap avatar, pindahkan siswa, atau kumpulkan semua di Nara.</span></li>
+              <li><b>✦ Skor tervalidasi</b><span>Server menghitung ulang skor dari kunci jawaban dan menandai progres janggal.</span></li>
+              <li><b>↓ Ekspor JSON/CSV</b><span>Jawaban, alasan Paspor, rancangan menu, dan refleksi untuk penilaian.</span></li>
+            </ul>
+            <ol class="steps">
+              <li><span>01</span><div><b>Jalankan server kelas</b><p>Di laptop guru: <code>npm install</code> lalu <code>npm start</code>. Atau gunakan server yang sudah di-hosting sekolah.</p></div></li>
+              <li><span>02</span><div><b>Bagikan alamat</b><p>Siswa membuka alamat yang tampil di layar server dari browser, di Wi-Fi yang sama.</p></div></li>
+              <li><span>03</span><div><b>Masuk panel guru</b><p>Buka <code>/admin</code>, masukkan PIN, lalu pandu ekspedisi.</p></div></li>
             </ol>
-            <button class="button button-primary" data-goto-step="initial">Mulai rancangan awal <span aria-hidden="true">↗</span></button>
-          </div>
-
-          <div class="kitchen-panel" data-step="initial" hidden></div>
-          <div class="kitchen-panel" data-step="review" hidden>
-            <div class="panel-heading"><span>TELAAH RANCANGAN</span><span class="panel-id">06 / TELAAH</span></div>
-            <h2>Minta teman atau guru menelaah rancangan awalmu.</h2>
-            <div id="review-summary"></div>
-            <fieldset class="choice-list" id="review-checks"><legend class="field-label">Daftar periksa penelaah</legend></fieldset>
-            <label class="field-label" for="review-reviewer">Kode penelaah <span class="optional">(opsional, gunakan alias atau kode)</span></label>
-            <input class="text-input" id="review-reviewer" maxlength="24" autocomplete="off" />
-            <label class="field-label" for="review-notes">Masukan yang diterima</label>
-            <textarea id="review-notes" rows="4" maxlength="800" placeholder="Contoh: Sumber data sayur belum ditulis, dan porsi tempe perlu diperjelas…"></textarea>
-            <div class="feedback" id="review-feedback" role="status" aria-live="polite" hidden></div>
-            <button class="button button-primary" id="save-review">Simpan telaah &amp; lanjut revisi <span aria-hidden="true">↗</span></button>
-          </div>
-          <div class="kitchen-panel" data-step="revision" hidden></div>
-          <div class="kitchen-panel" data-step="reflection" hidden>
-            <div class="panel-heading"><span>REFLEKSI INDIVIDUAL</span><span class="panel-id">06 / REFLEKSI</span></div>
-            <h2>Apa yang kamu pelajari dari merancang menu berdasarkan bukti?</h2>
-            <div id="version-compare"></div>
-            <label class="field-label" for="reflection-learned">Hal terpenting yang kamu pelajari</label>
-            <textarea id="reflection-learned" rows="4" maxlength="600"></textarea>
-            <label class="field-label" for="reflection-contribution">Kontribusimu dalam rancangan kelompok</label>
-            <textarea id="reflection-contribution" rows="3" maxlength="400" placeholder="Contoh: Saya mencari data serat dari TKPI dan menghitung kontribusi sayur…"></textarea>
-            <div class="feedback" id="reflection-feedback" role="status" aria-live="polite" hidden></div>
-            <button class="button button-primary" id="seal-kitchen">Simpan &amp; segel Dapur Juara <span aria-hidden="true">✦</span></button>
           </div>
         </section>
 
-        <section class="screen passport-screen" id="screen-passport" hidden aria-labelledby="passport-title">
-          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> ARSIP PENJELAJAH</div><h1 id="passport-title">Paspor <em>ekspedisi.</em></h1></div><button class="button button-secondary" id="export-passport">Unduh JSON <span aria-hidden="true">↓</span></button></div>
-          <div class="passport-summary"><div><span>PENJELAJAH</span><strong id="passport-alias">—</strong></div><div><span>SKOR</span><strong id="passport-score">0 <small>POIN</small></strong></div><div><span>LENCANA</span><strong id="passport-seals">0 <small>/ 6</small></strong></div><div><span>STATUS EKSPEDISI</span><strong id="passport-status">Belum dimulai</strong></div></div>
-          <div id="passport-records" class="passport-records"></div>
-          <button class="back-button passport-back" data-screen="map">← <span>Kembali ke peta</span></button>
+        <section class="block privacy" aria-labelledby="priv-title">
+          <h2 id="priv-title">Privasi sejak awal</h2>
+          <p>Siswa cukup memakai <b>alias atau kode</b>, tanpa akun, email, atau login. Data kelas disimpan di server milik sekolah/guru. Obrolan dapat dibaca guru, dan hal itu diberitahukan di layar siswa. Tanpa server kelas, game tetap bisa dimainkan sendiri, dan progres hanya tersimpan di browser.</p>
         </section>
 
-        <section class="screen leaderboard-screen" id="screen-leaderboard" hidden aria-labelledby="leaderboard-title">
-          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> EKSPEDISI SELESAI</div><h1 id="leaderboard-title">Papan <em>peringkat.</em></h1></div></div>
-          <p class="panel-subtitle">Hanya ekspedisi yang selesai di peramban ini yang tercatat. Saat skor seri, catatan yang masuk lebih dahulu berada di atas.</p>
-          <div id="leaderboard-list"></div>
-          <button class="back-button passport-back" data-screen="map">← <span>Kembali ke peta</span></button>
+        <section class="final-cta" aria-labelledby="cta-title">
+          <h2 id="cta-title">Arsip pangan <em>menunggumu.</em></h2>
+          <a class="button button-primary" href="play.html">Masuk Pulau NUTRANTARA <span aria-hidden="true">↗</span></a>
         </section>
       </main>
-      <footer class="site-footer"><span>© NUTRANTARA <b>·</b> MATERI UJI KELAS</span><span>VERSI PROTOTIPE <span id="app-version"></span> <b>·</b> MULTIPEMAIN KELAS</span></footer>
+      <footer class="site-footer"><span>© NUTRANTARA <b>·</b> MATERI UJI KELAS</span><span>BIOLOGI SMA KELAS XI · FASE F</span></footer>
     </div>
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

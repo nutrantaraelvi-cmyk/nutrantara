@@ -21,3 +21,15 @@ jobs:
         run: for f in *.js test/*.js; do node --check "$f"; done
       - name: Uji server kelas
         run: npm test
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t nutrantara .
+      - name: Jalankan & cek /health
+        run: |
+          docker run -d --name nt -p 3000:3000 -e NUTRANTARA_ADMIN_PIN=ci-pin-123456 nutrantara
+          for i in $(seq 1 20); do curl -fs http://localhost:3000/health && exit 0; sleep 1; done
+          docker logs nt; exit 1

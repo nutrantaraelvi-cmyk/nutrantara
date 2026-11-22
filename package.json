@@ -1,17 +1,21 @@
 {
   "name": "nutrantara",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "NUTRANTARA — Misi Pangan Nusantara: game RPG edukasi multipemain dengan panel admin guru",
+  "description": "NUTRANTARA — Misi Pangan Nusantara: game petualangan 3D multipemain untuk Biologi SMA dengan panel kendali guru",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/smoke.js"
+    "test": "node test/smoke.js",
+    "vendor": "node -e \"require('fs').copyFileSync('node_modules/three/build/three.module.min.js','vendor/three/three.module.min.js')\""
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "three": "0.170.0"
   }
 }

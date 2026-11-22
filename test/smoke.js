@@ -58,7 +58,11 @@ function fakeState(overrides) {
   await new Promise((r) => server.stdout.on('data', (d) => { if (String(d).includes('PIN')) r(); }));
   try {
     const html = await fetch(`http://localhost:${PORT}/`).then((r) => r.text());
-    ok(html.includes('world-canvas'), 'index.html disajikan dengan layar dunia');
+    ok(html.includes('hero-canvas'), 'landing page disajikan di /');
+    const play = await fetch(`http://localhost:${PORT}/play`).then((r) => r.text());
+    ok(play.includes('world-canvas') && play.includes('world3d.js'), 'halaman game disajikan di /play');
+    const three = await fetch(`http://localhost:${PORT}/vendor/three/three.module.min.js`);
+    ok(three.ok && three.headers.get('cache-control').includes('max-age'), 'Three.js lokal disajikan dengan cache');
     const notFound = await fetch(`http://localhost:${PORT}/server.js`);
     ok(notFound.status === 404, 'berkas server tidak dapat diunduh');
 

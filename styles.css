@@ -123,3 +123,37 @@ select:focus,.text-input:focus,.cell-input:focus{border-color:var(--green);box-s
 .net-overlay-card h2{font-family:var(--display);margin:0 0 8px}
 .net-overlay-card p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
 @media(max-width:900px){.world-layout{grid-template-columns:1fr}.chat-log{height:160px}}
+
+/* ---------- v0.4: dunia 3D ---------- */
+.world-screen.is-3d .world-layout{grid-template-columns:minmax(0,1fr) 270px}
+.world3d{position:relative;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#9fdbe6}
+.world3d[hidden]{display:none}
+.w3-canvas{display:block;width:100%;aspect-ratio:16/9;height:auto;cursor:grab;touch-action:none}
+.w3-canvas:active{cursor:grabbing}
+.w3-canvas:focus-visible{outline:3px solid var(--yellow);outline-offset:-3px}
+.w3-hud{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none;flex-wrap:wrap}
+.w3-chip{background:rgba(7,21,22,.78);border:1px solid rgba(255,209,124,.45);color:var(--text);border-radius:99px;padding:7px 12px;font:11px var(--mono);letter-spacing:.06em;display:flex;align-items:center;gap:6px}
+.w3-chip span{color:var(--yellow)}
+.w3-chip b{color:var(--yellow);font-size:13px}
+.w3-chip small{color:var(--muted);font-size:9px}
+.w3-goal{border-color:rgba(104,220,231,.45)}
+.w3-goal b{color:var(--cyan);font-size:11px}
+.w3-loading{position:absolute;inset:0;display:grid;place-items:center;background:#0e2426;font:12px var(--mono);letter-spacing:.12em;color:var(--green)}
+.w3-loading[hidden]{display:none}
+.w3-touch{display:none}
+@media (pointer:coarse){
+  .w3-touch{display:block}
+  .w3-stick{position:absolute;left:16px;bottom:16px;width:110px;height:110px;border-radius:50%;background:rgba(7,21,22,.35);border:2px solid rgba(235,255,246,.5);touch-action:none}
+  .w3-stick i{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(235,255,246,.85)}
+  .w3-buttons{position:absolute;right:16px;bottom:16px;display:flex;gap:10px}
+  .w3-buttons button{width:74px;height:74px;border-radius:50%;border:2px solid rgba(235,255,246,.6);background:rgba(7,21,22,.55);color:#fff;font:700 10px var(--mono);letter-spacing:.08em;touch-action:none}
+  .w3-buttons #w3-jump{background:rgba(255,209,124,.85);color:#071516}
+}
+.w3-gfx{display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap}
+.w3-gfx span{font:10px var(--mono);letter-spacing:.12em;color:var(--muted);margin-right:4px}
+.w3-gfx button{background:transparent;border:1px solid var(--line);color:var(--muted);font:11px var(--sans);padding:6px 10px;border-radius:99px;cursor:pointer}
+.w3-gfx button[aria-pressed="true"]{border-color:var(--green);color:var(--green)}
+.w3-gfx button:disabled{opacity:.4;cursor:not-allowed}
+.w3-gfx button:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
+/* Atribut hidden harus menang atas display bawaan komponen */
+.net-banner[hidden],#world-canvas[hidden]{display:none}

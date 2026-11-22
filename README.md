@@ -4,7 +4,13 @@ Game pembelajaran berbasis web untuk **Biologi SMA kelas XI (Fase F)**, topik **
 
 > Bagaimana kita merancang satu porsi menu berbahan pangan lokal untuk siswa SMA dengan mempertimbangkan komposisi, porsi, dan fungsi zat gizi berdasarkan bukti?
 
-**Status:** prototipe 0.3. Ada enam pos, dunia RPG 2D multipemain, dan panel kendali guru (admin). Tanpa server kelas, game tetap bisa dimainkan sebagai satu pemain.
+**Status:** prototipe 0.4. Petualangan 3D multipemain di Pulau NUTRANTARA, dengan landing page, desain karakter orisinal, dan panel kendali guru. Game otomatis beralih ke dunia 2D bila perangkat tidak mendukung WebGL, dan ke mode satu pemain bila server kelas tidak tersedia.
+
+| Halaman | Alamat |
+| :-- | :-- |
+| Landing page | `/` (`index.html`) |
+| Game | `/play` (`play.html`) |
+| Panel guru | `/admin` (`admin.html`) |
 
 ## Menjalankan
 
@@ -19,24 +25,26 @@ npm start
 
 Jendela server akan menampilkan:
 
-- **alamat pemain**, misalnya `http://192.168.1.20:3000`. Bagikan alamat ini ke siswa yang tersambung ke Wi-Fi/LAN yang sama;
+- **alamat pemain**, misalnya `http://192.168.1.20:3000/play`. Bagikan alamat ini ke siswa yang tersambung ke Wi-Fi/LAN yang sama;
 - **alamat admin**: `http://localhost:3000/admin`;
 - **PIN admin**: dibuat acak setiap kali server dinyalakan. Agar PIN tetap, atur variabel `NUTRANTARA_ADMIN_PIN`, misalnya `$env:NUTRANTARA_ADMIN_PIN="824613"; npm start` di PowerShell.
 
 Variabel lain: `PORT` (bawaan 3000), `NUTRANTARA_MAX_PLAYERS` (bawaan 60), `NUTRANTARA_DATA_DIR` (bawaan `data/`).
 
-Uji otomatis server: `npm test`.
+Uji otomatis server: `npm test`. Untuk deploy ke server/cloud (Docker, Render) atau hosting statis, lihat [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ### Mode satu pemain
 
-Buka `index.html` langsung di browser, atau unggah ke hosting statis. Game mendeteksi bahwa server kelas tidak tersedia, lalu berjalan seperti versi 0.2: progres disimpan di `localStorage` dan peringkat bersifat lokal.
+Buka `play.html` langsung di browser, atau unggah ke hosting statis (`index.html` adalah landing page-nya). Game mendeteksi bahwa server kelas tidak tersedia, lalu berjalan seperti versi 0.2: progres disimpan di `localStorage` dan peringkat bersifat lokal.
 
-## Dunia RPG
+## Dunia 3D
 
-- Layar **Dunia** menampilkan pulau bersama. Setiap siswa punya avatar dengan alias dan jumlah segel.
-- Gerak memakai **WASD/panah**, atau klik/sentuh titik tujuan. Tekan **E** (atau tombol di bawah peta) di depan portal untuk masuk pos, atau di dekat **Nara** untuk meminta arahan.
-- Siswa lain terlihat bergerak secara langsung. Ada obrolan tim, dan pesan obrolan dapat dilihat serta dihapus guru.
-- Layar **Peta** tetap tersedia sebagai jalur yang ramah papan ketik dan pembaca layar.
+- **Pulau NUTRANTARA** low-poly: gapura dan Nara di barat, jalur emas menuju enam portal, dan penanda khas di setiap pos (warung Menu A/B, kubah laboratorium pencernaan, lengkung vili, domino sebab-akibat, kristal klaim, dapur joglo dengan tumpeng).
+- **Kontrol:** WASD/panah untuk berjalan (relatif kamera), **Spasi** untuk melompat, **E** untuk masuk portal atau berbicara dengan Nara. Seret mouse untuk memutar kamera, gulir untuk zoom. Di layar sentuh tersedia joystick dan tombol lompat/aksi.
+- **Multipemain:** avatar siswa lain bergerak dan melompat secara langsung, dengan label alias, jumlah segel, dan gelembung obrolan.
+- **Kepingan arsip:** 12 koleksi di atas blok tempe melayang, hanya untuk kesenangan dan tidak memengaruhi skor.
+- **Grafis:** *3D Tinggi* (bayangan dan ombak), *3D Ringan* (untuk laptop lama/tablet), atau *2D*. Layar **Peta** tetap tersedia untuk pengguna papan ketik dan pembaca layar.
+- Desain karakter dan peta dijelaskan di [docs/KARAKTER.md](docs/KARAKTER.md).
 
 ## Panel guru (`/admin`)
 
@@ -61,13 +69,18 @@ Buka `index.html` langsung di browser, atau unggah ke hosting statis. Game mende
 
 | Berkas | Isi |
 | :-- | :-- |
-| `index.html` | Layar sambutan, dunia, peta, misi, Dapur Juara, Paspor, peringkat |
+| `index.html`, `landing.css`, `landing.js` | Landing page (diorama 3D, enam pos, peta, karakter, info guru) |
+| `play.html` | Game: sambutan, dunia, peta, misi, Dapur Juara, Paspor, peringkat |
+| `characters.js` | Model 3D Penjelajah Pangan dan Nara, serta label/gelembung |
+| `world3d.js` | Dunia 3D: pulau, portal, platform, kamera, kontrol, multipemain |
+| `vendor/three/` | Three.js r170 (MIT), disimpan lokal agar jalan tanpa internet |
+| `Dockerfile`, `render.yaml`, `docs/DEPLOY.md` | Deploy server kelas |
 | `styles.css` | Seluruh gaya visual game |
 | `missions.js` | Isi dan kunci jawaban enam pos (dipakai browser dan server) |
 | `world-data.js` | Tata letak pulau, portal, dan Nara (dipakai browser dan server) |
 | `game.js` | Logika permainan: state, penyimpanan, tantangan, skor, ekspor Paspor |
 | `net.js` | Koneksi ke server kelas, sinkronisasi progres, jeda/pengumuman |
-| `world.js` | Dunia RPG di canvas: gerak, interaksi portal, avatar pemain lain, obrolan |
+| `world.js` | Dunia 2D cadangan, daftar pemain, dan obrolan |
 | `server.js` | Server kelas: berkas statis, WebSocket, validasi skor, perintah admin |
 | `admin.html`, `admin.js`, `admin.css` | Panel kendali guru |
 | `test/smoke.js` | Uji otomatis server (dua pemain + admin) |

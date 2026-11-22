@@ -19,6 +19,12 @@ const ROOT = __dirname;
 const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = process.env.NUTRANTARA_DATA_DIR || path.join(ROOT, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'classroom.json');
+const PRODUCTION = process.env.NODE_ENV === 'production';
+const TRUST_PROXY = process.env.TRUST_PROXY === '1';
+if (PRODUCTION && !/^\S{6,64}$/.test(process.env.NUTRANTARA_ADMIN_PIN || '')) {
+  console.error('[config] NODE_ENV=production membutuhkan NUTRANTARA_ADMIN_PIN (6–64 karakter, tanpa spasi).');
+  process.exit(1);
+}
 const ADMIN_PIN = String(process.env.NUTRANTARA_ADMIN_PIN || crypto.randomInt(100000, 1000000));
 const MAX_PLAYERS = Number(process.env.NUTRANTARA_MAX_PLAYERS) || 60;
 const SEAL_POINTS = 20;
@@ -315,6 +321,7 @@ function handleMove(conn, msg) {
   const c = WORLD.clamp(x, y);
   p.x = c.x;
   p.y = c.y;
+  p.h = Math.max(0, Math.min(80, Math.round(Number(msg.h)) || 0)); // tinggi lompatan (×0,1 unit), hanya tampilan
   positionsDirty = true;
 }
 
@@ -488,10 +495,13 @@ function handleAdmin(ws, msg) {
 // ---------- HTTP statis ----------
 
 const STATIC = {
-  '/': 'index.html', '/index.html': 'index.html', '/admin': 'admin.html', '/admin.html': 'admin.html',
-  '/styles.css': 'styles.css', '/admin.css': 'admin.css',
-  '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js'
+  '/': 'index.html', '/index.html': 'index.html', '/play': 'play.html', '/play.html': 'play.html', '/admin': 'admin.html', '/admin.html': 'admin.html',
+  '/styles.css': 'styles.css', '/admin.css': 'admin.css', '/landing.css': 'landing.css',
+  '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
+  '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js',
+  '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };
+const IMMUTABLE = new Set(['vendor/three/three.module.min.js']);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
@@ -513,7 +523,7 @@ const server = http.createServer((req, res) => {
   }
   fs.readFile(path.join(ROOT, file), (err, data) => {
     if (err) { res.writeHead(500, SECURITY_HEADERS); return res.end('Gagal membaca berkas'); }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)], 'Cache-Control': 'no-cache', ...SECURITY_HEADERS });
+    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)], 'Cache-Control': IMMUTABLE.has(file) ? 'public, max-age=604800' : 'no-cache', ...SECURITY_HEADERS });
     res.end(data);
   });
 });
@@ -523,7 +533,7 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 });
 
 wss.on('connection', (ws, req) => {
-  const conn = { role: null, playerId: null, ip: req.socket.remoteAddress, alive: true, budget: 40 };
+  const conn = { role: null, playerId: null, ip: TRUST_PROXY && req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.socket.remoteAddress, alive: true, budget: 40 };
   conns.set(ws, conn);
   ws.on('pong', () => { conn.alive = true; });
 
@@ -567,7 +577,7 @@ setInterval(() => {
   if (!positionsDirty) return;
   positionsDirty = false;
   const online = onlineIds();
-  const list = [...online].map((id) => db.players[id]).filter(Boolean).map((p) => [p.id, Math.round(p.x), Math.round(p.y), p.seals, p.activePos || 0]);
+  const list = [...online].map((id) => db.players[id]).filter(Boolean).map((p) => [p.id, Math.round(p.x), Math.round(p.y), p.seals, p.activePos || 0, p.h || 0]);
   toPlayers({ type: 'positions', list });
   toAdmins({ type: 'positions', list });
 }, 100);
@@ -591,10 +601,11 @@ function lanAddresses() {
 
 server.listen(PORT, () => {
   console.log('\n  NUTRANTARA — server kelas aktif');
-  console.log(`  Pemain  : http://localhost:${PORT}`);
-  lanAddresses().forEach((ip) => console.log(`            http://${ip}:${PORT}   (bagikan ke siswa di jaringan yang sama)`));
+  console.log(`  Beranda : http://localhost:${PORT}`);
+  console.log(`  Pemain  : http://localhost:${PORT}/play`);
+  lanAddresses().forEach((ip) => console.log(`            http://${ip}:${PORT}/play   (bagikan ke siswa di jaringan yang sama)`));
   console.log(`  Admin   : http://localhost:${PORT}/admin`);
-  console.log(`  PIN     : ${ADMIN_PIN}${process.env.NUTRANTARA_ADMIN_PIN ? ' (dari NUTRANTARA_ADMIN_PIN)' : ' (acak — atur NUTRANTARA_ADMIN_PIN agar tetap)'}`);
+  console.log(`  PIN     : ${PRODUCTION ? '(dari NUTRANTARA_ADMIN_PIN, tidak ditampilkan)' : ADMIN_PIN}${PRODUCTION ? '' : process.env.NUTRANTARA_ADMIN_PIN ? ' (dari NUTRANTARA_ADMIN_PIN)' : ' (acak — atur NUTRANTARA_ADMIN_PIN agar tetap)'}`);
   console.log(`  Data    : ${DATA_FILE}\n`);
 });
 

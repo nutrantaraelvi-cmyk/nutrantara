@@ -1,0 +1,16 @@
+# Blueprint Render (opsional). Isi NUTRANTARA_ADMIN_PIN di dasbor Render; jangan commit PIN ke Git.
+services:
+  - type: web
+    name: nutrantara
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NUTRANTARA_ADMIN_PIN
+        sync: false
+      - key: TRUST_PROXY
+        value: "1"
+    disk:
+      name: nutrantara-data
+      mountPath: /data
+      sizeGB: 1

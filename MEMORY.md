@@ -50,6 +50,10 @@ Pengguna meminta "game RPG multiplayer yang bisa dikendalikan admin". Keputusan 
 
 Belum dikerjakan: validasi jawaban sepenuhnya di server (kunci masih ada di klien), mode tim/kooperatif Pos 6, hosting internet/HTTPS, aset visual final.
 
+## Versi 0.4: 3D (22 November 2026)
+
+Pengguna meminta game 3D bergaya platformer petualangan (terinspirasi genre Super Bear Adventure, tetapi orisinal, tanpa meniru karakter/level/tampilannya), dengan target prototipe siap deploy, desain karakter bertema NUTRANTARA, peta yang disesuaikan, dan landing page. Implementasi: Three.js r170 disimpan lokal di `vendor/`; `characters.js` (Penjelajah Pangan bercaping + ransel rantang, Nara dengan antena daun padi); `world3d.js` (pulau, portal, penanda pos, blok tempe + 12 kepingan arsip, kamera orbit, kontrol sentuh); 2D tetap sebagai cadangan. Landing page di `index.html`, game pindah ke `play.html`. Deploy: Dockerfile, `render.yaml`, `docs/DEPLOY.md`; NODE_ENV=production mewajibkan `NUTRANTARA_ADMIN_PIN`.
+
 ## Catatan saat melanjutkan
 
 Ada percakapan awal yang sempat membahas Godot, Supabase, login Google, multiplayer dan target 3.000 pengguna. Dokumen desain yang diberikan kemudian secara eksplisit menetapkan prototipe versi uji tanpa engine/backend/multiplayer. Jadikan dokumen tersebut acuan scope saat ini; jangan menganggap percakapan eksplorasi sebelumnya sebagai keputusan final. Jika pengguna mengubah scope, bahas implikasi platform, data peserta, beban operasional, dan biaya sebelum implementasi.

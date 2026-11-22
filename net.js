@@ -116,10 +116,10 @@ window.NutraNet = (() => {
         emit('players', players);
         break;
       case 'positions':
-        msg.list.forEach(([id, x, y, seals, activePos]) => {
+        msg.list.forEach(([id, x, y, seals, activePos, h]) => {
           if (me && id === me.id) { me.seals = seals; return; }
           const p = players.get(id);
-          if (p) { p.tx = x; p.ty = y; p.seals = seals; p.activePos = activePos; }
+          if (p) { p.tx = x; p.ty = y; p.th = (h || 0) / 10; p.seals = seals; p.activePos = activePos; }
         });
         break;
       case 'teleport':
@@ -192,7 +192,7 @@ window.NutraNet = (() => {
     if (send({ type: 'progress', state, screen })) pendingProgress = null;
   }
 
-  function sendMove(x, y) { if (joined) send({ type: 'move', x: Math.round(x), y: Math.round(y) }); }
+  function sendMove(x, y, h = 0) { if (joined) send({ type: 'move', x: Math.round(x), y: Math.round(y), h: Math.round(h * 10) }); }
   function sendChat(text) { return joined && send({ type: 'chat', text }); }
 
   function status() { return { canConnect, connected, joined, online: joined }; }

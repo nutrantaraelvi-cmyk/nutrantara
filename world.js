@@ -368,8 +368,12 @@
     requestAnimationFrame(frame);
   }
 
+  const use2D = () => window.NUTRA_WORLD_MODE !== '3d';
+
   function start() {
-    if (running) return;
+    renderRoster();
+    renderChatState();
+    if (running || !use2D()) return;
     running = true;
     nearby = undefined;
     updateNearby();
@@ -379,7 +383,9 @@
     requestAnimationFrame(frame);
   }
 
-  function stop() { running = false; keys.clear(); target = null; }
+  function stop() { running = false; keys.clear(); target = null; nearby = null; }
+
+  window.NutraWorld2D = { start, stop, get running() { return running; } };
 
   document.addEventListener('nutra:screen', (e) => { if (e.detail === 'world') start(); else stop(); });
 
@@ -436,7 +442,7 @@
     net.on('status', () => { renderRoster(); renderChatState(); });
     net.on('settings', () => { renderChatState(); nearby = undefined; });
     net.on('welcome', ({ you }) => { self.x = you.x; self.y = you.y; renderRoster(); renderChatState(); });
-    net.on('teleport', ({ x, y }) => { self.x = x; self.y = y; target = null; saveSelf(); game.showToast('Guru memindahkan posisimu.'); });
+    net.on('teleport', ({ x, y }) => { self.x = x; self.y = y; target = null; saveSelf(); if (use2D()) game.showToast('Guru memindahkan posisimu.'); });
     net.on('chat', (entry) => {
       chatLog.append(chatLine(entry));
       while (chatLog.children.length > 100) chatLog.firstChild.remove();
@@ -450,3 +456,4 @@
   renderMode();
   if (game.visibleScreen === 'world') start();
 })();
+
