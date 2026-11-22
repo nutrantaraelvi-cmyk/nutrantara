@@ -8,6 +8,7 @@ import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, createLabel, createBubble, toon, PALETTE } from './characters.js';
 import { createFx } from './fx.js';
 import { createQuests } from './quest.js';
+import { SUN_DIR, createSkyDome, createCloudSea, cumulusTextures, createCumulus } from './sky.js';
 import { createCandiBentar, createMeru, createPenjor, createKite, createPinisi, createStupa, createRumahGadang, createGunungan, createGong, createOndelOndel, createCorn, createTempe, createPapaya, kawungTexture } from './culture.js';
 
 const W = window.NUTRANTARA_WORLD;
@@ -158,10 +159,11 @@ function initRenderer() {
   const sky = new THREE.Color('#86d4f7');
   scene.background = sky;
   scene.fog = new THREE.Fog('#bfe9fb', 110, 330);
+  scene.add(createSkyDome({ radius: 650, horizon: '#bfe9fb' }));
   camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 800);
   scene.add(new THREE.HemisphereLight('#fffaf0', '#5aa86a', 1.9));
   sun = new THREE.DirectionalLight('#ffe9b8', 2.5);
-  sun.position.set(25, 40, 18);
+  sun.position.copy(SUN_DIR).multiplyScalar(50);
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 });
   sun.shadow.bias = -0.0008;
@@ -622,20 +624,8 @@ function buildPalm(x, z, s = 1) {
 }
 
 function buildSkyAndClouds() {
-  // Lautan awan di bawah kepulauan
-  const geo = new THREE.SphereGeometry(1, 10, 8);
-  const mat = toon('#ffffff');
-  const count = gfx === 'high' ? 340 : 170;
-  cloudSea = new THREE.InstancedMesh(geo, mat, count);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  for (let i = 0; i < count; i += 1) {
-    const a = rand() * Math.PI * 2;
-    const r = Math.sqrt(rand()) * 240;
-    const s = 4 + rand() * 7;
-    m.compose(new THREE.Vector3(Math.cos(a) * r, -14 - rand() * 3, Math.sin(a) * r), q, new THREE.Vector3(s * 1.4, s * 0.5, s));
-    cloudSea.setMatrixAt(i, m);
-  }
+  // Lautan awan berlapis di bawah kepulauan
+  cloudSea = createCloudSea({ radius: 460, y: -15, quality: gfx, renderer });
   scene.add(cloudSea);
   // Pulau karst di kejauhan
   for (let i = 0; i < 22; i += 1) {
@@ -664,20 +654,24 @@ function buildSkyAndClouds() {
     scene.add(p);
     animated.push(p);
   });
-  // Matahari
-  const sunDisc = new THREE.Mesh(new THREE.CircleGeometry(9, 32), new THREE.MeshBasicMaterial({ color: '#fff3b0', fog: false }));
-  sunDisc.position.set(-170, 95, -230); sunDisc.lookAt(0, 0, 0);
-  scene.add(sunDisc);
-  const sunGlow = new THREE.Mesh(new THREE.CircleGeometry(16, 32), new THREE.MeshBasicMaterial({ color: '#ffe68a', transparent: true, opacity: 0.35, fog: false }));
-  sunGlow.position.copy(sunDisc.position).multiplyScalar(1.01); sunGlow.lookAt(0, 0, 0);
-  scene.add(sunGlow);
-  // Awan tinggi yang melayang
-  for (let i = 0; i < 18; i += 1) {
-    const c = new THREE.Group();
-    for (let k = 0; k < 4; k += 1) { const p = sph(1.6 + rand() * 1.4, '#ffffff', 8); p.castShadow = false; add(p, k * 2 - 3, rand(), rand() - 0.5, c); }
+  // Matahari digambar oleh kubah langit (sky.js), searah dengan cahaya bayangan.
+  // Awan kumulus tinggi yang melayang pelan
+  const high = gfx === 'high';
+  const cloudTex = cumulusTextures(high ? 4 : 2, gfx);
+  for (let i = 0; i < (high ? 22 : 12); i += 1) {
+    const c = createCumulus(cloudTex[i % cloudTex.length], 26 + rand() * 34, { opacity: 0.96 });
     c.userData.drift = 0.5 + rand() * 0.6;
-    add(c, -200 + rand() * 400, 22 + rand() * 12, -120 + rand() * 240);
+    c.position.set(-200 + rand() * 400, 24 + rand() * 14, -120 + rand() * 240);
+    scene.add(c);
     animated.push(c);
+  }
+  // Gugusan awan besar di cakrawala (tanpa kabut, diwarnai biru udara agar tampak jauh)
+  for (let i = 0; i < (high ? 12 : 7); i += 1) {
+    const a = (i / (high ? 12 : 7)) * Math.PI * 2 + rand() * 0.4;
+    const r = 300 + rand() * 60;
+    const c = createCumulus(cloudTex[(i + 1) % cloudTex.length], 90 + rand() * 70, { fog: false, tint: '#e4f2fb', opacity: 0.88 });
+    c.position.set(Math.cos(a) * r, -16 + rand() * 6, Math.sin(a) * r);
+    scene.add(c);
   }
 }
 
@@ -1409,7 +1403,7 @@ function updateCamera(dt) {
   camera.position.lerp(pos, Math.min(1, dt * 6));
   if (drop.shake > 0) { drop.shake -= dt; camera.position.x += (Math.random() - 0.5) * drop.shake; camera.position.y += (Math.random() - 0.5) * drop.shake; }
   camera.lookAt(target);
-  if (sun.castShadow) { sun.position.set(self.x + 25, 40, self.z + 18); sun.target.position.set(self.x, 0, self.z); }
+  if (sun.castShadow) { sun.target.position.set(self.x, 0, self.z); sun.position.copy(SUN_DIR).multiplyScalar(50).add(sun.target.position); }
 }
 
 function updateOverview(dt) {
@@ -1423,7 +1417,7 @@ function updateOverview(dt) {
   selectRing.visible = true;
   selectRing.scale.set(f.rx + 1.2, f.rz + 1.2, 1);
   selectRing.position.set(f.x, 0.3 + Math.sin(clock.elapsedTime * 3) * 0.15, f.z);
-  if (sun.castShadow) { sun.position.set(overview.focus.x + 25, 40, overview.focus.z + 18); sun.target.position.copy(overview.focus); }
+  if (sun.castShadow) { sun.target.position.copy(overview.focus); sun.position.copy(SUN_DIR).multiplyScalar(50).add(overview.focus); }
 }
 
 function updateOthers(dt) {
@@ -1511,7 +1505,7 @@ function animateWorld(dt) {
     if (o.userData.pinisi) { const p = o.userData.pinisi; p.a += p.s * dt; o.position.set(Math.cos(p.a) * p.r, -11.2 + Math.sin(t + p.r) * 0.3, Math.sin(p.a) * p.r); o.rotation.y = -p.a; o.rotation.z = Math.sin(t * 0.9 + p.r) * 0.04; }
   });
   waterfalls.forEach((tex) => { tex.offset.y -= dt * 1.2; });
-  if (cloudSea) cloudSea.rotation.y += dt * 0.004;
+  if (cloudSea) cloudSea.userData.update(dt);
   domes.forEach((dome) => {
     const u = dome.userData;
     if (u.fade > 0) {

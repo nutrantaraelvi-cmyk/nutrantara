@@ -5,6 +5,7 @@
  */
 import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, toon, PALETTE } from './characters.js';
+import { SUN_DIR, createSkyDome, createCloudSea, cumulusTextures, createCumulus } from './sky.js';
 import { createPenjor, createKite, createStupa, createCorn, createTempe, kawungTexture } from './culture.js';
 
 const net = window.NutraNet;
@@ -164,7 +165,7 @@ function showAuth() {
 
 // ---------- Lobi ----------
 const lobby = (() => {
-  let renderer; let scene; let camera; let hero; let nara; let ring; let clouds = []; let kites = [];
+  let renderer; let scene; let camera; let hero; let nara; let ring; let clouds = []; let kites = []; let sea = null;
   let running = false;
   let yaw = 0.3;
   let drag = null;
@@ -180,10 +181,11 @@ const lobby = (() => {
     scene = new THREE.Scene();
     scene.background = new THREE.Color('#86d4f7');
     scene.fog = new THREE.Fog('#bfe9fb', 22, 65);
+    scene.add(createSkyDome({ radius: 150, horizon: '#bfe9fb' }));
     camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
     scene.add(new THREE.HemisphereLight('#f0fbff', '#4d8a5e', 1.7));
     const sun = new THREE.DirectionalLight('#fff0d0', 2.2);
-    sun.position.set(5, 10, 6);
+    sun.position.copy(SUN_DIR).multiplyScalar(12);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
     scene.add(sun);
@@ -213,10 +215,12 @@ const lobby = (() => {
     nara.position.set(-1.9, 0, -0.4);
     nara.scale.setScalar(0.85);
     scene.add(nara);
-    for (let i = 0; i < 14; i += 1) {
-      const c = new THREE.Group();
-      for (let k = 0; k < 3; k += 1) { const p = new THREE.Mesh(new THREE.SphereGeometry(1 + Math.random(), 8, 6), toon('#ffffff')); p.position.set(k * 1.4 - 1.4, Math.random() * 0.5, 0); c.add(p); }
-      c.position.set(-25 + Math.random() * 50, -6 - Math.random() * 6, -20 + Math.random() * 30);
+    sea = createCloudSea({ radius: 110, y: -7, quality: 'high', renderer });
+    scene.add(sea);
+    const tex = cumulusTextures(3, 'high');
+    for (let i = 0; i < 10; i += 1) {
+      const c = createCumulus(tex[i % 3], 7 + Math.random() * 7, { opacity: 0.95 });
+      c.position.set(-30 + Math.random() * 60, -3 + Math.random() * 9, -28 + Math.random() * 18);
       c.userData.drift = 0.3 + Math.random() * 0.5;
       scene.add(c);
       clouds.push(c);
@@ -244,6 +248,7 @@ const lobby = (() => {
     nara.rotation.y = Math.atan2(camera.position.x - nara.position.x, camera.position.z - nara.position.z) * 0.6;
     ring.scale.setScalar(1 + Math.sin(t * 2) * 0.06);
     clouds.forEach((c) => { c.position.x += c.userData.drift * dt; if (c.position.x > 30) c.position.x = -30; });
+    if (sea) sea.userData.update(dt);
     kites.forEach((k, i) => { k.position.y += Math.sin(t * 1.3 + i) * 0.004; k.rotation.z = Math.sin(t * 1.1 + i) * 0.3; k.userData.tail.forEach((b, j) => { b.position.x = Math.sin(t * 5 + j + i) * 0.1 * j; }); });
     idleT -= dt;
     if (idleT <= 0) { idleT = 7 + Math.random() * 5; hero.userData.emote(['wave', 'think', 'cheer'][Math.floor(Math.random() * 3)]); }
