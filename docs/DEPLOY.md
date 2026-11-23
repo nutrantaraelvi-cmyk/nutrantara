@@ -38,14 +38,15 @@ docker run -d --name nutrantara -p 3000:3000 \
 - Data tersimpan di volume `/data`. Tanpa volume persisten, data hilang setiap kali kontainer diganti.
 - Cek kesehatan layanan di `GET /health`.
 
-**Render.com:** berkas `render.yaml` sudah tersedia dan saat ini memakai paket **Free** untuk demo. Paket ini tidak punya disk, jadi data siswa hilang setiap kali server restart atau deploy, dan server tertidur setelah sekitar 15 menit sepi. Sebelum dipakai kelas, ganti ke `plan: starter` dan aktifkan blok `disk:` (1 GB di `/data`) di `render.yaml`.
+**Render.com:** berkas `render.yaml` memakai paket **Starter** dengan disk permanen 1 GB di `/data` (sekitar US$7 per bulan ditambah biaya disk). Data kelas tersimpan di disk itu dan tetap ada setelah restart atau deploy, dan Render membuat snapshot disk otomatis setiap 24 jam (disimpan 7 hari). Karena memakai disk, setiap deploy membuat server berhenti beberapa detik, jadi lakukan push ke `main` di luar jam pelajaran. Layanan dengan disk juga tidak bisa di-scale ke beberapa instance. Untuk demo tanpa biaya, ganti ke `plan: free` dan hapus blok `disk:`; data siswa lalu hilang setiap restart dan server tertidur setelah sekitar 15 menit sepi.
 
 Langkah deploy:
-1. Masuk ke [dashboard.render.com](https://dashboard.render.com) dengan akun GitHub.
+1. Masuk ke [dashboard.render.com](https://dashboard.render.com) dengan akun GitHub. Paket Starter dan disk berbayar, jadi tambahkan metode pembayaran di pengaturan akun terlebih dahulu.
 2. Pilih **New → Blueprint**, lalu pilih repo ini. Render membaca `render.yaml`.
 3. Saat diminta, isi `NUTRANTARA_ADMIN_PIN` dengan PIN rahasia (6–64 karakter).
 4. Tunggu build selesai. Alamat game: `https://<nama-layanan>.onrender.com/play`, panel guru: `/admin`.
-5. Setiap push ke `main` akan men-deploy ulang secara otomatis.
+5. Buka `https://<nama-layanan>.onrender.com/health`. `"storage": true` berarti data kelas bisa disimpan ke disk.
+6. Setiap push ke `main` akan men-deploy ulang secara otomatis. Perubahan `render.yaml` (paket, disk) diterapkan lewat sinkronisasi Blueprint. Bila layanan dulu dibuat manual tanpa Blueprint, atur paket dan disk di menu layanan itu (**Settings → Instance Type** dan **Disks**).
 
 **Railway / Fly.io / VPS:** gunakan Dockerfile yang sama, lalu pasang volume ke `/data`.
 

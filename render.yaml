@@ -1,23 +1,27 @@
 # Blueprint Render. Isi NUTRANTARA_ADMIN_PIN di dasbor Render; jangan commit PIN ke Git.
 #
-# SAAT INI: paket Free untuk demo.
-#   - Tanpa disk persisten: akun, progres, dan obrolan siswa HILANG setiap server restart/deploy.
-#   - Server tertidur setelah ~15 menit tanpa pengunjung; kunjungan berikutnya menunggu ±1 menit.
+# Paket Starter + disk permanen 1 GB di /data (sejak 23 November 2026; sekitar US$7/bulan + disk):
+#   - Akun, progres, regu, dan obrolan siswa tersimpan di /data/classroom.json dan tetap ada setelah
+#     restart/deploy. Render membuat snapshot disk otomatis setiap 24 jam (disimpan 7 hari).
+#   - Dengan disk, deploy tidak lagi tanpa jeda: server berhenti beberapa detik saat diganti versi baru.
+#     Push ke main di luar jam pelajaran.
+#   - Disk hanya untuk satu instance (tidak bisa di-scale), dan hanya isi /data yang permanen.
+#   - Cek https://<layanan>.onrender.com/health: "storage": true berarti data bisa disimpan.
 #
-# SAAT SIAP DIPAKAI KELAS: ganti `plan: free` menjadi `plan: starter`, lalu hapus tanda # pada
-# blok `disk:` di bawah, sehingga data tersimpan di /data dan tidak hilang.
+# Untuk demo tanpa biaya: ganti `plan: starter` menjadi `plan: free` dan hapus blok `disk:`
+# (data siswa hilang setiap restart, server tertidur setelah ±15 menit sepi).
 services:
   - type: web
     name: nutrantara
     runtime: docker
-    plan: free
+    plan: starter
     healthCheckPath: /health
     envVars:
       - key: NUTRANTARA_ADMIN_PIN
         sync: false
       - key: TRUST_PROXY
         value: "1"
-    # disk:
-    #   name: nutrantara-data
-    #   mountPath: /data
-    #   sizeGB: 1
+    disk:
+      name: nutrantara-data
+      mountPath: /data
+      sizeGB: 1
