@@ -102,6 +102,10 @@ Permintaan pengguna: skema kontrol RPG 3D dual-input (kamera dan gerak terpisah 
 
 Deploy: pengguna sempat menimbang Cloudflare + Supabase. Workers/Durable Objects berarti menulis ulang `server.js`, sedangkan Supabase hanya akan menggantikan penyimpanan. Keputusan: Render Starter + disk permanen 1 GB di `/data` (sekitar US$7/bulan + disk). Dampaknya: data kelas tidak hilang lagi saat restart/deploy dan ada snapshot disk harian (7 hari), tetapi setiap deploy kini ada jeda beberapa detik dan layanan tidak bisa di-scale. Image Docker menyerahkan `/data` ke user `node` saat mulai, dan `/health` melaporkan `storage`.
 
+## Layar muat utama beranda (23 November 2026)
+
+Permintaan pengguna: ilustrasi judul miliknya (logo NUTRANTARA, "Misi Pangan Nusantara", tombol MULAI GAME, robot pemandu, kredit "Karya Elvi Era Fitri") dijadikan layar muat sebelum beranda. Gambar dipakai utuh (`assets/layar-muat.webp`, versi 960 px untuk layar kecil). Tombol MULAI GAME di gambar diberi tombol transparan yang meredup selama memuat, lalu menyala dan bisa diklik saat beranda siap. Tombol itu masuk ke beranda, bukan langsung ke game. Kunjungan berikutnya di sesi yang sama menutup layar muat secara otomatis agar guru tidak terganggu saat kembali ke beranda.
+
 ## Catatan saat melanjutkan
 
 Ada percakapan awal yang sempat membahas Godot, Supabase, login Google, multiplayer dan target 3.000 pengguna. Dokumen desain yang diberikan kemudian secara eksplisit menetapkan prototipe versi uji tanpa engine/backend/multiplayer. Jadikan dokumen tersebut acuan scope saat ini; jangan menganggap percakapan eksplorasi sebelumnya sebagai keputusan final. Jika pengguna mengubah scope, bahas implikasi platform, data peserta, beban operasional, dan biaya sebelum implementasi.

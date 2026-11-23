@@ -18,6 +18,17 @@
     <script type="module" src="landing.js"></script>
   </head>
   <body class="landing">
+    <div class="splash" id="splash" role="dialog" aria-modal="true" aria-label="Layar pembuka NUTRANTARA" hidden>
+      <div class="splash-art">
+        <img class="splash-img" src="assets/layar-muat.webp" srcset="assets/layar-muat-960.webp 960w, assets/layar-muat.webp 1672w" sizes="min(100vw, 177.7vh)" width="1672" height="941" fetchpriority="high" alt="NUTRANTARA, Misi Pangan Nusantara: jelajahi tubuh, taklukkan tantangan, racik menu juara! Kepulauan melayang dengan pasar, dapur, dan laboratorium, serta robot pemandu yang melambai. Karya Elvi Era Fitri." />
+        <button class="splash-start" id="splash-start" type="button"><span class="sr-only">Mulai game</span></button>
+        <div class="splash-status">
+          <div class="splash-bar" id="splash-bar" role="progressbar" aria-label="Memuat beranda" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="splash-fill"></i></div>
+          <p><span id="splash-text" aria-live="polite">Menyiapkan Kepulauan NUTRANTARA…</span> <b id="splash-pct" aria-hidden="true">0%</b></p>
+        </div>
+      </div>
+    </div>
+    <script src="splash.js"></script>
     <a class="skip-link" href="#konten">Lewati ke konten</a>
     <div class="shell">
       <header class="topbar">

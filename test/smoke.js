@@ -82,6 +82,9 @@ async function adminProbe() {
     // ---------- Halaman ----------
     const html = await fetch(`http://localhost:${PORT}/`).then((r) => r.text());
     ok(html.includes('hero-canvas'), 'landing page disajikan di /');
+    ok(html.includes('id="splash"') && html.includes('splash.js'), 'beranda memuat layar muat utama');
+    const splashAssets = await Promise.all(['/splash.js', '/assets/layar-muat.webp', '/assets/layar-muat-960.webp'].map((p) => fetch(`http://localhost:${PORT}${p}`)));
+    ok(splashAssets.every((r) => r.ok), 'skrip & ilustrasi layar muat disajikan server');
     const play = await fetch(`http://localhost:${PORT}/play`).then((r) => r.text());
     ok(play.includes('world3d.js') && play.includes('app.js'), 'halaman game disajikan di /play');
     const three = await fetch(`http://localhost:${PORT}/vendor/three/three.module.min.js`);
