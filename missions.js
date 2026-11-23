@@ -352,13 +352,14 @@ window.NUTRANTARA_MISSIONS = [
     id: 6,
     type: 'project',
     icon: '✦',
-    title: 'Dapur',
-    titleEm: 'Juara',
-    mapLabel: 'DAPUR JUARA',
-    location: 'BENGKEL MENU',
-    description: 'Rancang satu porsi menu lokal untuk siswa SMA, telaah, lalu revisi berdasarkan bukti.',
+    title: 'Pemulihan',
+    titleEm: 'Arsip',
+    mapLabel: 'PEMULIHAN ARSIP',
+    location: 'RUANG ARSIP & DAPUR JUARA',
+    description: 'Telaah penjelasan teman regu, kumpulkan Paspor Nusantara, lalu rancang menu juara di Dapur Juara berdasarkan bukti.',
     duration: '1–2 PERTEMUAN',
     nara: {
+      archive: 'Arsip Nusantara rusak: halaman-halamannya pudar. Telaah penjelasan Paspor teman regumu dengan rubrik Klaim–Bukti–Penalaran agar setiap halaman pulih.',
       brief: 'Arsip sudah pulih. Sekarang rancang satu porsi menu pangan lokal untuk siswa SMA. Tulis ukuran porsi dan sumber komposisi sebelum menghitung.',
       initial: 'Isi sasaran dan bahan. Ambil nilai gizi per 100 g dari Tabel Komposisi Pangan Indonesia atau label pangan, lalu catat sumbernya.',
       review: 'Minta teman atau guru menelaah rancanganmu. Catat masukan yang mereka berikan.',
@@ -520,32 +521,243 @@ window.NUTRANTARA_MISSIONS = [
     },
     4: {
       type: 'stations',
-      title: 'Nyalakan lentera dugaan',
-      intro: 'Kota terapung gelap. Setiap lentera mewakili satu faktor. Nyalakan dengan dugaan sebab-akibat yang masuk akal.',
+      title: 'Telusuri jejak, uji secara adil',
+      intro: 'Keluhan sulit BAB warga Kota Terapung berkurang, tetapi serat, air minum, dan aktivitas berubah sekaligus. Rentangkan benang dugaan di Papan Benang Merah, uji tiap faktor secara adil di Simulator Usus Besar 3D, lalu periksa batas bukti setiap berita di Menara Siaran sebelum mengudara.',
       stations: [
-        { id: 'serat', kind: 'lantern', at: [-0.86, 0.1], label: 'Lentera Serat', color: '#78f4bd',
-          blanks: [{ label: 'Jika serat harian naik, keluhan sulit BAB cenderung…', options: ['berkurang, karena serat menambah massa feses dan menahan air', 'bertambah, karena serat diserap ke dalam darah', 'tidak berubah sama sekali'], answer: 'berkurang, karena serat menambah massa feses dan menahan air' }],
-          explain: 'Serat tidak dicerna. Serat menambah massa feses dan menahan air sehingga feses lebih mudah bergerak.' },
-        { id: 'air', kind: 'lantern', at: [0.86, 0.1], label: 'Lentera Air', color: '#68dce7',
-          blanks: [{ label: 'Jika air minum naik, keluhan sulit BAB cenderung…', options: ['bertambah, karena usus kelebihan air', 'berkurang, karena feses menjadi lebih lunak', 'tidak berubah sama sekali'], answer: 'berkurang, karena feses menjadi lebih lunak' }],
-          explain: 'Usus besar menyerap air dari sisa makanan. Asupan air yang cukup membantu feses tetap lunak.' },
-        { id: 'aktivitas', kind: 'lantern', at: [0, 0.84], label: 'Lentera Aktivitas', color: '#ffd17c',
-          blanks: [{ label: 'Jika aktivitas fisik naik, keluhan sulit BAB cenderung…', options: ['berkurang, karena gerak tubuh membantu gerak peristaltik usus', 'bertambah, karena energi tubuh habis', 'tidak berubah sama sekali'], answer: 'berkurang, karena gerak tubuh membantu gerak peristaltik usus' }],
-          explain: 'Aktivitas fisik membantu merangsang gerak peristaltik. Ingat: ketiga faktor berubah bersamaan, jadi data ini belum bisa memastikan mana penyebab utamanya.' }
-      ]
+        { id: 'benang', kind: 'threads', at: [-0.86, 0.1], label: 'Papan Benang Merah', color: '#e2553f' },
+        { id: 'kolon', kind: 'colon', at: [0, 0.8], label: 'Simulator Usus Besar 3D', color: '#ff9f43' },
+        { id: 'siaran', kind: 'tower', at: [0.86, 0.1], label: 'Menara Siaran', color: '#1fc3d3' }
+      ],
+      // Papan Benang Merah: peta dugaan sebab-akibat (faktor → mekanisme → akibat), terinspirasi pemodelan sistem
+      // SageModeler. at = posisi kartu di papan (persen lebar, persen tinggi). Kartu jebakan memutus benang.
+      threads: {
+        lanes: {
+          serat: { label: 'Jalur serat', icon: '🥬', color: '#3fa95c' },
+          air: { label: 'Jalur air', icon: '💧', color: '#1fa3d3' },
+          aktivitas: { label: 'Jalur aktivitas', icon: '🏃', color: '#f59f0b' },
+          akibat: { label: 'Simpul akibat', icon: '🎯', color: '#e2553f' }
+        },
+        nodes: [
+          { id: 'serat', kind: 'factor', lane: 'serat', text: 'Serat harian naik', at: [10, 15] },
+          { id: 'air', kind: 'factor', lane: 'air', text: 'Air minum naik', at: [10, 50] },
+          { id: 'aktivitas', kind: 'factor', lane: 'aktivitas', text: 'Aktivitas fisik naik', at: [10, 85] },
+          { id: 'massa', kind: 'mech', text: 'Massa feses bertambah dan mengikat air', at: [30, 15] },
+          { id: 'cairan', kind: 'mech', text: 'Cairan di usus besar tercukupi', at: [30, 50] },
+          { id: 'peristaltik', kind: 'mech', text: 'Gerak peristaltik usus besar lebih aktif', at: [30, 85] },
+          { id: 'cerna', kind: 'mech', trap: true, text: 'Serat dicerna enzim menjadi glukosa lalu masuk darah', at: [51, 15],
+            why: 'Serat tidak dapat dicerna enzim pencernaan manusia, jadi tidak menjadi glukosa. Justru karena tidak dicerna, serat sampai di usus besar dan menambah massa feses.' },
+          { id: 'lama', kind: 'mech', trap: true, text: 'Isi usus besar tertahan lebih lama', at: [51, 62],
+            why: 'Arahnya terbalik. Peristaltik yang lebih aktif mendorong isi usus besar lebih cepat, bukan menahannya lebih lama.' },
+          { id: 'transit', kind: 'mech', text: 'Transit lebih singkat, air yang diserap kembali berkurang', at: [51, 86] },
+          { id: 'lunak', kind: 'effect', text: 'Feses lebih lunak dan mudah didorong', at: [71, 50] },
+          { id: 'keras', kind: 'mech', trap: true, text: 'Feses lebih keras dan kering', at: [71, 85],
+            why: 'Arahnya terbalik. Feses yang bermassa, cukup cairan, dan tidak lama tertahan justru menjadi lebih lunak, bukan lebih keras.' },
+          { id: 'keluhan', kind: 'outcome', text: 'Hari keluhan sulit BAB berkurang', at: [90, 50] }
+        ],
+        links: [
+          { from: 'serat', to: 'massa', lane: 'serat', why: 'Serat tidak dicerna, jadi menambah massa feses dan mengikat air.' },
+          { from: 'massa', to: 'lunak', lane: 'serat', why: 'Feses yang bermassa dan menahan air menjadi lebih lunak dan mudah didorong.' },
+          { from: 'air', to: 'cairan', lane: 'air', why: 'Air minum menambah cairan tubuh, termasuk cairan yang sampai di usus besar.' },
+          { from: 'cairan', to: 'lunak', lane: 'air', why: 'Usus besar menyerap air dari sisa makanan. Bila cairannya cukup, feses tidak terlalu kering.' },
+          { from: 'aktivitas', to: 'peristaltik', lane: 'aktivitas', why: 'Gerak tubuh diduga membantu merangsang gerak peristaltik usus.' },
+          { from: 'peristaltik', to: 'transit', lane: 'aktivitas', why: 'Peristaltik yang aktif mendorong isi usus besar lebih cepat sehingga waktu transitnya singkat.' },
+          { from: 'transit', to: 'lunak', lane: 'aktivitas', why: 'Makin singkat isi usus besar tertahan, makin sedikit air yang diserap kembali, sehingga feses tidak mengeras.' },
+          { from: 'lunak', to: 'keluhan', lane: 'akibat', why: 'Feses yang lunak lebih mudah dikeluarkan, sehingga hari keluhan berkurang.' }
+        ],
+        skip: 'Benang terlalu panjang: kamu melompati langkah mekanismenya. Jejak sebab-akibat yang kuat menjelaskan bagaimana sebab menghasilkan akibat, langkah demi langkah.',
+        reverse: 'Arah benang terbalik. Tarik benang dari sebab menuju akibatnya.',
+        tangle: 'Benang kusut: itu bukan langkah langsung dari kartu ini. Baca lagi kartunya: apa yang langsung diubahnya?',
+        finale: 'Tiga benang bertemu di satu simpul: feses lebih lunak. Pada Minggu 2 ketiga faktor naik bersamaan, jadi dari catatan itu saja kita tidak tahu benang mana yang bekerja: satu, dua, atau ketiganya. Inilah faktor terpaut. Ingat juga, benang ini baru dugaan mekanisme, belum bukti.'
+      },
+      // Simulator Usus Besar 3D ("Mesin Uji Adil"), mengikuti Control of Variables Strategy (Chen & Klahr 1999):
+      // uji adil hanya mengubah satu faktor. Model simulasi sederhana; angka bukan saran kesehatan.
+      // Minggu dasar (semua rendah) = Minggu 1 catatan harian; semua tinggi = Minggu 2.
+      colon: {
+        factors: [
+          { id: 'serat', icon: '🥬', label: 'Serat', unit: 'g', low: 10, high: 22, days: 2, transit: 20 },
+          { id: 'air', icon: '💧', label: 'Air minum', unit: 'gelas', low: 4, high: 8, days: 1, transit: 6 },
+          { id: 'aktivitas', icon: '🏃', label: 'Aktivitas', unit: 'menit', low: 15, high: 45, days: 1, transit: 10 }
+        ],
+        base: { days: 5, transit: 68 },
+        same: 'IDENTIK: kedua minggu sama persis, jadi tidak ada faktor yang diuji. Uji adil bukan berarti menyamakan semuanya, melainkan mengubah tepat satu faktor.',
+        conclusion: {
+          question: 'Buku Uji mencatat hasil uji adil dibanding minggu dasar: serat −2 hari keluhan, air −1 hari, aktivitas −1 hari (simulasi). Kesimpulan mana yang paling tepat?',
+          options: [
+            { value: 'serat-saja', text: 'Hanya serat yang berpengaruh, jadi air minum dan aktivitas tidak perlu diperhatikan.' },
+            { value: 'model', text: 'Di dalam model ini, setiap faktor ikut mengurangi hari keluhan dan serat paling besar. Karena ini simulasi, kesimpulannya perlu diuji lagi pada data nyata.' },
+            { value: 'empat', text: 'Setiap faktor mengurangi 4 hari keluhan, sama dengan selisih Minggu 1 dan Minggu 2.' }
+          ],
+          correct: 'model',
+          wrong: { 'serat-saja': 'Lihat Buku Uji: uji adil air dan aktivitas juga mengurangi hari keluhan, walau lebih sedikit.', empat: 'Selisih 4 hari terjadi saat ketiga faktor naik bersamaan. Uji adil menunjukkan bagian tiap faktor jauh lebih kecil.' },
+          explain: 'Uji adil memisahkan faktor yang terpaut: ubah satu, setarakan sisanya. Tetap kenali batasnya: simulator ini model sederhana yang hasilnya selalu sama. Pada manusia nyata, bukti terkuat ada pada serat; manfaat menambah air terutama terlihat pada orang yang kurang minum, dan peran aktivitas fisik masih terus diteliti.'
+        }
+      },
+      // Menara Siaran: setiap berita diperiksa dengan satu lensa batas bukti sebelum boleh mengudara.
+      // Kartu ke-k dipegang peran k mod 4 (seperti Gerbang Pilah Pos 3). Berita bersifat fiktif.
+      tower: {
+        deal: 8,
+        lenses: {
+          terpaut: { icon: '🧶', label: 'Faktor terpaut', hint: 'beberapa hal berubah bersamaan' },
+          tipis: { icon: '🪶', label: 'Bukti tipis', hint: 'satu orang atau waktu terlalu singkat' },
+          hubungan: { icon: '🔗', label: 'Baru hubungan', hint: 'hanya terlihat bersamaan; mungkin ada faktor ketiga' },
+          adil: { icon: '⚖', label: 'Uji adil', hint: 'satu faktor diubah, sisanya disetarakan' }
+        },
+        cards: [
+          { lens: 'terpaut', text: 'Minggu ini Raka makan lebih banyak sayur, minum lebih banyak, dan rajin bersepeda. Keluhannya berkurang. Pasti karena sayurnya!',
+            why: 'Tiga hal berubah bersamaan, jadi berkurangnya keluhan belum bisa dikaitkan dengan sayur saja.',
+            fix: 'Keluhan Raka berkurang saat sayur, air minum, dan aktivitasnya naik bersamaan. Belum diketahui faktor mana yang berperan.' },
+          { lens: 'terpaut', text: 'Kantin mengganti menu menjadi berserat sekaligus memasang dispenser air gratis. Keluhan siswa turun. Menu baru terbukti manjur!',
+            why: 'Menu dan kebiasaan minum berubah pada waktu yang sama. Dispenser air bisa ikut berperan.',
+            fix: 'Setelah menu berserat dan dispenser air hadir bersamaan, keluhan siswa turun. Perlu uji terpisah untuk tahu peran masing-masing.' },
+          { lens: 'terpaut', text: 'Selama liburan, Dinda tidur lebih cukup, makan buah setiap hari, dan banyak jalan kaki. BAB-nya lancar. Buahlah kuncinya!',
+            why: 'Tidur, buah, dan jalan kaki berubah sekaligus. Ketiganya terpaut, jadi buah belum tentu kuncinya.',
+            fix: 'BAB Dinda lancar selama liburan, saat tidur, makan buah, dan jalan kakinya bertambah bersamaan.' },
+          { lens: 'tipis', text: 'Paman Bayu minum air jahe satu kali dan besoknya langsung lancar. Air jahe obat ampuh sembelit!',
+            why: 'Hanya satu orang dan satu hari. Hasil seperti ini bisa saja kebetulan.',
+            fix: 'Paman Bayu merasa lebih lancar sehari setelah minum air jahe. Satu pengalaman belum cukup untuk menyimpulkan.' },
+          { lens: 'tipis', text: 'Satu siswa mencoba roti gandum dua hari dan merasa lebih lancar. Roti gandum pasti cocok untuk semua siswa!',
+            why: 'Satu orang selama dua hari tidak bisa mewakili semua siswa.',
+            fix: 'Seorang siswa merasa lebih lancar setelah dua hari makan roti gandum. Perlu lebih banyak orang dan waktu untuk menguji.' },
+          { lens: 'tipis', text: 'Sari minum yogurt tiga hari dan perutnya terasa enak. Yogurt menyembuhkan sembelit!',
+            why: 'Tiga hari pada satu orang terlalu sedikit. Lagi pula "perut terasa enak" belum tentu berarti sembelitnya sembuh.',
+            fix: 'Sari merasa perutnya enak setelah tiga hari minum yogurt. Itu pengalaman satu orang, belum bukti penyembuhan.' },
+          { lens: 'hubungan', text: 'Survei: warga yang rutin berolahraga lebih jarang sembelit. Jadi olahraga pasti mencegah sembelit.',
+            why: 'Survei hanya menunjukkan hubungan. Warga yang rutin berolahraga mungkin juga makan lebih banyak serat: itu faktor ketiga.',
+            fix: 'Pada survei, warga yang rutin berolahraga lebih jarang sembelit. Hubungan ini masih perlu diuji secara adil.' },
+          { lens: 'hubungan', text: 'Kampung dengan penjualan buah tertinggi punya keluhan sembelit paling rendah. Buah dari pasar itu menyembuhkan sembelit!',
+            why: 'Dua hal hanya terlihat bersamaan. Kampung itu bisa berbeda dalam banyak hal lain, misalnya kebiasaan minum atau bergerak.',
+            fix: 'Kampung dengan penjualan buah tertinggi juga punya keluhan sembelit terendah. Penyebabnya belum diketahui.' },
+          { lens: 'hubungan', text: 'Siswa yang membawa botol minum ke sekolah jarang mengeluh sulit BAB. Botol minum penyebabnya!',
+            why: 'Botol hanyalah penanda kebiasaan. Mungkin mereka minum lebih banyak, atau punya kebiasaan sehat lain.',
+            fix: 'Siswa yang membawa botol minum lebih jarang mengeluh sulit BAB. Kebiasaan apa di baliknya masih perlu diteliti.' },
+          { lens: 'adil', text: 'Uji simulasi: dua kelompok dengan air minum dan aktivitas yang sama, hanya seratnya yang berbeda. Kelompok serat tinggi lebih jarang mengeluh.',
+            why: 'Hanya satu faktor yang dibedakan, jadi selisihnya dapat dikaitkan dengan serat. Tetap sebutkan bahwa ini data simulasi.' },
+          { lens: 'adil', text: 'Selama 4 minggu, 30 relawan dibagi menjadi dua kelompok yang setara; hanya aktivitas fisiknya yang dibedakan. Kelompok aktif sedikit lebih jarang mengeluh.',
+            why: 'Kelompok setara, satu faktor dibedakan, cukup banyak orang, dan cukup lama. Kesimpulannya tetap sebatas kelompok yang diuji.' },
+          { lens: 'adil', text: 'Percobaan 2 minggu: air minum 20 relawan dinaikkan, menu dan aktivitas dijaga sama. Keluhan sedikit turun, terutama pada yang awalnya kurang minum.',
+            why: 'Hanya air yang diubah dan faktor lain dijaga sama. Hasilnya juga jujur menyebut batasnya: efeknya paling terlihat pada yang awalnya kurang minum.' }
+        ]
+      }
     },
     5: {
       type: 'stations',
-      title: 'Perbaiki iklan',
-      intro: 'Studio iklan menyiarkan klaim yang menyesatkan. Tulis ulang naskahnya agar jujur terhadap data, lalu tentukan data sasaran yang masih kurang.',
+      title: 'Bongkar asumsi, sorot yang diabaikan',
+      intro: 'Studio Iklan menyiarkan klaim yang terdengar meyakinkan. Pecahkan klaim di Mesin Pemecah Klaim untuk menemukan asumsi tersembunyi, putar kemasan di Kemasan Berputar untuk menyorot informasi yang diabaikan, lalu susun naskah yang jujur di Studio Naskah Jujur.',
       stations: [
-        { id: 'naskah', kind: 'board', at: [-0.86, 0.1], label: 'Naskah Iklan', color: '#ff9f91',
-          blanks: [{ label: 'Naskah iklan yang jujur terhadap data', options: ['Menu C paling sehat karena energinya paling tinggi.', 'Pada data simulasi, Menu C lebih tinggi energinya (600 kkal), sedangkan Menu B lebih tinggi protein dan seratnya. Pilih sesuai kebutuhan.', 'Menu B pasti paling sehat untuk semua orang.'], answer: 'Pada data simulasi, Menu C lebih tinggi energinya (600 kkal), sedangkan Menu B lebih tinggi protein dan seratnya. Pilih sesuai kebutuhan.' }],
-          explain: 'Naskah yang jujur menyebutkan data apa adanya tanpa melompat ke klaim "paling sehat".' },
-        { id: 'sasaran', kind: 'board', at: [0.86, 0.1], label: 'Data Sasaran', color: '#68dce7',
-          blanks: [{ label: 'Agar klaim "sehat untuk siswa SMA" bisa dinilai, perlu data…', options: ['Warna kemasan dan nama artis pengiklan', 'Kebutuhan gizi siswa SMA dan porsi yang dimakan', 'Jumlah penonton iklan'], answer: 'Kebutuhan gizi siswa SMA dan porsi yang dimakan' }],
-          explain: '"Sehat" selalu bergantung pada sasaran. Tanpa data kebutuhan gizi dan porsi, klaim belum bisa diuji.' }
-      ]
+        { id: 'pecah', kind: 'geode', at: [-0.86, 0.1], label: 'Mesin Pemecah Klaim', color: '#9b6fd6' },
+        { id: 'kemasan', kind: 'package', at: [0, 0.8], label: 'Kemasan Berputar', color: '#ff9f43' },
+        { id: 'studio', kind: 'studio', at: [0.86, 0.1], label: 'Studio Naskah Jujur', color: '#e2553f' }
+      ],
+      // Mesin Pemecah Klaim: klaim = batu geode. Dipukul → pecahan DATA dan KESIMPULAN, intinya = ASUMSI tersembunyi
+      // (warrant pada model argumen Toulmin), lalu asumsinya diuji dengan informasi yang diabaikan iklan.
+      // Klaim ke-k dipegang peran k mod 4. Produk dan angka fiktif (simulasi).
+      geode: {
+        hits: 3,
+        claims: [
+          { product: 'Minuman Jeruk Cerah', claim: 'Minuman Jeruk Cerah paling menyehatkan karena vitamin C-nya 200% AKG!', trick: 'Sorotan satu zat gizi',
+            pieces: [{ text: 'Vitamin C 200% AKG per botol', kind: 'data' }, { text: 'Minuman Jeruk Cerah paling menyehatkan', kind: 'kesimpulan' }],
+            options: [
+              { text: 'Satu zat gizi yang tinggi membuat minuman sehat secara keseluruhan.', ok: true },
+              { text: 'Vitamin C larut dalam air.', why: 'Benar, tetapi fakta ini tidak menghubungkan angka vitamin C dengan klaim "paling menyehatkan".' },
+              { text: 'Botol minumannya berwarna jingga cerah.', why: 'Itu fakta kemasan, bukan penghubung antara data dan klaim.' }
+            ],
+            ignored: 'Gula 28 g per botol tidak disebut.',
+            crack: 'Satu zat gizi yang tinggi tidak menjamin minuman sehat secara keseluruhan, apalagi bila gulanya tinggi.' },
+          { product: 'Sereal Kriuk Pagi', claim: 'Sereal Kriuk Pagi bebas lemak, jadi pasti tidak membuat gemuk!', trick: 'Label "bebas …"',
+            pieces: [{ text: 'Lemak 0 g per sajian', kind: 'data' }, { text: 'Sereal ini pasti tidak membuat gemuk', kind: 'kesimpulan' }],
+            options: [
+              { text: 'Berat badan hanya dipengaruhi lemak dalam makanan.', ok: true },
+              { text: 'Sereal biasa dimakan saat sarapan.', why: 'Itu kebiasaan makan, bukan penghubung antara "bebas lemak" dan "tidak membuat gemuk".' },
+              { text: 'Lemak termasuk zat gizi makro.', why: 'Benar, tetapi tidak menjelaskan lompatan dari "0 g lemak" ke "pasti tidak membuat gemuk".' }
+            ],
+            ignored: 'Gula 12 g dan energi 120 kkal per sajian tidak disebut.',
+            crack: 'Energi juga datang dari gula dan karbohidrat lain. "Bebas lemak" tidak berarti bebas energi.' },
+          { product: 'Camilan Batang Kuat', claim: 'Camilan Batang Kuat tinggi protein, jadi cocok untuk semua anak!', trick: 'Generalisasi berlebihan',
+            pieces: [{ text: 'Protein 12 g per batang', kind: 'data' }, { text: 'Camilan ini cocok untuk semua anak', kind: 'kesimpulan' }],
+            options: [
+              { text: 'Makanan tinggi protein pasti cocok untuk semua orang, apa pun kebutuhannya.', ok: true },
+              { text: 'Protein tersusun atas asam amino.', why: 'Benar, tetapi tidak menjelaskan mengapa camilan ini cocok untuk semua anak.' },
+              { text: 'Camilan ini dijual di kantin sekolah.', why: 'Tempat penjualan tidak menunjukkan kecocokan gizi.' }
+            ],
+            ignored: 'Natrium 380 mg per batang dan perbedaan kebutuhan tiap anak tidak disebut.',
+            crack: 'Kebutuhan gizi berbeda menurut usia, aktivitas, dan kondisi tubuh. Satu produk tidak otomatis cocok untuk semua.' },
+          { product: 'Keripik Sayur Renyah', claim: 'Keripik Sayur Renyah terbuat dari sayur asli, jadi sehatnya sama dengan makan sayur!', trick: 'Efek "alami/asli"',
+            pieces: [{ text: 'Bahannya bayam dan wortel asli', kind: 'data' }, { text: 'Sehatnya sama dengan makan sayur', kind: 'kesimpulan' }],
+            options: [
+              { text: 'Bahan asal menentukan gizi produk akhir, bagaimana pun cara mengolahnya.', ok: true },
+              { text: 'Bayam berwarna hijau karena klorofil.', why: 'Benar, tetapi warna bayam tidak menghubungkan bahan asli dengan klaim kesehatan.' },
+              { text: 'Keripik dikemas dalam bungkus kedap udara.', why: 'Itu fakta kemasan, bukan penghubung antara data dan klaim.' }
+            ],
+            ignored: 'Keripik digoreng: lemak 8 g dan natrium 210 mg per sajian, padahal sebungkus berisi 3 sajian.',
+            crack: 'Cara mengolah mengubah gizi. Sayur yang digoreng menjadi keripik menyerap minyak dan diberi garam.' }
+        ]
+      },
+      // Kemasan Berputar: depan kemasan = klaim iklan; belakang = informasi nilai gizi; samping = komposisi dan takaran saji.
+      // Sebuah fakta baru bisa ditandai setelah sisi kemasannya dilihat. Semua produk dan angka fiktif.
+      pack: {
+        products: [
+          { id: 'sereal', name: 'Sereal Kriuk Pagi', color: '#f5b72b', ink: '#7a3b12', claim: 'TINGGI SERAT!', sub: 'Sarapan sehat setiap hari', icon: '🥣',
+            serving: 'Takaran saji 30 g · 4 sajian per kotak',
+            label: [['Energi', '120 kkal'], ['Lemak total', '1 g'], ['Protein', '2 g'], ['Karbohidrat', '26 g'], ['Gula', '12 g'], ['Serat pangan', '3 g'], ['Natrium', '150 mg']],
+            ingredients: 'Komposisi: tepung jagung, gula, dedak gandum, garam, perisa.',
+            facts: [
+              { text: 'Gula 12 g per sajian, hampir separuh berat sajiannya.', face: 'back', ignored: true, why: 'Iklan hanya menonjolkan serat, padahal gulanya tinggi.' },
+              { text: 'Gula ada di urutan kedua komposisi.', face: 'side', ignored: true, why: 'Komposisi ditulis dari bahan terbanyak. Gula termasuk bahan utama sereal ini.' },
+              { text: 'Serat pangan 3 g per sajian.', face: 'back', ignored: false, why: 'Ini justru yang disebut iklan ("tinggi serat"), bukan yang diabaikan.' },
+              { text: 'Kotaknya berwarna kuning cerah.', face: 'front', ignored: false, why: 'Warna kemasan bukan informasi gizi.' }
+            ] },
+          { id: 'susu', name: 'Susu Cokelat Tulang Kuat', color: '#8a5a3a', ink: '#fff4dc', claim: 'KAYA KALSIUM!', sub: 'Untuk tulang kuat', icon: '🥛',
+            serving: 'Takaran saji 200 ml · 1 kotak',
+            label: [['Energi', '160 kkal'], ['Lemak total', '5 g'], ['Protein', '6 g'], ['Gula', '20 g'], ['Kalsium', '30% AKG']],
+            ingredients: 'Komposisi: susu sapi, gula, bubuk kakao, penstabil.',
+            facts: [
+              { text: 'Gula 20 g per kotak.', face: 'back', ignored: true, why: 'Iklan hanya membahas kalsium; gula sebanyak ini tidak disebut.' },
+              { text: 'Gula ada di urutan kedua komposisi, tepat setelah susu.', face: 'side', ignored: true, why: 'Urutan komposisi menunjukkan gula termasuk bahan terbanyak.' },
+              { text: 'Kalsium 30% AKG per kotak.', face: 'back', ignored: false, why: 'Ini yang ditonjolkan iklan ("kaya kalsium"), bukan yang diabaikan.' },
+              { text: 'Ada gambar sapi tersenyum di depan kotak.', face: 'front', ignored: false, why: 'Gambar kemasan bukan informasi gizi.' }
+            ] },
+          { id: 'keripik', name: 'Keripik Sayur Renyah', color: '#3fa95c', ink: '#ffffff', claim: '100% SAYUR ASLI', sub: 'Camilan sehat', icon: '🥬',
+            serving: 'Takaran saji 25 g · 3 sajian per bungkus',
+            label: [['Energi', '130 kkal'], ['Lemak total', '8 g'], ['Karbohidrat', '14 g'], ['Serat pangan', '1 g'], ['Natrium', '210 mg']],
+            ingredients: 'Komposisi: bayam, wortel, minyak sawit, garam, penyedap.',
+            facts: [
+              { text: 'Lemak 8 g dan natrium 210 mg per sajian.', face: 'back', ignored: true, why: 'Keripik digoreng dan diberi garam; iklan tidak menyebutnya.' },
+              { text: 'Satu bungkus berisi 3 sajian, jadi natrium sebungkus 630 mg.', face: 'side', ignored: true, why: 'Angka per sajian tampak kecil, padahal sebungkus biasanya dihabiskan sekaligus.' },
+              { text: 'Bahan utamanya bayam dan wortel.', face: 'side', ignored: false, why: 'Ini yang ditonjolkan iklan ("sayur asli"), bukan yang diabaikan.' },
+              { text: 'Bungkusnya bisa ditutup kembali.', face: 'front', ignored: false, why: 'Fitur kemasan bukan informasi gizi.' }
+            ] }
+        ]
+      },
+      // Studio Naskah Jujur: "sehat" selalu bergantung pada sasaran, lalu naskah iklan disusun dari kepingan yang jujur.
+      studio: {
+        personas: [
+          { id: 'raka', icon: '🚣', name: 'Raka, 16 tahun', text: 'Atlet dayung pelajar, latihan 2 jam setiap sore.',
+            options: ['Kecukupan energi dan protein untuk latihan dan pemulihan', 'Warna dan bentuk kotak makannya', 'Jumlah penonton iklan menu itu'], answer: 0 },
+          { id: 'sinta', icon: '📚', name: 'Sinta, 17 tahun', text: 'Belajar di kelas seharian, jarang bergerak, sering sulit BAB.',
+            options: ['Nama artis yang mengiklankan menu', 'Kandungan serat dan besar porsi yang dimakan', 'Harga kemasan termurah'], answer: 1 },
+          { id: 'dimas', icon: '🎒', name: 'Dimas, 8 tahun', text: 'Adik kelas SD yang ikut makan siang di kantin keluarga.',
+            options: ['Porsi dan kebutuhan gizi sesuai usianya', 'Menu paling berenergi pasti paling baik untuknya', 'Iklan mana yang paling sering diputar'], answer: 0 }
+        ],
+        personaNote: 'Menu yang sama bisa cukup untuk satu orang dan kurang atau berlebih untuk orang lain. Klaim "sehat" tanpa sasaran belum bisa dinilai.',
+        slots: [
+          { id: 'buka', label: 'Pembuka', options: [
+            { text: 'Kenalkan Menu C dari Studio Nusantara.', ok: true },
+            { text: 'Menu C, menu PALING SEHAT sedunia!', trick: 'Kata sakti "paling sehat" tanpa bukti' },
+            { text: 'Menu C, cocok untuk semua orang!', trick: 'Generalisasi berlebihan' }] },
+          { id: 'data', label: 'Data', options: [
+            { text: 'Pada data simulasi, Menu C berisi 600 kkal.', ok: true },
+            { text: 'Energi Menu C tertinggi, berarti gizinya terbaik.', trick: 'Asumsi tersembunyi: energi tinggi = lebih sehat' },
+            { text: 'Menu C pasti membuatmu juara.', trick: 'Klaim tanpa data' }] },
+          { id: 'banding', label: 'Pembanding', options: [
+            { text: 'Menu B lebih tinggi protein (24 g) dan serat (8 g).', ok: true },
+            { text: 'Menu lain tidak perlu dilirik.', trick: 'Informasi pembanding diabaikan' },
+            { text: 'Kemasan Menu C paling menarik.', trick: 'Pengalih: kemasan bukan gizi' }] },
+          { id: 'batas', label: 'Sasaran & batas', options: [
+            { text: 'Pilih sesuai kebutuhan dan aktivitasmu.', ok: true },
+            { text: 'Dijamin cocok untuk semua siswa.', trick: 'Generalisasi berlebihan' },
+            { text: 'Makan sebanyak-banyaknya setiap hari.', trick: 'Porsi dan kebutuhan diabaikan' }] }
+        ]
+      }
     },
     6: {
       type: 'collect',
@@ -561,6 +773,20 @@ window.NUTRANTARA_MISSIONS = [
         { id: 'pisang', label: 'Pisang', kind: 'banana', group: 'Buah · sumber karbohidrat dan vitamin', at: [0.5, 0.64] }
       ],
       stage: { at: [0, 0.86], label: 'Panggung Presentasi' },
+      // Ruang Arsip Nusantara (Pemulihan Arsip): telaah sejawat atas penjelasan Paspor Pos 1–5 dengan rubrik
+      // Klaim–Bukti–Penalaran (kerangka CER, McNeill & Krajcik). Halaman arsip pulih bila setiap penjelasan di dalamnya
+      // sudah ditelaah teman regu (telaah diri hanya bila tidak ada teman aktif yang sudah mencapai Pos 6).
+      archive: {
+        at: [0, -0.5],
+        label: 'Ruang Arsip Nusantara',
+        rubric: [
+          { id: 'k', label: 'Klaim', ask: 'Klaimnya jelas dan menjawab pertanyaan pos.' },
+          { id: 'b', label: 'Bukti', ask: 'Ada angka atau data dari pos sebagai bukti.' },
+          { id: 'p', label: 'Penalaran', ask: 'Dijelaskan mengapa bukti itu mendukung klaim, memakai konsep yang tepat.' }
+        ],
+        plus: ['Klaimnya jelas dan langsung menjawab pertanyaan.', 'Buktinya memakai angka atau data dari pos.', 'Penalarannya menghubungkan bukti dengan konsep.', 'Jujur menyebut batas buktinya.'],
+        tips: ['Tambahkan angka atau data dari pos sebagai bukti.', 'Jelaskan mengapa bukti itu mendukung klaimmu.', 'Tulis klaimmu dalam satu kalimat yang tegas.', 'Sebutkan batas bukti atau data yang masih kurang.']
+      },
       explain: 'Cari nilai gizi per 100 g setiap bahan di Tabel Komposisi Pangan Indonesia (TKPI) atau label pangan, lalu hitung kontribusinya sesuai berat porsi.'
     }
   };
@@ -890,6 +1116,7 @@ window.NUTRANTARA_MISSIONS = [
  * tiap siswa mencoba tugas yang berbeda. Bila pemegang peran sedang luring, anggota lain boleh
  * mengambil alih (tercatat di log kontribusi), sehingga regu yang bermain bergantian tidak macet.
  * tasks: peta tugas → indeks peran. terminal: angka (semua baris) atau larik per baris.
+ * threads (Pos 4) dikunci menurut kartu asal benang; sorterCard: kartu ke-k (Gerbang Pilah / Menara Siaran) milik peran k mod 4.
  */
 window.NUTRANTARA_TEAM = {
   max: 4,
@@ -919,30 +1146,30 @@ window.NUTRANTARA_TEAM = {
       { icon: '📊', name: 'Peneliti Model Q', task: 'Pilah kartumu; jalankan eksperimen Model Q; pindai Terminal Arsip.' }
     ],
     4: [
-      { icon: '🥬', name: 'Penjaga Lentera Serat', task: 'Nyalakan Lentera Serat dengan dugaan sebab-akibat yang tepat.' },
-      { icon: '💧', name: 'Penjaga Lentera Air', task: 'Nyalakan Lentera Air dengan dugaan sebab-akibat yang tepat.' },
-      { icon: '🏃', name: 'Penjaga Lentera Aktivitas', task: 'Nyalakan Lentera Aktivitas dengan dugaan sebab-akibat yang tepat.' },
-      { icon: '📈', name: 'Analis Data', task: 'Pindai semua Terminal Arsip dan sampaikan pola datanya ke regu.' }
+      { icon: '🥬', name: 'Penjaga Jalur Serat', task: 'Rentangkan benang jalur serat, uji serat secara adil di Simulator Usus Besar, dan periksa berita bagianmu di Menara Siaran.' },
+      { icon: '💧', name: 'Penjaga Jalur Air', task: 'Rentangkan benang jalur air, uji air minum secara adil di Simulator Usus Besar, dan periksa berita bagianmu di Menara Siaran.' },
+      { icon: '🏃', name: 'Penjaga Jalur Aktivitas', task: 'Rentangkan benang jalur aktivitas, uji aktivitas secara adil di Simulator Usus Besar, dan periksa berita bagianmu di Menara Siaran.' },
+      { icon: '📈', name: 'Analis Data', task: 'Pindai Terminal Arsip, ikat simpul akibat di Papan Benang Merah, ulangi catatan harian di simulator, lalu tarik kesimpulan regu.' }
     ],
     5: [
-      { icon: '✍', name: 'Penulis Naskah', task: 'Tulis ulang naskah iklan agar jujur terhadap data.' },
-      { icon: '🎯', name: 'Peneliti Sasaran', task: 'Tentukan data sasaran yang dibutuhkan untuk menilai klaim.' },
-      { icon: '🔍', name: 'Pemeriksa Klaim', task: 'Pindai Terminal Arsip bernomor ganjil.' },
-      { icon: '🛡', name: 'Dewan Sensor', task: 'Pindai Terminal Arsip bernomor genap; pastikan regu tidak tertipu klaim.' }
+      { icon: '🔍', name: 'Pemeriksa Data', task: 'Pindai Terminal Arsip dan bongkar klaim bagianmu di Mesin Pemecah Klaim.' },
+      { icon: '🔦', name: 'Penyorot Label', task: 'Putar kemasan di Kemasan Berputar, sorot informasi yang diabaikan iklan, dan bongkar klaim bagianmu.' },
+      { icon: '🎯', name: 'Peneliti Sasaran', task: 'Pasangkan sasaran dengan data kebutuhannya di Studio Naskah Jujur, dan bongkar klaim bagianmu.' },
+      { icon: '✍', name: 'Penulis Naskah', task: 'Susun dan rekam naskah iklan yang jujur di Studio Naskah Jujur, dan bongkar klaim bagianmu.' }
     ],
     6: [
-      { icon: '🧑‍🍳', name: 'Perancang Menu', task: 'Kumpulkan bahan bagianmu dan susun rancangan awal menu regu.' },
-      { icon: '🧐', name: 'Penelaah', task: 'Kumpulkan bahan bagianmu dan telaah rancangan awal dengan daftar periksa.' },
-      { icon: '✏', name: 'Perevisi', task: 'Kumpulkan bahan bagianmu dan revisi rancangan berdasarkan telaah.' },
-      { icon: '📣', name: 'Juru Bicara', task: 'Kumpulkan bahan bagianmu dan presentasikan kartu menu regu di Panggung.' }
+      { icon: '🧑‍🍳', name: 'Perancang Menu', task: 'Telaah penjelasan teman di Ruang Arsip, kumpulkan bahan bagianmu, dan susun rancangan awal menu regu.' },
+      { icon: '🧐', name: 'Penelaah', task: 'Telaah penjelasan teman di Ruang Arsip, kumpulkan bahan bagianmu, dan telaah rancangan awal dengan daftar periksa.' },
+      { icon: '✏', name: 'Perevisi', task: 'Telaah penjelasan teman di Ruang Arsip, kumpulkan bahan bagianmu, dan revisi rancangan berdasarkan telaah.' },
+      { icon: '📣', name: 'Juru Bicara', task: 'Telaah penjelasan teman di Ruang Arsip, kumpulkan bahan bagianmu, dan presentasikan kartu menu regu di Panggung.' }
     ]
   },
   tasks: {
     1: { terminal: [0, 1, 2], distractor: 3 },
     2: { station: { karbo: 0, protein: 1, lemak: 2 }, terminal: 3, lab: { lugol: 0, benedict: 0, biuret: 1, sudan: 2, micro: 2, accuse: 3 } },
     3: { station: { gerbang: 2 }, terminal: 3, sorterCard: true, villi: { digest: 0, route: 1, P: 2, Q: 3 } },
-    4: { station: { serat: 0, air: 1, aktivitas: 2 }, terminal: 3 },
-    5: { station: { naskah: 0, sasaran: 1 }, terminal: [2, 3, 2, 3] },
+    4: { terminal: 3, threads: { serat: 0, massa: 0, air: 1, cairan: 1, aktivitas: 2, peristaltik: 2, transit: 2, lunak: 3 }, colon: { serat: 0, air: 1, aktivitas: 2, ulang: 3, simpul: 3 }, sorterCard: true },
+    5: { terminal: 0, sorterCard: true, pack: { sorot: 1 }, studio: { sasaran: 2, naskah: 3 } },
     6: { ingredient: true, kitchen: { initial: 0, review: 1, revision: 2 }, stage: 3 }
   }
 };

@@ -21,6 +21,7 @@ const ok = (cond, label) => { console.log(`${cond ? '✓' : '✗'} ${label}`); i
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const loadBrowser = (file) => { const sb = { window: {} }; vm.runInNewContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sb); return sb.window; };
 const MISSIONS = loadBrowser('missions.js').NUTRANTARA_MISSIONS;
+const TEAMDEF = loadBrowser('missions.js').NUTRANTARA_TEAM;
 const W = loadBrowser('world-data.js').NUTRANTARA_WORLD;
 
 function client() {
@@ -165,6 +166,17 @@ async function adminProbe() {
     ok(locked.posts[1].challenges[0].correct === true && locked.posts[1].challenges[0].points === 30 && locked.posts[1].challenges[0].by.length === 2, 'dua suara sama mengunci jawaban regu (30 poin)');
     const teamAdmin = (await adminProbe()).teams.find((t) => t.code === partyA.code);
     ok(teamAdmin && teamAdmin.members.length === 2 && teamAdmin.posts[0].done === 1 && teamAdmin.members.every((m) => m.contrib >= 1), 'guru melihat kemajuan regu dan kontribusi setiap anggota');
+    // Ruang Arsip Pos 6: alasan Paspor anggota yang sudah disegel ikut terkirim ke regu untuk telaah sejawat.
+    const key1 = MISSIONS[0].variants[tv].mission.challenges[1].correct;
+    a.send({ type: 'team-vote', pos: 1, index: 1, response: key1 });
+    b.send({ type: 'team-vote', pos: 1, index: 1, response: key1 });
+    await a.wait((m) => m.type === 'party' && m.party && m.party.posts[1]?.challenges?.[1]?.complete);
+    const reasonB = 'Energi kedua menu sama, tetapi protein dan serat menu B lebih tinggi.';
+    const stB = fakeState();
+    stB.posts[1].reason = reasonB;
+    b.send({ type: 'progress', state: stB });
+    const withReason = (await a.wait((m) => m.type === 'party' && m.party && m.party.members.some((x) => (x.reasons || {})[1] === reasonB))).party;
+    ok(Boolean(withReason) && withReason.members.every((x) => !x.reasons || !x.reasons[2]), 'alasan Paspor yang sudah disegel tampil untuk teman regu (telaah sejawat Ruang Arsip)');
     b.send({ type: 'spawn', to: wa.you.id });
     const nearA = await b.wait((m) => m.type === 'spawned' && m.friend === wa.you.id);
     ok(Number.isFinite(nearA.x) && W.islandAt(nearA.x, nearA.y) === nearA.island || nearA.island === 0, 'terjun ke dekat teman satu regu');
@@ -202,6 +214,21 @@ async function adminProbe() {
     // Pos 2 punya 4 kasus gangguan jalur; tiap kasus cocok dengan kasus Meja Uji Reagen.
     const P2 = MISSIONS[1];
     ok(P2.variants.length === 4 && P2.variants.every((v) => P2.activity.lab.cases[v.activity.caseId] && v.mission.stimulus.rows.length === 4), 'Pos 2 punya 4 kasus yang cocok dengan Meja Uji Reagen');
+    // Pos 4: papan benang, Mesin Uji Adil, dan kartu Menara Siaran konsisten dengan catatan harian.
+    const P4 = MISSIONS[3].activity;
+    const ids4 = new Set(P4.threads.nodes.map((n) => n.id));
+    const complaint = MISSIONS[3].stimulus.rows[3].values;
+    const days4 = (hi) => P4.colon.base.days - P4.colon.factors.reduce((n, f) => n + (hi ? f.days : 0), 0);
+    ok(P4.threads.links.every((l) => ids4.has(l.from) && ids4.has(l.to) && P4.threads.lanes[l.lane]) && Object.keys(TEAMDEF.tasks[4].threads).every((k) => ids4.has(k)), 'Pos 4: benang dan peta peran merujuk kartu yang ada');
+    ok(String(days4(false)) === complaint[0][0] && String(days4(true)) === complaint[1][0], 'Pos 4: Mesin Uji Adil mengulang catatan harian (5 → 1 hari keluhan)');
+    ok(Object.keys(P4.tower.lenses).every((k) => P4.tower.cards.filter((c) => c.lens === k).length >= P4.tower.deal / 4), 'Pos 4: tiap lensa Menara Siaran punya cukup kartu');
+    // Pos 5: tiap klaim punya tepat satu asumsi inti; tiap kemasan menyembunyikan info di belakang/samping; naskah punya satu kepingan jujur per bagian.
+    const P5 = MISSIONS[4].activity;
+    ok(P5.geode.claims.every((c) => c.options.filter((o) => o.ok).length === 1 && ['data', 'kesimpulan'].every((k) => c.pieces.some((p) => p.kind === k))), 'Pos 5: tiap klaim punya data, kesimpulan, dan satu asumsi inti');
+    ok(P5.pack.products.every((p) => p.facts.some((f) => f.ignored && f.face === 'back') && p.facts.some((f) => f.ignored && f.face === 'side') && p.facts.some((f) => !f.ignored)), 'Pos 5: tiap kemasan menyembunyikan informasi di belakang dan samping');
+    ok(P5.studio.slots.every((sl) => sl.options.filter((o) => o.ok).length === 1 && sl.options.every((o) => o.ok || o.trick)) && P5.studio.personas.every((x) => x.options[x.answer]), 'Pos 5: naskah dan sasaran Studio konsisten');
+    const AR = MISSIONS[5].activity.archive;
+    ok(MISSIONS[5].type === 'project' && AR && ['k', 'b', 'p'].every((id) => AR.rubric.some((r) => r.id === id)) && AR.plus.length >= 3 && AR.tips.length >= 3, 'Pos 6: Ruang Arsip punya rubrik Klaim–Bukti–Penalaran dan kalimat pemandu masukan');
     const p2State = (v, keys) => { const st = fakeState({ 2: { started: true, sealed: false, reason: '', variant: v, challenges: keys.map((r) => ({ complete: true, attempts: 1, response: r, log: [] })) } }); st.posts[1].variant = 0; return st; };
     b.send({ type: 'progress', state: p2State(3, P2.variants[3].mission.challenges.map((c) => c.correct)) });
     ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 140))), 'kasus empedu Pos 2 dinilai dengan kuncinya sendiri');

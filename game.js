@@ -982,8 +982,22 @@
         const c = p.challenges[i];
         return `<div><span>TANTANGAN ${pad(i + 1)} · ${escapeHtml(def.label)}</span><p>${c.complete ? escapeHtml(responseText(def, c.response)) : 'Belum selesai'}</p><p class="record-meta">${c.attempts} percobaan · ${c.complete ? c.points : 0} poin</p></div>`;
       }).join('');
-      return `<article class="passport-record">${top}<div class="passport-answer-grid">${items}<div class="span-2"><span>ALASAN PENJELAJAH</span><p>${escapeHtml(p.reason) || '—'}</p></div></div></article>`;
+      return `<article class="passport-record">${top}<div class="passport-answer-grid">${items}<div class="span-2"><span>ALASAN PENJELAJAH</span><p>${escapeHtml(p.reason) || '—'}</p></div>${peerRecord(m)}</div></article>`;
     }).join('');
+  }
+
+  /** Telaah sejawat dan revisi penjelasan dari Ruang Arsip Nusantara (Pos 6), dicatat di Paspor. */
+  function peerRecord(m) {
+    const pm = projectMission();
+    const arsip = pm && post(pm.id) && post(pm.id).activity && post(pm.id).activity.arsip;
+    if (!arsip) return '';
+    const me = net && net.me ? net.me.id : 'me';
+    const rubric = (pm.activity && pm.activity.archive && pm.activity.archive.rubric) || [];
+    const got = Object.keys(arsip.reviews || {}).filter((k) => k.startsWith(`${m.id}:${me}:`)).map((k) => arsip.reviews[k]);
+    const rev = (arsip.revisi || {})[`${m.id}:${me}`];
+    if (!got.length && !rev) return '';
+    const lines = got.map((r) => `<p class="record-meta">Ditelaah ${escapeHtml(r.by || 'teman')}: ${rubric.map((c) => `${escapeHtml(c.label)} ${r[c.id] ? '✓' : '✗'}`).join(' · ')}</p>`).join('');
+    return `<div class="span-2"><span>TELAAH SEJAWAT · RUANG ARSIP</span>${lines}${rev ? `<p><b>Revisi setelah telaah:</b> ${escapeHtml(rev.text)}</p>` : ''}</div>`;
   }
 
   function projectRecord(p) {

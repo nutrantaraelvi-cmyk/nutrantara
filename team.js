@@ -31,7 +31,7 @@ window.NutraTeam = (() => {
     return ROLES.filter((r) => { const h = holder(pos, r); return h && h.id === meId(); });
   }
 
-  /** Peran yang memegang sebuah tugas. kind: terminal | distractor | station | lab | villi | card | ingredient | kitchen | stage. */
+  /** Peran yang memegang sebuah tugas. kind: terminal | distractor | station | lab | villi | card | ingredient | kitchen | stage | threads | colon. */
   function roleOf(pos, kind, key, index) {
     const t = T.tasks[pos] || {};
     if (kind === 'terminal') return Array.isArray(t.terminal) ? t.terminal[index % t.terminal.length] : Number.isInteger(t.terminal) ? t.terminal : null;
@@ -43,6 +43,8 @@ window.NutraTeam = (() => {
     if (kind === 'ingredient') return t.ingredient ? index % 4 : null;
     if (kind === 'kitchen') return t.kitchen && Number.isInteger(t.kitchen[key]) ? t.kitchen[key] : null;
     if (kind === 'stage') return Number.isInteger(t.stage) ? t.stage : null;
+    // Peta tugas lain berbentuk { kunci: peran }, mis. threads/colon di Pos 4.
+    if (t[kind] && typeof t[kind] === 'object' && !Array.isArray(t[kind])) return Number.isInteger(t[kind][key]) ? t[kind][key] : null;
     return null;
   }
 

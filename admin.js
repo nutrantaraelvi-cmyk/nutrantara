@@ -202,7 +202,7 @@
     $('#admin-teams').innerHTML = teams.map((t) => {
       const total = t.members.reduce((n, m) => n + m.contrib, 0) || 1;
       const posts = t.posts.map((x) => {
-        const text = x.type === 'project' ? `${x.steps}/3 langkah · ${x.collected} bahan` : `${x.done}/${x.total} jawab (${x.correct} tepat)${x.stationTotal ? ` · misi ${x.stations}/${x.stationTotal}` : ''} · bukti ${x.evidence}${x.variant ? ` · kasus ${x.variant}` : ''}${x.pendingVotes ? ` · 🗳 ${x.pendingVotes} menunggu suara` : ''}`;
+        const text = x.type === 'project' ? `${x.archive ? 'arsip pulih ✓' : 'arsip belum pulih'} · ${x.reviews || 0} telaah sejawat · ${x.steps}/3 langkah · ${x.collected} bahan` : `${x.done}/${x.total} jawab (${x.correct} tepat)${x.stationTotal ? ` · misi ${x.stations}/${x.stationTotal}` : ''} · bukti ${x.evidence}${x.variant ? ` · kasus ${x.variant}` : ''}${x.pendingVotes ? ` · 🗳 ${x.pendingVotes} menunggu suara` : ''}`;
         const full = x.type === 'project' ? x.steps === 3 : x.done === x.total;
         return `<li class="${full ? 'done' : ''}"><b>Pos ${x.id}</b> ${esc(text)}</li>`;
       }).join('');

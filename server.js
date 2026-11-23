@@ -268,7 +268,10 @@ function adminTeam(team) {
     posts: MISSIONS.map((m) => {
       const t = team.posts[m.id] || {};
       const stations = m.activity && m.activity.stations ? m.activity.stations.filter((st) => t.activity && t.activity.stations && t.activity.stations[st.id]).length : 0;
-      if (m.type === 'project') return { id: m.id, type: m.type, steps: ['initial', 'review', 'revision'].filter((k) => t[k] && t[k].savedAt).length, collected: ((t.activity && t.activity.collected) || []).length };
+      if (m.type === 'project') {
+        const arsip = (t.activity && t.activity.arsip) || {};
+        return { id: m.id, type: m.type, steps: ['initial', 'review', 'revision'].filter((k) => t[k] && t[k].savedAt).length, collected: ((t.activity && t.activity.collected) || []).length, archive: Boolean(t.activity && t.activity.stations && t.activity.stations.arsip), reviews: Object.keys(arsip.reviews || {}).length };
+      }
       const ch = Array.isArray(t.challenges) ? t.challenges : [];
       return { id: m.id, type: m.type, done: ch.filter((c) => c && c.complete).length, correct: ch.filter((c) => c && c.complete && c.correct).length, total: m.challenges.length, stations, stationTotal: m.activity && m.activity.stations ? m.activity.stations.length : 0, evidence: (t.evidence || []).length, variant: Number.isInteger(t.variant) ? t.variant + 1 : null, pendingVotes: Object.keys(t.votes || {}).length };
     }),
@@ -568,6 +571,17 @@ function teamLog(team, p, pos, text) {
   return entry;
 }
 
+/** Alasan Paspor (Pos analisis yang sudah disegel) untuk telaah sejawat di Ruang Arsip Pos 6. */
+function reasonsOf(p) {
+  const posts = (p.progress && p.progress.posts) || {};
+  const out = {};
+  MISSIONS.forEach((m) => {
+    const t = posts[m.id];
+    if (m.type === 'analysis' && t && t.sealed && typeof t.reason === 'string' && t.reason.trim()) out[m.id] = t.reason.trim().slice(0, 1200);
+  });
+  return out;
+}
+
 function teamView(team) {
   const online = onlineIds();
   return {
@@ -580,7 +594,8 @@ function teamView(team) {
       online: online.has(id),
       active: isActive(id),
       island: online.has(id) && db.players[id].zone === 'world' ? WORLD.islandAt(db.players[id].x, db.players[id].y) : null,
-      contrib: (team.contrib && team.contrib[id]) || {}
+      contrib: (team.contrib && team.contrib[id]) || {},
+      reasons: reasonsOf(db.players[id])
     })),
     posts: team.posts,
     log: (team.log || []).slice(-25)
@@ -762,6 +777,13 @@ function handleProgress(ws, conn, msg) {
   p.score = score;
   p.seals = seals;
   if (seals === MISSIONS.length && !p.finishedAt) p.finishedAt = now();
+  // Alasan Paspor baru (pos baru disegel) dikirim ke anggota regu untuk telaah sejawat di Ruang Arsip.
+  const reasonSig = JSON.stringify(reasonsOf(p));
+  if (reasonSig !== p.reasonSig) {
+    p.reasonSig = reasonSig;
+    const team = teamOf(p);
+    if (team) teamChanged(team.code);
+  }
   if (flags.length) {
     p.flags = [...flags.map((f) => `${now()} · ${f}`), ...(p.flags || [])].slice(0, 20);
     send(ws, { type: 'progress-sync', progress: state, message: 'Sebagian progres tidak sah menurut server dan telah dikoreksi.' });
@@ -939,8 +961,8 @@ const STATIC = {
   '/': 'index.html', '/index.html': 'index.html', '/play': 'play.html', '/play.html': 'play.html', '/admin': 'admin.html', '/admin.html': 'admin.html',
   '/styles.css': 'styles.css', '/admin.css': 'admin.css', '/landing.css': 'landing.css',
   '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/team.js': 'team.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
-  '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js',
-  '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/lab.js': 'lab.js', '/absorb.js': 'absorb.js', '/theme.css': 'theme.css',
+  '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js', '/peta3d.js': 'peta3d.js',
+  '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/lab.js': 'lab.js', '/absorb.js': 'absorb.js', '/causal.js': 'causal.js', '/claims.js': 'claims.js', '/archive.js': 'archive.js', '/theme.css': 'theme.css',
   '/map-art.js': 'map-art.js', '/sky.js': 'sky.js', '/region.js': 'region.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
   '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };

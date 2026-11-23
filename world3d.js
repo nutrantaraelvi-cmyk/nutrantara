@@ -974,7 +974,11 @@ function nextGoal() {
     const st = W.stations.find((s) => s.id === target.id);
     return { text: `➜ Menuju Wilayah Pos ${target.id}: ${target.title} ${target.titleEm} — ikuti jembatan cahaya`, point: { x: toX(st.x), z: toZ(st.y) } };
   }
-  if (target.type === 'project') return { text: '✦ Rancang menu di Meja Dapur Juara', item: quests.items.find((i) => i.pos === target.id) };
+  if (target.type === 'project') {
+    // Pos 6: Ruang Arsip → bahan lokal → Meja Dapur Juara (mengikuti langkah misi di quest.js).
+    const g = quests.goal(target.id);
+    return g ? { text: `✦ ${g.text}`, item: g.item } : { text: '✦ Rancang menu di Meja Dapur Juara', item: quests.items.find((i) => i.pos === target.id && i.kind === 'kitchen') };
+  }
   const p = st.posts[target.id];
   const ev = (p.evidence || []).length;
   const rows = target.stimulus.rows.length;
@@ -1431,7 +1435,7 @@ function updateNearby() {
   else if (Math.hypot(nara.position.x - self.x, nara.position.z - self.z) < 2.2) found = { kind: 'nara', key: 'nara' };
   const prev = nearby === undefined ? 'init' : nearby ? nearby.key : 'none';
   nearby = found;
-  if (found && found.kind === 'item') { promptEl.textContent = quests.hint(found.item); actionBtn.textContent = found.item.kind === 'terminal' ? 'Pindai' : found.item.kind === 'board' ? 'Buka papan' : found.item.kind === 'altar' ? 'Altar segel' : 'Buka dapur'; actionBtn.hidden = false; return; }
+  if (found && found.kind === 'item') { promptEl.textContent = quests.hint(found.item); actionBtn.textContent = { terminal: 'Pindai', board: 'Buka papan', altar: 'Altar segel', station: 'Buka misi', ingredient: 'Ambil bahan', stage: 'Presentasi' }[found.item.kind] || 'Buka dapur'; actionBtn.hidden = false; return; }
   if ((found ? found.key : 'none') === prev) return;
   if (!found) { promptEl.textContent = 'Jelajahi pulau. Ikuti panah emas ke tujuan berikutnya, dekati objek bercahaya, lalu tekan E.'; actionBtn.hidden = true; return; }
   promptEl.textContent = 'Nara ada di sampingmu. Tekan E untuk meminta arahan.';

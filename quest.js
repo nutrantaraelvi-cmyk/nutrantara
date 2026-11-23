@@ -12,6 +12,9 @@ import { createLabel, toon, PALETTE } from './characters.js';
 import { createCorn, createTempe } from './culture.js';
 import { createLab } from './lab.js';
 import { createAbsorption } from './absorb.js';
+import { createCausal, COLON_PATH } from './causal.js';
+import { createClaims, packageMaterials, PACK_SIZE } from './claims.js';
+import { createArchive, archiveStatus, POST_COLORS } from './archive.js';
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -32,6 +35,40 @@ export function createQuests(ctx) {
       const m = game.missionById(it.pos);
       const left = m.activity.stations.filter((x) => !game.activityState(it.pos).stations[x.id]).length;
       ctx.say(left ? `${it.st.label} tuntas dengan ${stars} bintang! Masih ${left} misi gerbang lagi.` : 'Semua misi gerbang tuntas! Sekarang pindai Terminal Arsip, lalu buka Papan Laporan.', 'celebrate');
+    }
+  });
+  const causal = createCausal({
+    game, openPanel, closePanel, shake, say: ctx.say, nara: ctx.nara,
+    onDone: (it, stars) => {
+      fx.confetti({ x: it.x, y: 2.8, z: it.z });
+      fx.ring({ x: it.x, y: 0, z: it.z }, { color: it.st.color, from: 0.6, to: 4.5, life: 0.9 });
+      floatText(`${'★'.repeat(stars)} ${it.st.label.toUpperCase()}`, it.x, 3.8, it.z, PALETTE.gold);
+      refresh();
+      const m = game.missionById(it.pos);
+      const left = m.activity.stations.filter((x) => !game.activityState(it.pos).stations[x.id]).length;
+      ctx.say(left ? `${it.st.label} tuntas dengan ${stars} bintang! Masih ${left} misi jejak lagi.` : 'Semua jejak tertelusuri! Sekarang pindai Terminal Arsip, lalu buka Papan Laporan.', 'celebrate');
+    }
+  });
+  const claims = createClaims({
+    game, openPanel, closePanel, shake, say: ctx.say, nara: ctx.nara,
+    onDone: (it, stars) => {
+      fx.confetti({ x: it.x, y: 2.8, z: it.z });
+      fx.ring({ x: it.x, y: 0, z: it.z }, { color: it.st.color, from: 0.6, to: 4.5, life: 0.9 });
+      floatText(`${'★'.repeat(stars)} ${it.st.label.toUpperCase()}`, it.x, 3.8, it.z, PALETTE.gold);
+      refresh();
+      const m = game.missionById(it.pos);
+      const left = m.activity.stations.filter((x) => !game.activityState(it.pos).stations[x.id]).length;
+      ctx.say(left ? `${it.st.label} tuntas dengan ${stars} bintang! Masih ${left} misi studio lagi.` : 'Semua klaim terbongkar! Sekarang pindai Terminal Arsip, lalu buka Papan Laporan.', 'celebrate');
+    }
+  });
+  const archive = createArchive({
+    game, openPanel, closePanel, shake, say: ctx.say, nara: ctx.nara,
+    onDone: (it) => {
+      fx.confetti({ x: it.x, y: 3, z: it.z });
+      fx.pillar({ x: it.x, y: 0, z: it.z }, { color: PALETTE.gold, height: 10, life: 2 });
+      floatText('✦ ARSIP PULIH', it.x, 4, it.z, PALETTE.gold);
+      refresh();
+      ctx.say('Arsip Nusantara pulih dan Paspor Nusantara terkumpul! Sekarang kumpulkan bahan lokal, lalu rancang menu di Meja Dapur Juara.', 'celebrate');
     }
   });
   const lab = createLab({
@@ -135,7 +172,19 @@ export function createQuests(ctx) {
     return l;
   }
 
-  function buildStation(st, x, z) {
+  const YAXIS = new THREE.Vector3(0, 1, 0);
+  const ZAXIS = new THREE.Vector3(0, 0, 1);
+  const TMP = new THREE.Vector3();
+  /** Batang silinder dari titik a ke titik b (rangka menara). */
+  function beam(parent, a, b, r, color) {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, a.distanceTo(b), 5), toon(color));
+    mesh.position.copy(a).add(b).multiplyScalar(0.5);
+    mesh.quaternion.setFromUnitVectors(YAXIS, b.clone().sub(a).normalize());
+    parent.add(mesh);
+    return mesh;
+  }
+
+  function buildStation(st, x, z, act) {
     const g = new THREE.Group();
     const parts = {};
     if (st.kind === 'bench') { // meja lab: tabung reaksi + layar rantai reaksi
@@ -222,12 +271,150 @@ export function createQuests(ctx) {
       for (let i = 0; i < 5; i += 1) { const v = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.7, 4, 8), toon('#f19a8c')); add(v, -0.8 + i * 0.4, 0.55, 0, g); v.rotation.z = (i - 2) * 0.12; }
       parts.core = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.09, 8, 28, Math.PI), toon(st.color, { emissive: st.color, emissiveIntensity: 0.15, unique: true }));
       add(parts.core, 0, 0.35, 0, g);
-    } else if (st.kind === 'lantern') { // lentera kota terapung
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 2.2, 6), toon('#5a3d22')), 0, 1.1, 0, g);
-      add(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.08), toon('#5a3d22')), 0.25, 2.15, 0, g);
-      parts.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), toon('#8a8a8a', { emissive: st.color, emissiveIntensity: 0, unique: true }));
-      parts.core.scale.y = 1.4;
-      add(parts.core, 0.5, 1.75, 0, g);
+    } else if (st.kind === 'threads') { // papan benang merah + tiga lentera jalur + barisan domino sebab-akibat
+      const lanes = (act && act.threads && act.threads.lanes) || {};
+      add(new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.75, 0.12), toon('#6b4423')), 0, 1.8, 0, g);
+      add(new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.55, 0.04), toon('#d2a66b')), 0, 1.8, 0.07, g);
+      [-1.25, 1.25].forEach((px) => add(new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 0.12), toon('#5a3a20')), px, 0.55, 0, g));
+      const pins = [[-1.05, 2.3], [-1.05, 1.8], [-1.05, 1.3], [-0.4, 2.3], [-0.4, 1.8], [-0.4, 1.3], [0.2, 1.35], [0.55, 1.8], [1.05, 1.8]];
+      pins.forEach(([px, py]) => {
+        add(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.26, 0.012), toon('#fff8e8')), px, py - 0.1, 0.095, g);
+        add(new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), toon('#e2553f')), px, py, 0.11, g);
+      });
+      const LANES = { serat: [0, 3, 7], air: [1, 4, 7], aktivitas: [2, 5, 6, 7], akibat: [7, 8] };
+      parts.strings = Object.entries(LANES).map(([lane, idx]) => {
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(idx.map((n) => new THREE.Vector3(pins[n][0], pins[n][1], 0.115))), new THREE.LineBasicMaterial({ color: '#8a6a50' }));
+        g.add(line);
+        return { lane, line, color: (lanes[lane] || {}).color || '#e2553f' };
+      });
+      // Gantungan lentera di atas papan: satu lentera per jalur faktor.
+      [-1.5, 1.5].forEach((px) => add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.3, 6), toon('#5a3d22')), px, 1.65, -0.15, g));
+      add(new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.08, 0.08), toon('#5a3d22')), 0, 3.28, -0.15, g);
+      parts.lanterns = ['serat', 'air', 'aktivitas'].map((lane, i) => {
+        const px = -0.9 + i * 0.9;
+        add(new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.25, 4), toon('#2c2116')), px, 3.13, -0.15, g);
+        const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), toon('#8a8a8a', { emissive: (lanes[lane] || {}).color || '#ffd17c', emissiveIntensity: 0, unique: true }));
+        core.scale.y = 1.35;
+        add(core, px, 2.88, -0.15, g);
+        return { lane, core, color: (lanes[lane] || {}).color || '#ffd17c' };
+      });
+      // Barisan domino di depan papan: roboh beruntun saat jalurnya lengkap (jejak sebab-akibat).
+      parts.dominoes = ['serat', 'air', 'aktivitas'].map((lane, i) => {
+        const color = (lanes[lane] || {}).color || '#ffd17c';
+        const start = new THREE.Vector3(-1.9 + i * 1.9, 0, 2.5 - Math.abs(i - 1) * 0.5);
+        const end = new THREE.Vector3((i - 1) * 0.35, 0, 0.55);
+        const dir = end.clone().sub(start).normalize();
+        const count = 8;
+        const gap = start.distanceTo(end) / (count - 1);
+        const pieces = [];
+        for (let k = 0; k < count; k += 1) {
+          const pivot = new THREE.Group();
+          pivot.rotation.order = 'YXZ';
+          pivot.position.copy(start).lerp(end, k / (count - 1));
+          pivot.rotation.y = Math.atan2(dir.x, dir.z);
+          const d = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.5, 0.07), toon(k % 2 ? '#fff8e8' : color));
+          d.position.y = 0.25;
+          pivot.add(d);
+          g.add(pivot);
+          pieces.push(pivot);
+        }
+        return { lane, pieces, angle: Math.asin(Math.min(1, gap / 0.5)), fallen: false, t: -1 };
+      });
+    } else if (st.kind === 'colon') { // usus besar raksasa (tembus pandang) di atas alas + gelombang peristaltik
+      add(new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2, 0.36, 26), toon('#e8d6bd')), 0, 0.18, 0, g);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.55, 0.06, 26), toon('#ff9f43')), 0, 0.39, 0, g);
+      const curve = new THREE.CatmullRomCurve3(COLON_PATH.map(([px, py, pz]) => new THREE.Vector3(px * 0.95, py * 0.95 + 2.45, pz)));
+      add(new THREE.Mesh(new THREE.TubeGeometry(curve, 120, 0.3, 12, false), toon('#f3a59c', { transparent: true, opacity: 0.6 })), 0, 0, 0, g);
+      [[-1.43, 1.05], [1.35, 1.2]].forEach(([px, top]) => add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, top - 0.4, 6), toon('#c8b49a')), px, 0.4 + (top - 0.4) / 2, 0, g));
+      parts.colonCurve = curve;
+      parts.beads = [0, 1, 2, 3, 4].map(() => add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), toon('#8a5a2b')), 0, 0, 0, g));
+      parts.wave = add(new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.05, 8, 24), toon('#ff9f43', { emissive: '#ff8a1f', emissiveIntensity: 0.8, unique: true })), 0, 0, 0, g);
+      parts.screen = holoScreen('MESIN UJI ADIL', st.color);
+      parts.screen.position.set(0, 4.85, 0);
+      g.add(parts.screen);
+    } else if (st.kind === 'tower') { // menara siaran kota terapung
+      const H = 4.4; const base = 0.62; const top = 0.16;
+      const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+      const at = (hy) => base + (top - base) * (hy / H);
+      corners.forEach(([sx, sz]) => beam(g, new THREE.Vector3(sx * base, 0, sz * base), new THREE.Vector3(sx * top, H, sz * top), 0.05, '#c0573a'));
+      [0, 1.1, 2.2, 3.3].forEach((h0, lvl, arr) => {
+        const r0 = at(h0);
+        const h1 = lvl < arr.length - 1 ? arr[lvl + 1] : H;
+        const r1 = at(h1);
+        corners.forEach(([sx, sz], k) => {
+          const [nx, nz] = corners[(k + 1) % 4];
+          if (h0 > 0) beam(g, new THREE.Vector3(sx * r0, h0, sz * r0), new THREE.Vector3(nx * r0, h0, nz * r0), 0.03, '#f5f0e6');
+          beam(g, new THREE.Vector3(sx * r0, h0, sz * r0), new THREE.Vector3(nx * r1, h1, nz * r1), 0.022, '#c0573a');
+        });
+      });
+      add(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 0.55), toon('#f5f0e6')), 0, H + 0.2, 0, g);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 1.2, 6), toon('#2c3e3c')), 0, H + 1.0, 0, g);
+      const dish = add(new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2.6), toon('#f5f0e6', { side: THREE.DoubleSide })), 0, H + 0.25, 0.42, g);
+      dish.rotation.x = Math.PI / 2;
+      parts.beacon = add(new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), toon('#e2553f', { emissive: '#ff3b2b', emissiveIntensity: 0.6, unique: true })), 0, H + 1.65, 0, g);
+      parts.waves = [0, 1, 2].map(() => {
+        const w = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.035, 6, 32), new THREE.MeshBasicMaterial({ color: st.color, transparent: true, opacity: 0 }));
+        w.rotation.x = Math.PI / 2;
+        w.position.y = H + 1.6;
+        g.add(w);
+        return w;
+      });
+      parts.screen = holoScreen('MENARA SIARAN', st.color);
+      parts.screen.position.set(0, 1.5, 0.95);
+      g.add(parts.screen);
+    } else if (st.kind === 'geode') { // batu klaim di atas landasan + palu; terbelah memperlihatkan kristal asumsi saat tuntas
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.05, 0.7, 8), toon('#6b6e7a')), 0, 0.35, 0, g);
+      const rock = toon('#7d6f8f', { flatShading: true, unique: true });
+      parts.geodeTop = new THREE.Group();
+      parts.geodeTop.add(new THREE.Mesh(new THREE.SphereGeometry(0.75, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), rock));
+      add(parts.geodeTop, 0, 1.45, 0, g);
+      add(new THREE.Mesh(new THREE.SphereGeometry(0.75, 9, 5, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), rock), 0, 1.45, 0, g);
+      parts.crystal = new THREE.Group();
+      for (let i = 0; i < 7; i += 1) {
+        const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.13 + (i % 3) * 0.05, 0), toon('#c9a2ff', { emissive: '#7c3aed', emissiveIntensity: 0.8 }));
+        c.scale.y = 1.6;
+        c.position.set(Math.cos(i * 2.4) * 0.22, 0.05 + (i % 3) * 0.05, Math.sin(i * 2.4) * 0.22);
+        parts.crystal.add(c);
+      }
+      add(parts.crystal, 0, 1.45, 0, g);
+      const hammer = new THREE.Group();
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.1, 6), toon('#8a5a2b')), 0, 0.55, 0, hammer);
+      add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.18, 0.18), toon('#4b5563')), 0, 1.1, 0, hammer);
+      hammer.rotation.z = 0.5;
+      add(hammer, 1.15, 0, 0.25, g);
+      parts.screen = holoScreen('DATA + ASUMSI = KLAIM?', st.color);
+      parts.screen.position.set(0, 2.75, -0.35);
+      g.add(parts.screen);
+    } else if (st.kind === 'package') { // kemasan raksasa berputar di bawah lampu sorot
+      add(new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.45, 0.3, 28), toon('#2c3e3c')), 0, 0.15, 0, g);
+      parts.packRing = add(new THREE.Mesh(new THREE.TorusGeometry(1.38, 0.05, 8, 40), toon('#78f4bd', { emissive: '#78f4bd', emissiveIntensity: 0, unique: true })), 0, 0.31, 0, g);
+      parts.packRing.rotation.x = Math.PI / 2;
+      const [pw, ph, pd] = PACK_SIZE;
+      const prod = act && act.pack && act.pack.products[0];
+      parts.box = add(new THREE.Mesh(new THREE.BoxGeometry(pw, ph, pd), prod ? packageMaterials(prod) : toon('#f5b72b')), 0, 0.35 + ph / 2, 0, g);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.7, 6), toon('#2c3e3c')), 1.6, 1.85, -0.55, g);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 0.4, 12), toon('#f5f0e6')), 1.35, 3.6, -0.45, g).rotation.z = 0.8;
+      parts.beam = add(new THREE.Mesh(new THREE.ConeGeometry(0.95, 2.45, 24, 1, true), new THREE.MeshBasicMaterial({ color: '#fff4c8', transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide })), 0.68, 2.55, -0.2, g);
+      parts.beam.rotation.z = -0.58;
+      parts.beam.castShadow = false;
+    } else if (st.kind === 'studio') { // studio rekaman: latar, kamera di tripod, mikrofon, lampu ON AIR
+      add(new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.2, 2.2), toon('#3b2f4a')), 0, 0.1, 0, g);
+      add(new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.4, 0.12), toon('#f5f0e6')), 0, 1.4, -1.05, g);
+      parts.screen = holoScreen('STUDIO NASKAH JUJUR', st.color);
+      parts.screen.position.set(0, 1.55, -0.95);
+      g.add(parts.screen);
+      parts.onAirSign = add(new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.32, 0.08), toon('#5a4632', { emissive: '#ff3b2b', emissiveIntensity: 0, unique: true })), 0, 2.85, -1.0, g);
+      const sign = createLabel('ON AIR', { color: '#ffffff', bg: 'rgba(0,0,0,0)', size: 26, scale: 0.008 });
+      sign.position.set(0, 0, 0.06);
+      parts.onAirSign.add(sign);
+      const rig = new THREE.Group();
+      [0, 2.09, 4.19].forEach((a) => beam(rig, new THREE.Vector3(0, 1.2, 0), new THREE.Vector3(Math.cos(a) * 0.42, 0.2, Math.sin(a) * 0.42), 0.025, '#2c2116'));
+      add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.36, 0.7), toon('#2c2116')), 0, 1.38, 0, rig);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.3, 14), toon('#4b5563')), 0, 1.38, -0.48, rig).rotation.x = Math.PI / 2;
+      rig.rotation.y = 0.51;
+      add(rig, 0.95, 0, 0.55, g);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.4, 6), toon('#9aa59c')), -0.85, 0.9, -0.2, g);
+      add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), toon('#2c2116')), -0.85, 1.62, -0.2, g);
     } else { // papan naskah studio
       add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.1), toon('#7a4a2a')), -0.7, 0.9, 0, g);
       add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.1), toon('#7a4a2a')), 0.7, 0.9, 0, g);
@@ -235,7 +422,7 @@ export function createQuests(ctx) {
       parts.screen.position.y = 1.6;
       g.add(parts.screen);
     }
-    parts.label = stationLabel(g, st.label, st.color, { bench: 2.75, lab: 2.95, twingate: 2.2, villi: 5.5 }[st.kind] || 2.6);
+    parts.label = stationLabel(g, st.label, st.color, { bench: 2.75, lab: 2.95, twingate: 2.2, villi: 5.5, threads: 3.65, colon: 5.6, tower: 6.5, geode: 3.4, package: 4.25, studio: 3.4 }[st.kind] || 2.6);
     add(g, x, 0, z);
     return { obj: g, ...parts };
   }
@@ -257,6 +444,35 @@ export function createQuests(ctx) {
     stationLabel(g, item.label, PALETTE.gold, 1.7);
     add(g, x, 0, z);
     return { obj: g, model };
+  }
+
+  function buildArchive(x, z) { // Ruang Arsip Nusantara: podium + buku Paspor terbuka + lima halaman arsip melayang
+    const g = new THREE.Group();
+    add(new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.4, 0.3, 30), toon('#c8b49a')), 0, 0.15, 0, g);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 0.06, 30), toon('#145c60')), 0, 0.33, 0, g);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 1.1, 8), toon('#7a4a2a')), 0, 0.9, 0, g);
+    const desk = add(new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.08, 0.9), toon('#7a4a2a')), 0, 1.48, 0, g);
+    desk.rotation.x = -0.45;
+    const book = new THREE.Group();
+    [-1, 1].forEach((side) => {
+      const cover = add(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 0.8), toon('#145c60')), side * 0.31, 0, 0, book);
+      cover.rotation.z = side * -0.12;
+      const leafs = add(new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.05, 0.74), toon('#fff4dc')), side * 0.3, 0.04, 0, book);
+      leafs.rotation.z = side * -0.12;
+    });
+    book.rotation.x = -0.45;
+    add(book, 0, 1.58, 0.03, g);
+    const pages = [1, 2, 3, 4, 5].map((n, i) => {
+      const pg = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.72), toon('#9c8f78', { emissive: POST_COLORS[n], emissiveIntensity: 0, side: THREE.DoubleSide, unique: true }));
+      pg.userData = { a: (i / 5) * Math.PI * 2, n };
+      g.add(pg);
+      return pg;
+    });
+    const beam = add(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 1.1, 6, 24, 1, true), new THREE.MeshBasicMaterial({ color: '#f5b72b', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide })), 0, 3.6, 0, g);
+    beam.castShadow = false;
+    stationLabel(g, 'Ruang Arsip Nusantara', PALETTE.gold, 3.9);
+    add(g, x, 0, z);
+    return { obj: g, pages, beam, book };
   }
 
   function buildStage(x, z) {
@@ -284,6 +500,7 @@ export function createQuests(ctx) {
       (m.activity.items || []).forEach((ing) => { const q = P(ing.at[0], ing.at[1]); items.push({ kind: 'ingredient', pos: m.id, ing, x: q.x, z: q.z, ...buildIngredient(ing, q.x, q.z) }); });
       const sg = P(m.activity.stage.at[0], m.activity.stage.at[1]);
       items.push({ kind: 'stage', pos: m.id, x: sg.x, z: sg.z, ...buildStage(sg.x, sg.z) });
+      if (m.activity.archive) { const ar = P(m.activity.archive.at[0], m.activity.archive.at[1]); items.push({ kind: 'archive', pos: m.id, x: ar.x, z: ar.z, reach: 0.6, ...buildArchive(ar.x, ar.z) }); }
       return;
     }
     const rows = m.stimulus.rows;
@@ -304,7 +521,7 @@ export function createQuests(ctx) {
       const d = P(act.distractor.at[0], act.distractor.at[1]);
       items.push({ kind: 'terminal', pos: m.id, row: -1, distractor: true, x: d.x, z: d.z, label: act.distractor.label, ...buildTerminal(m.id, -1, act.distractor.label, d.x, d.z, -0.4) });
     }
-    if (act && act.type === 'stations') act.stations.forEach((st) => { const q = P(st.at[0], st.at[1]); items.push({ kind: 'station', pos: m.id, st, x: q.x, z: q.z, ...buildStation(st, q.x, q.z) }); });
+    if (act && act.type === 'stations') act.stations.forEach((st) => { const q = P(st.at[0], st.at[1]); items.push({ kind: 'station', pos: m.id, st, x: q.x, z: q.z, reach: { colon: 0.9, villi: 0.8 }[st.kind] || 0, ...buildStation(st, q.x, q.z, act) }); });
   });
 
   // ---------- Peran regu (PjBL) ----------
@@ -323,6 +540,7 @@ export function createQuests(ctx) {
     if (it.kind === 'station') return Boolean(a.stations && a.stations[it.st.id]);
     if (it.kind === 'ingredient') return (a.collected || []).includes(it.ing.id);
     if (it.kind === 'stage') return Boolean(a.presented);
+    if (it.kind === 'archive') return Boolean(a.stations && a.stations.arsip);
     return false;
   }
   /** Tugas milik peran anggota lain yang sedang daring ditolak dengan ajakan berdiskusi. */
@@ -371,11 +589,19 @@ export function createQuests(ctx) {
       if (it.kind === 'station') {
         const done = Boolean(act.stations[it.st.id]) || p.sealed;
         if (it.screen) it.screen.userData.glass.material.color.set(done ? PALETTE.green : it.st.color);
-        if (it.core) { it.core.material.emissiveIntensity = done ? 1.1 : it.st.kind === 'lantern' ? 0 : 0.35; if (it.st.kind === 'lantern') it.core.material.color.set(done ? it.st.color : '#8a8a8a'); }
+        if (it.core) it.core.material.emissiveIntensity = done ? 1.1 : 0.35;
         if (it.orb) it.orb.visible = !done;
+        if (it.lanterns) refreshThreads(it, done);
+        it.live = done; // menara mengudara, geode terbuka, kemasan bersinar, lampu ON AIR menyala
         return;
       }
       if (it.kind === 'ingredient') { it.obj.visible = !act.collected.includes(it.ing.id); return; }
+      if (it.kind === 'archive') {
+        const S = archiveStatus(game);
+        it.pages.forEach((pg, i) => { const on = S.pages[i] && S.pages[i].restored; pg.material.color.set(on ? '#fff4dc' : '#9c8f78'); pg.material.emissiveIntensity = on ? 0.55 : 0; });
+        it.live = Boolean(act.stations.arsip) || S.done;
+        return;
+      }
       if (it.kind === 'terminal') {
         const done = evidenceOf(it.pos).includes(it.row) || p.sealed;
         const c = done ? PALETTE.green : PALETTE.cyan;
@@ -396,6 +622,26 @@ export function createQuests(ctx) {
     });
   }
 
+  /** Jalur benang Pos 4 yang sudah lengkap di Papan Benang Merah. */
+  function laneComplete(pos, lane) {
+    const b = game.activityState(pos).benang;
+    const links = game.missionById(pos).activity.threads.links.filter((l) => l.lane === lane);
+    return Boolean(b && b.edges) && links.every((l) => b.edges[`${l.from}>${l.to}`]);
+  }
+  function refreshThreads(it, done) {
+    it.lanterns.forEach((ln) => { const on = done || laneComplete(it.pos, ln.lane); ln.on = on; ln.core.material.emissiveIntensity = on ? 1.2 : 0; ln.core.material.color.set(on ? ln.color : '#8a8a8a'); });
+    it.strings.forEach((sg) => { sg.line.material.color.set(done || laneComplete(it.pos, sg.lane) ? sg.color : '#8a6a50'); });
+    it.dominoes.forEach((d) => {
+      const on = done || laneComplete(it.pos, d.lane);
+      if (on && !d.fallen && d.t < 0) {
+        if (it.inited) d.t = 0; // baru lengkap: robohkan beruntun
+        else { d.pieces.forEach((pc, k) => { pc.rotation.x = k === d.pieces.length - 1 ? 1.4 : d.angle; }); d.fallen = true; }
+      }
+      if (!on && (d.fallen || d.t >= 0)) { d.t = -1; d.fallen = false; d.pieces.forEach((pc) => { pc.rotation.x = 0; }); }
+    });
+    it.inited = true;
+  }
+
   function hint(it) {
     const m = game.missionById(it.pos);
     const p = postOf(it.pos);
@@ -403,6 +649,7 @@ export function createQuests(ctx) {
     if (it.kind === 'kitchen') return act.collected.length < (m.activity.need || 0) && !p.sealed ? `Meja Dapur Juara — kumpulkan bahan dulu (${act.collected.length}/${m.activity.need}).` : 'Meja Dapur Juara — rancang menu proyek akhir. Tekan E.';
     if (it.kind === 'ingredient') return `${it.ing.label} — ${it.ing.group}. Tekan E untuk memasukkan ke rantang.${ownerTag(it)}`;
     if (it.kind === 'stage') return p.sealed ? 'Panggung Presentasi — tekan E untuk mempresentasikan kartu menumu!' : 'Panggung Presentasi — terbuka setelah Dapur Juara disegel.';
+    if (it.kind === 'archive') { const S = archiveStatus(game); return `Ruang Arsip Nusantara — ${S.done ? 'arsip pulih ✓ (tekan E untuk membuka Paspor Nusantara)' : `halaman pulih ${S.restored}/${S.total}. Tekan E untuk menelaah penjelasan regu.`}`; }
     if (it.kind === 'station') return `${it.st.label} — ${act.stations[it.st.id] ? 'selesai ✓' : 'tekan E untuk mengerjakan misi'}${ownerTag(it)}`;
     if (it.kind === 'terminal' && it.distractor) return `Terminal Arsip · ${it.label} — ${act.rejected ? 'ditandai pengalih ✓' : 'tekan E untuk memindai'}${ownerTag(it)}`;
     if (it.kind === 'terminal') return `Terminal Arsip · ${m.stimulus.rows[it.row].label} — ${evidenceOf(it.pos).includes(it.row) ? 'sudah dipindai ✓' : 'tekan E untuk memindai'}${ownerTag(it)}`;
@@ -419,7 +666,8 @@ export function createQuests(ctx) {
   function nearest(x, z, h) {
     if (h > 1.2) return null;
     let best = null; let bestD = RADIUS;
-    items.forEach((it) => { if (it.obj && !it.obj.visible) return; const d = Math.hypot(it.x - x, it.z - z); if (d < bestD) { bestD = d; best = it; } });
+    // Objek berkaki lebar (alas simulator) punya jangkauan tambahan agar bisa dibuka dari tepinya.
+    items.forEach((it) => { if (it.obj && !it.obj.visible) return; const d = Math.hypot(it.x - x, it.z - z) - (it.reach || 0); if (d < bestD) { bestD = d; best = it; } });
     return best;
   }
 
@@ -549,6 +797,12 @@ export function createQuests(ctx) {
     if (it.st.kind === 'lab') { lab.open(it); return; }
     if (it.st.kind === 'twingate') { absorption.openSorter(it); return; }
     if (it.st.kind === 'villi') { absorption.openVilli(it); return; }
+    if (it.st.kind === 'threads') { causal.openThreads(it); return; }
+    if (it.st.kind === 'colon') { causal.openColon(it); return; }
+    if (it.st.kind === 'tower') { causal.openTower(it); return; }
+    if (it.st.kind === 'geode') { claims.openGeode(it); return; }
+    if (it.st.kind === 'package') { claims.openPackage(it); return; }
+    if (it.st.kind === 'studio') { claims.openStudio(it); return; }
     const m = game.missionById(it.pos);
     const st = it.st;
     const act = game.activityState(it.pos);
@@ -585,7 +839,6 @@ export function createQuests(ctx) {
         fx.sparkle({ x: it.x, y: 1.8, z: it.z }, st.color);
         fx.ring({ x: it.x, y: 0, z: it.z }, { color: st.color, from: 0.4, to: 2.6, life: 0.7 });
         if (st.kind === 'orb') fx.rise({ x: it.x, y: 1, z: it.z }, st.color);
-        if (st.kind === 'lantern') fx.pillar({ x: it.x + 0.5, y: 0, z: it.z }, { color: st.color, height: 6, life: 1.4, radius: 0.4 });
         floatText('✓ MISI', it.x, 2.8, it.z, st.color);
         refresh();
         const left = m.activity.stations.filter((x) => !game.activityState(it.pos).stations[x.id]).length;
@@ -621,6 +874,8 @@ export function createQuests(ctx) {
   function openKitchen(it) {
     const m = game.missionById(it.pos);
     const act = game.activityState(it.pos);
+    const started = postOf(it.pos).sealed || Boolean(postOf(it.pos).initial && postOf(it.pos).initial.savedAt);
+    if (m.activity.archive && !act.stations.arsip && !started) { ctx.say('Pulihkan dulu Ruang Arsip Nusantara: telaah penjelasan regu sampai semua halaman pulih. Ikuti panah emas.', 'shake'); return; }
     if (act.collected.length < m.activity.need && !postOf(it.pos).sealed) { ctx.say(`Kumpulkan dulu minimal ${m.activity.need} bahan lokal di sekitar dapur (${act.collected.length}/${m.activity.need}).`, 'shake'); return; }
     game.openPos(it.pos);
   }
@@ -652,6 +907,7 @@ export function createQuests(ctx) {
     const a = game.activityState(id);
     const out = [];
     if (m.type === 'project') {
+      if (m.activity.archive) { const S = archiveStatus(game); out.push({ text: `Pulihkan Ruang Arsip: telaah penjelasan regu (${S.restored}/${S.total} halaman)`, done: Boolean(a.stations.arsip) || p.sealed || Boolean(p.initial && p.initial.savedAt), item: items.find((x) => x.pos === id && x.kind === 'archive') }); }
       out.push({ text: `Kumpulkan bahan lokal (${Math.min(a.collected.length, m.activity.need)}/${m.activity.need})`, done: a.collected.length >= m.activity.need || p.sealed, item: mineFirst(items.filter((x) => x.pos === id && x.kind === 'ingredient' && !a.collected.includes(x.ing.id))) });
       out.push({ text: 'Rancang, telaah, revisi, dan refleksi di Meja Dapur Juara', done: p.sealed, item: items.find((x) => x.pos === id && x.kind === 'kitchen') });
       out.push({ text: 'Presentasikan kartu menu di Panggung', done: Boolean(a.presented), item: items.find((x) => x.pos === id && x.kind === 'stage') });
@@ -912,6 +1168,7 @@ export function createQuests(ctx) {
     else if (it.kind === 'station') openStation(it);
     else if (it.kind === 'ingredient') collectIngredient(it);
     else if (it.kind === 'stage') present(it);
+    else if (it.kind === 'archive') archive.open(it);
   }
 
   function update(dt, t) {
@@ -923,6 +1180,51 @@ export function createQuests(ctx) {
         it.beads.forEach((b, k) => { const a = t * 0.7 + (k / it.beads.length) * Math.PI * 2; b.position.set(Math.cos(a) * 2.4, 3.2 + Math.sin(t * 2 + k) * 0.4, Math.sin(a) * 2.4); });
       }
       if (it.kind === 'station' && it.cards) it.cards.forEach((c, k) => { c.position.y = 1.1 + k * 0.15 + Math.sin(t * 2 + k) * 0.06; c.rotation.y = Math.sin(t + k) * 0.4; });
+      if (it.kind === 'station' && it.lanterns) {
+        it.lanterns.forEach((ln, k) => { ln.core.rotation.y += dt; if (ln.on) ln.core.material.emissiveIntensity = 1.05 + Math.sin(t * 7 + k * 2) * 0.15; });
+        it.dominoes.forEach((d) => {
+          if (d.t < 0) return;
+          d.t += dt;
+          const n = d.pieces.length;
+          d.pieces.forEach((pc, k) => { const a = Math.min(1, Math.max(0, (d.t - k * 0.13) / 0.2)); pc.rotation.x = a * a * (k === n - 1 ? 1.4 : d.angle); });
+          if (d.t > n * 0.13 + 0.3) { d.t = -1; d.fallen = true; }
+        });
+      }
+      if (it.kind === 'station' && it.colonCurve) {
+        it.beads.forEach((b, k) => it.colonCurve.getPointAt((t * 0.05 + k / it.beads.length) % 1, b.position));
+        const u = (t * 0.12) % 1;
+        it.colonCurve.getPointAt(u, it.wave.position);
+        it.colonCurve.getTangentAt(u, TMP);
+        it.wave.quaternion.setFromUnitVectors(ZAXIS, TMP);
+      }
+      if (it.kind === 'station' && it.geodeTop) {
+        const k = Math.min(1, dt * 3);
+        it.geodeTop.position.y += ((it.live ? 1.95 : 1.45) - it.geodeTop.position.y) * k;
+        it.geodeTop.position.z += ((it.live ? -0.25 : 0) - it.geodeTop.position.z) * k;
+        it.geodeTop.rotation.x += ((it.live ? -0.85 : 0) - it.geodeTop.rotation.x) * k;
+        it.crystal.rotation.y += dt * (it.live ? 1.2 : 0.2);
+      }
+      if (it.kind === 'station' && it.box) {
+        it.box.rotation.y += dt * 0.45;
+        it.box.position.y = 1.45 + Math.sin(t * 1.4 + i) * 0.05;
+        it.beam.material.opacity = 0.13 + Math.sin(t * 3) * 0.03;
+        it.packRing.material.emissiveIntensity = it.live ? 0.8 + Math.sin(t * 4) * 0.3 : 0;
+      }
+      if (it.kind === 'station' && it.onAirSign) it.onAirSign.material.emissiveIntensity = it.live ? (Math.sin(t * 3) > -0.3 ? 1.2 : 0.4) : 0;
+      if (it.kind === 'station' && it.waves) {
+        it.beacon.material.emissiveIntensity = Math.sin(t * 4) > 0 ? 1 : 0.2;
+        it.waves.forEach((w, k) => {
+          w.visible = Boolean(it.live);
+          if (!w.visible) return;
+          const ph = (t * 0.6 + k / 3) % 1;
+          w.scale.setScalar(0.4 + ph * 3.2);
+          w.material.opacity = 0.8 * (1 - ph);
+        });
+      }
+      if (it.kind === 'archive') {
+        it.pages.forEach((pg, k) => { const a = pg.userData.a + t * 0.35; pg.position.set(Math.cos(a) * 1.75, 2.35 + Math.sin(t * 1.6 + k) * 0.15, Math.sin(a) * 1.75); pg.rotation.y = -a + Math.PI / 2; });
+        it.beam.material.opacity = it.live ? 0.18 + Math.sin(t * 2) * 0.05 : 0;
+      }
       if (it.kind === 'ingredient' && it.obj.visible) { it.model.rotation.y += dt * 1.2; it.model.position.y = 0.9 + Math.sin(t * 2.5 + i) * 0.1; }
       if (it.kind === 'terminal') {
         it.screen.position.y = 1.75 + Math.sin(t * 2 + i) * 0.06;

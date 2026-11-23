@@ -2,6 +2,7 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, toon, PALETTE } from './characters.js';
 import { createMeru, createPenjor, createKite, createCorn, createTempe, createPapaya, createStupa } from './culture.js';
+import { createFloatingMap } from './peta3d.js';
 
 const MISSIONS = window.NUTRANTARA_MISSIONS || [];
 const W = window.NUTRANTARA_WORLD;
@@ -225,6 +226,17 @@ if (webgl()) {
   } catch (err) {
     console.error(err);
     document.getElementById('hero-fallback').hidden = false;
+  }
+  // Peta kepulauan melayang 3D; peta SVG tetap menjadi cadangan bila gagal.
+  try {
+    const host = document.getElementById('map-svg');
+    createFloatingMap(host, W, MISSIONS, { reduceMotion });
+    host.querySelector('svg').style.display = 'none';
+  } catch (err) {
+    console.error(err);
+    const host = document.getElementById('map-svg');
+    host.classList.remove('map3d');
+    host.querySelectorAll('.map3d-canvas, .map3d-pins, .map3d-hint').forEach((el) => el.remove());
   }
 } else {
   document.getElementById('hero-fallback').hidden = false;
