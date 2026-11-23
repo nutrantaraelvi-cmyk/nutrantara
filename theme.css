@@ -843,3 +843,12 @@ body.overview .w3-minimap{display:none}
 .map3d-pin.plaza span{background:#f5b72b;color:#2c2116}
 .map3d-hint{position:absolute;right:12px;bottom:10px;margin:0;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,.75);font-size:11px;color:#2c4a3a;pointer-events:none}
 @media(max-width:760px){.map-wrap:has(.map3d) .map-legend{grid-template-columns:1fr}.map3d-pin.wild{display:none!important}.map3d-pin span{font-size:9px}.map3d-pin.pos strong{width:34px;height:34px;font-size:15px}}
+/* Tombol BIDIK (kunci kamera ke objek misi) di atas tombol LOMPAT/AKSI pada layar sentuh */
+@media (pointer:coarse){.w3-buttons #w3-lock{position:absolute;right:0;bottom:86px;width:58px;height:58px;font-size:9px;background:rgba(54,224,255,.78);color:#071516}}
+/* Pilihan mode kamera (Orbit/Bahu/Isometrik/Orang Pertama), di atas pilihan GRAFIS */
+.w3-cam[hidden]{display:none!important}
+body.in-world .world-screen.is-3d .w3-cam{bottom:104px}
+/* Layar sentuh: kedua pilihan naik di atas tombol BIDIK/LOMPAT/AKSI agar tidak saling menutupi */
+@media (pointer:coarse){body.in-world .world-screen.is-3d .w3-gfx{bottom:170px}body.in-world .world-screen.is-3d .w3-cam{bottom:212px}}
+/* Pilihan aktif (KAMERA & GRAFIS) ditandai ✓, bukan hanya warna */
+.w3-gfx button[aria-pressed="true"]::before{content:"✓ "}

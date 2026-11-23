@@ -77,7 +77,7 @@ wrap.innerHTML = `
   </div>
   <div class="w3-touch" aria-hidden="true">
     <div class="w3-stick" id="w3-stick"><i></i></div>
-    <div class="w3-buttons"><button type="button" id="w3-jump" tabindex="-1">LOMPAT</button><button type="button" id="w3-act" tabindex="-1">AKSI</button></div>
+    <div class="w3-buttons"><button type="button" id="w3-lock" tabindex="-1">BIDIK</button><button type="button" id="w3-jump" tabindex="-1">LOMPAT</button><button type="button" id="w3-act" tabindex="-1">AKSI</button></div>
   </div>
   <div class="w3-banner" id="w3-banner" aria-live="polite"></div>
   <div class="w3-drophint" id="w3-drophint" hidden>Tekan <kbd>Spasi</kbd> untuk membuka daun pisang</div>
@@ -110,7 +110,7 @@ function renderGfxBar() {
   });
   keysHelp.innerHTML = gfx === '2d'
     ? '<kbd>W A S D</kbd> berjalan · <kbd>E</kbd> berinteraksi · klik/sentuh untuk berjalan · Papan ketik saja? Gunakan <button type="button" class="link-button" data-screen="map">Peta</button>.'
-    : '<kbd>W A S D</kbd> berjalan · <kbd>← →</kbd> memutar arah hadap · <kbd>↑ ↓</kbd> maju/mundur · <kbd>R</kbd>/<kbd>F</kbd> menoleh atas/bawah · kursor = arah hadap, klik tanah = jalan ke sana · <kbd>Shift</kbd> berlari · <kbd>Spasi</kbd> lompat · <kbd>E</kbd> interaksi · <kbd>M</kbd> peta mini besar · <kbd>1–4</kbd> emote · seret = putar kamera · gulir = zoom · <button type="button" class="link-button" data-screen="map">Peta</button>';
+    : '<b>Gerak:</b> <kbd>W A S D</kbd> berjalan searah kamera · <kbd>Shift</kbd> berlari · <kbd>Spasi</kbd> lompat · <kbd>E</kbd> interaksi · <kbd>← →</kbd> memutar arah hadap · <kbd>↑ ↓</kbd> maju/mundur · klik tanah = jalan ke sana. <b>Kamera:</b> <kbd>K</kbd> ganti mode (Orbit, Bahu, Isometrik, Orang Pertama) · tahan klik kanan/tengah atau seret = putar (Isometrik: seret = geser layar) · gulir = zoom · <kbd>V</kbd> kamera bebas (mouse) · <kbd>Q</kbd> kunci target · <kbd>C</kbd> reset kamera · <kbd>R</kbd>/<kbd>F</kbd> menoleh atas/bawah (Isometrik: miringkan sampai top-down). <kbd>M</kbd> peta mini besar · <kbd>1–4</kbd> emote · gamepad didukung · <button type="button" class="link-button" data-screen="map">Peta</button>';
 }
 
 // ---------- Three.js ----------
@@ -159,7 +159,7 @@ function initRenderer() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.domElement.className = 'w3-canvas';
   renderer.domElement.tabIndex = 0;
-  renderer.domElement.setAttribute('aria-label', 'Kepulauan NUTRANTARA 3D. W A S D untuk berjalan, spasi melompat, E berinteraksi, 1 sampai 4 untuk emote.');
+  renderer.domElement.setAttribute('aria-label', 'Kepulauan NUTRANTARA 3D. W A S D untuk berjalan, spasi melompat, E berinteraksi, Q mengunci kamera ke objek misi, C mengembalikan kamera ke belakang penjelajah, 1 sampai 4 untuk emote.');
   renderer.domElement.setAttribute('aria-describedby', 'world-prompt');
   wrap.prepend(renderer.domElement);
   scene = new THREE.Scene();
@@ -182,6 +182,9 @@ function initRenderer() {
 
 // Rentang pandang: dekat saat bermain (kabut menutup wilayah jauh), jauh saat melihat peta dari atas.
 const PLAY_VIEW = { near: 0.1, far: 800, fogNear: 110, fogFar: 330 };
+// Isometrik: kamera jauh di atas, jadi kabut dimulai sesudah jarak kamera agar area sekitar tetap jelas.
+const ISO_VIEW = { near: 0.1, far: 800, fogNear: 0, fogFar: 0 };
+function isoView() { ISO_VIEW.fogNear = cam.dist + 70; ISO_VIEW.fogFar = cam.dist + 300; return ISO_VIEW; }
 function setView(v) {
   if (camera.near === v.near && camera.far === v.far && scene.fog.near === v.fogNear) return;
   camera.near = v.near; camera.far = v.far; camera.updateProjectionMatrix();
@@ -751,7 +754,7 @@ async function prepare(onProgress = () => {}) {
         islandFrame: (id) => frame(id),
         say: (text, reaction = 'talk') => say(nara, text, 2.6, reaction),
         nara: (r) => nara.userData.react(r, r === 'celebrate' ? 1.4 : 1.1),
-        onPanel: (open) => { panelOpen = open; if (!open && renderer) renderer.domElement.focus(); },
+        onPanel: (open) => { panelOpen = open; if (open) exitFreeLook(); if (!open && renderer) renderer.domElement.focus(); },
         onSealed: sealed
       });
     },
@@ -793,6 +796,12 @@ async function prepare(onProgress = () => {}) {
       walkMarker.rotation.x = -Math.PI / 2;
       walkMarker.renderOrder = 2;
       scene.add(walkMarker);
+      // Tanda kunci target: cincin segi enam (bentuknya beda dari penanda lain, bukan hanya warnanya).
+      lockRing = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.25, 6), new THREE.MeshBasicMaterial({ color: '#36e0ff', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+      lockRing.rotation.x = -Math.PI / 2;
+      lockRing.renderOrder = 2;
+      lockRing.visible = false;
+      scene.add(lockRing);
       self.obj = createExplorer(net && net.me ? net.me.color : PALETTE.cyan);
       add(self.obj);
     }
@@ -858,6 +867,73 @@ const TURN_SPEED = 2.6; // radian per detik
 const PITCH_MIN = -0.5; // menengadah ke langit
 const PITCH_MAX = 1.3;  // menunduk dari atas
 const LOOK_SPEED = 1.3;
+const ZOOM_MIN = 3.5;  // dekat: melihat detail penjelajah
+const ZOOM_MAX = 24;   // jauh: melihat area lebih luas
+const LOCK_RANGE = 150; // meter: jangkauan kunci target (objek misi tersebar ±220 m dari pusat wilayah)
+const PAN_MAX = 120;   // meter: batas geser layar mode Isometrik dari penjelajah
+const EYE_H = 1.55;    // tinggi mata penjelajah (mode Orang Pertama)
+const SHOULDER = 0.7;  // geser kamera ke kanan bahu (mode Bahu)
+const motionMQ = matchMedia('(prefers-reduced-motion: reduce)');
+const reducedMotion = () => motionMQ.matches;
+// Kamera dan gerak memakai dua kendali terpisah: mouse/analog kanan/geser layar = kamera,
+// WASD/analog kiri/joystick = gerak (searah kamera), sehingga bisa berjalan sambil melihat sekeliling.
+// blend = sisa detik transisi halus setelah ganti mode; pan = geser layar Isometrik (meter, x/z).
+const camCtl = { lock: null, reset: false, freeLook: false, blend: 0, pan: new THREE.Vector3(), panAt: 0 };
+let lockRing;
+
+// ---------- Mode kamera ----------
+// Orang ketiga (Orbit bebas 360° dan Bahu/over-the-shoulder), Isometrik/top-down, dan Orang Pertama.
+// zoom = rentang jarak kamera (meter); khusus Orang Pertama, zoom = sudut pandang (FOV, derajat).
+const CAM_KEY = 'nutrantara-cam';
+const CAM_MODES = {
+  orbit: { label: 'Orbit', title: 'Orang ketiga: kamera bebas 360° mengitari penjelajah', pitch: [PITCH_MIN, PITCH_MAX], pitch0: 0.5, zoom: [ZOOM_MIN, ZOOM_MAX], zoom0: 11, fov: 50 },
+  bahu: { label: 'Bahu', title: 'Orang ketiga dari atas bahu: dekat, penjelajah menghadap ke arah pandangan', pitch: [-0.6, 0.9], pitch0: 0.12, zoom: [1.8, 5], zoom0: 2.6, fov: 55 },
+  iso: { label: 'Isometrik', title: 'Pandangan atas yang luas: seret untuk menggeser layar, R/F memiringkan sampai tegak lurus (top-down)', pitch: [0.8, 1.52], pitch0: 0.95, zoom: [22, 95], zoom0: 36, fov: 30 },
+  fp: { label: 'Orang Pertama', title: 'Lewat mata penjelajah: paling imersif, gulir untuk memperbesar pandangan', pitch: [-1.3, 1.3], pitch0: 0.05, zoom: [30, 75], zoom0: 70, fov: null }
+};
+const CAM_ORDER = Object.keys(CAM_MODES);
+const camMem = {}; // pitch & zoom terakhir tiap mode, dipulihkan saat kembali ke mode itu
+let camMode = 'orbit';
+try { const saved = localStorage.getItem(CAM_KEY); if (CAM_MODES[saved]) camMode = saved; } catch { /* abaikan */ }
+cam.pitch = CAM_MODES[camMode].pitch0;
+cam.dist = CAM_MODES[camMode].zoom0;
+const camFov = () => CAM_MODES[camMode].fov || cam.dist;
+const followsView = () => camMode === 'bahu' || camMode === 'fp'; // penjelajah selalu menghadap arah pandang
+
+const camBar = document.createElement('div');
+camBar.className = 'w3-gfx w3-cam';
+camBar.setAttribute('role', 'group');
+camBar.setAttribute('aria-label', 'Mode kamera');
+camBar.innerHTML = `<span>KAMERA</span>${CAM_ORDER.map((id) => `<button type="button" data-cam="${id}" title="${CAM_MODES[id].title}">${CAM_MODES[id].label}</button>`).join('')}`;
+gfxBar.after(camBar);
+camBar.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cam]');
+  if (!b) return;
+  setCamMode(b.dataset.cam, true);
+  if (e.detail && renderer && running) renderer.domElement.focus(); // klik mouse: kembali ke dunia; Enter/Spasi: fokus tetap di tombol
+});
+function renderCamBar() {
+  camBar.hidden = gfx === '2d';
+  camBar.querySelectorAll('[data-cam]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cam === camMode)));
+}
+function setCamMode(id, announce) {
+  if (!CAM_MODES[id]) return;
+  if (id !== camMode) {
+    camMem[camMode] = { pitch: cam.pitch, zoom: cam.dist };
+    camMode = id;
+    const M = CAM_MODES[id];
+    const mem = camMem[id] || { pitch: M.pitch0, zoom: M.zoom0 };
+    cam.pitch = mem.pitch;
+    cam.dist = mem.zoom;
+    camCtl.pan.set(0, 0, 0);
+    camCtl.reset = false;
+    camCtl.blend = reducedMotion() ? 0 : 0.7;
+    try { localStorage.setItem(CAM_KEY, id); } catch { /* abaikan */ }
+  }
+  renderCamBar();
+  if (announce) game.showToast(`Kamera ${CAM_MODES[id].label}: ${CAM_MODES[id].title}. Tekan K untuk ganti.`);
+}
+function cycleCamMode(step) { setCamMode(CAM_ORDER[(CAM_ORDER.indexOf(camMode) + step + CAM_ORDER.length) % CAM_ORDER.length], true); }
 const aim = { point: null, active: false, lastMove: 0 }; // titik tanah di bawah kursor
 const walkTo = { point: null };
 let facingArrow; let aimRing; let walkMarker;
@@ -876,6 +952,10 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && onCanvas) { e.preventDefault(); jumpQueued = true; }
   if (EMOTE_KEYS[e.code]) doEmote(EMOTE_KEYS[e.code]);
   if (e.code === 'KeyM') toggleMinimap();
+  if (e.code === 'KeyQ') toggleLock();
+  if (e.code === 'KeyC') resetCamera();
+  if (e.code === 'KeyV') toggleFreeLook();
+  if (e.code === 'KeyK') cycleCamMode(1);
   if ((e.code === 'KeyE' || (e.code === 'Enter' && onCanvas)) && nearby) { e.preventDefault(); interact(); }
 });
 window.addEventListener('keyup', (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); });
@@ -900,30 +980,212 @@ function pickIsland(e) {
   return hit ? hit.object.userData.islandId : null;
 }
 
+// ---------- Kamera: putar, zoom, kunci target, reset ----------
+function lookBy(dYaw, dPitch) {
+  const [lo, hi] = CAM_MODES[camMode].pitch;
+  cam.yaw += dYaw;
+  cam.pitch = Math.min(hi, Math.max(lo, cam.pitch + dPitch));
+  // Memutar kamera sendiri menghentikan reset dan melepas kunci target.
+  if (Math.abs(dYaw) > 0.001) { camCtl.reset = false; releaseLock(false); }
+}
+function zoomBy(f) {
+  if (mode === 'overview') { overview.dist = Math.min(120, Math.max(40, overview.dist * f)); return; }
+  const [lo, hi] = CAM_MODES[camMode].zoom;
+  cam.dist = Math.min(hi, Math.max(lo, cam.dist * f));
+}
+// Isometrik: geser layar (meter) ke kanan layar dan ke atas layar untuk mengintai area lain.
+function panBy(right, ahead) {
+  const s = Math.sin(cam.yaw); const c = Math.cos(cam.yaw);
+  camCtl.pan.x += right * c - ahead * s;
+  camCtl.pan.z += -right * s - ahead * c;
+  if (camCtl.pan.length() > PAN_MAX) camCtl.pan.setLength(PAN_MAX);
+  camCtl.panAt = performance.now();
+  camCtl.reset = false;
+  releaseLock(false);
+}
+// Geser layar dengan mouse/jari: dunia ikut "tertarik" searah seretan.
+function panByPixels(dx, dy) {
+  const h = (renderer && renderer.domElement.clientHeight) || 600;
+  const mpp = (2 * cam.dist * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / h; // meter per piksel di titik fokus
+  panBy(-dx * mpp, (dy * mpp) / Math.max(0.3, Math.sin(cam.pitch)));
+}
+// C / Y gamepad: kamera kembali lurus ke belakang penjelajah.
+function resetCamera() { if (mode === 'play') camCtl.reset = true; }
+function releaseLock(announce) {
+  if (!camCtl.lock) return;
+  camCtl.lock = null;
+  if (announce) game.showToast('Kunci kamera dilepas.');
+}
+const LOCK_NAMES = { terminal: 'Terminal Arsip', board: 'Papan Laporan', altar: 'Altar Segel', kitchen: 'Meja Dapur Juara', stage: 'Panggung Presentasi', archive: 'Ruang Arsip' };
+const lockName = (it) => LOCK_NAMES[it.kind] || (it.st && it.st.label) || (it.ing && it.ing.label) || 'objek misi';
+function findLockTarget() {
+  // Utamakan tujuan misi berikutnya (yang ditunjuk panah emas), lalu objek yang dekat dan searah pandangan kamera.
+  const vx = -Math.sin(cam.yaw); const vz = -Math.cos(cam.yaw);
+  const goal = nextGoal().item;
+  let best = null; let bestScore = Infinity;
+  quests.items.forEach((it) => {
+    if (it.obj && !it.obj.visible) return;
+    const dx = it.x - self.x; const dz = it.z - self.z; const d = Math.hypot(dx, dz);
+    if (d > LOCK_RANGE || d < 0.8) return;
+    const score = d + Math.acos(Math.max(-1, Math.min(1, (dx * vx + dz * vz) / d))) * 20 - (it === goal ? 60 : 0);
+    if (score < bestScore) { bestScore = score; best = it; }
+  });
+  return best;
+}
+// Q / R3 / tombol BIDIK: kunci kamera ke objek misi; bila tidak ada, kamera di-reset ke belakang penjelajah.
+function toggleLock() {
+  if (mode !== 'play') return;
+  if (camCtl.lock) { releaseLock(true); return; }
+  const it = findLockTarget();
+  if (!it) { resetCamera(); game.showToast(`Tidak ada objek misi dalam ${LOCK_RANGE} m. Kamera kembali ke belakang penjelajah.`); return; }
+  camCtl.lock = it;
+  camCtl.reset = false;
+  camCtl.pan.set(0, 0, 0);
+  game.showToast(`🎯 Kamera terkunci ke ${lockName(it)}. Tekan lagi untuk melepas.`);
+}
+function steerYaw(goal, k) {
+  let d = goal - cam.yaw;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  cam.yaw += d * k;
+  return Math.abs(d);
+}
+function updateCamControl(dt) {
+  const L = camCtl.lock;
+  if (L) {
+    const dx = L.x - self.x; const dz = L.z - self.z; const d = Math.hypot(dx, dz);
+    if ((L.obj && !L.obj.visible) || d > LOCK_RANGE * 1.25) releaseLock(true);
+    // Isometrik tidak diputar: layar dipusatkan di antara penjelajah dan target (lihat updateCamera).
+    else if (d > 0.8 && camMode !== 'iso') {
+      steerYaw(Math.atan2(-dx, -dz), Math.min(1, dt * 5)); // kamera di belakang penjelajah, memandang target
+      if (camMode === 'fp') cam.pitch += (Math.atan2(self.h + EYE_H - 0.9, d) - cam.pitch) * Math.min(1, dt * 5);
+    }
+  }
+  if (camCtl.reset) {
+    const k = reducedMotion() ? 1 : Math.min(1, dt * 10);
+    const p0 = CAM_MODES[camMode].pitch0;
+    cam.pitch += (p0 - cam.pitch) * k;
+    camCtl.pan.multiplyScalar(1 - k);
+    // Bahu & Orang Pertama: penjelajah sudah menghadap arah pandang, cukup luruskan kemiringan.
+    const yawLeft = followsView() ? 0 : steerYaw(self.face + Math.PI, k);
+    if (yawLeft < 0.01 && Math.abs(cam.pitch - p0) < 0.01 && camCtl.pan.lengthSq() < 0.01) { camCtl.reset = false; camCtl.pan.set(0, 0, 0); }
+  }
+}
+// V: kamera bebas (pointer lock) — mouse memutar kamera 360° tanpa menahan tombol. Esc atau V untuk keluar.
+function toggleFreeLook() {
+  const el = renderer && renderer.domElement;
+  if (!el || !el.requestPointerLock) return;
+  if (document.pointerLockElement === el) { document.exitPointerLock(); return; }
+  try { const p = el.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch { /* peramban menolak: tetap pakai klik kanan */ }
+}
+function exitFreeLook() { if (document.pointerLockElement && document.exitPointerLock) document.exitPointerLock(); }
+document.addEventListener('pointerlockchange', () => {
+  camCtl.freeLook = Boolean(renderer) && document.pointerLockElement === renderer.domElement;
+  aim.active = false;
+  if (camCtl.freeLook) game.showToast('Kamera bebas aktif: gerakkan mouse untuk melihat sekeliling. Tekan V atau Esc untuk kembali ke kursor.');
+});
+
+// ---------- Gamepad (pemetaan standar) ----------
+// Analog kiri = gerak, analog kanan = kamera (Isometrik: geser layar), LB/RB = putar kamera, A = lompat, X = aksi,
+// B/L3 (tahan) = lari, R3 = kunci target (atau reset bila tak ada target), Y = reset kamera, D-pad ↑/↓ = zoom,
+// D-pad ←/→ = ganti mode kamera, Back/Select = peta mini besar.
+const PAD_DEAD = 0.2;
+const PAD_LOOK = 2.6; // radian per detik saat analog kanan didorong penuh
+const gpad = { prev: [], lx: 0, ly: 0, run: false };
+function deadzone(x, y) {
+  const l = Math.hypot(x, y);
+  if (l < PAD_DEAD) return [0, 0];
+  const k = Math.min(1, (l - PAD_DEAD) / (1 - PAD_DEAD)) / l;
+  return [x * k, y * k];
+}
+function pollGamepad(dt) {
+  gpad.lx = 0; gpad.ly = 0; gpad.run = false;
+  let gp = null;
+  for (const g of (navigator.getGamepads ? navigator.getGamepads() : [])) if (g && g.connected) { gp = g; break; }
+  if (!gp) return;
+  const held = (i) => Boolean(gp.buttons[i] && gp.buttons[i].pressed);
+  const tap = (i) => held(i) && !gpad.prev[i];
+  const axis = (i) => gp.axes[i] || 0;
+  if (mode === 'drop' && tap(0)) drop.openLeaf = true;
+  if (mode === 'play') {
+    [gpad.lx, gpad.ly] = deadzone(axis(0), axis(1));
+    gpad.run = held(1) || held(10);
+    const [rx, ry] = deadzone(axis(2), axis(3));
+    if (rx || ry) {
+      if (camMode === 'iso') panBy(rx * cam.dist * 0.9 * dt, -ry * cam.dist * 0.9 * dt);
+      else lookBy(-rx * PAD_LOOK * dt, ry * PAD_LOOK * 0.6 * dt);
+    }
+    if (held(4)) lookBy(PAD_LOOK * 0.7 * dt, 0);
+    if (held(5)) lookBy(-PAD_LOOK * 0.7 * dt, 0);
+    if (held(12)) zoomBy(1 - dt * 1.5);
+    if (held(13)) zoomBy(1 + dt * 1.5);
+    if (!panelOpen) {
+      if (tap(0)) jumpQueued = true;
+      if (tap(2)) interact();
+      if (tap(11)) toggleLock();
+      if (tap(3)) resetCamera();
+      if (tap(8)) toggleMinimap();
+      if (tap(14)) cycleCamMode(-1);
+      if (tap(15)) cycleCamMode(1);
+    }
+  }
+  gpad.prev = gp.buttons.map((b) => b.pressed);
+}
+window.addEventListener('gamepadconnected', () => {
+  if (running) game.showToast('Gamepad tersambung: analog kiri berjalan, analog kanan memutar kamera, A lompat, X aksi, B lari, R3 kunci target, Y reset kamera, D-pad ←/→ ganti mode kamera.');
+});
+
 function bindInput(el) {
   let drag = null;
-  el.addEventListener('pointerdown', (e) => { el.focus(); drag = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: 0 }; el.setPointerCapture(e.pointerId); });
+  const touches = new Map(); // jari yang menyentuh kanvas, untuk cubit-zoom
+  let pinch = 0;             // jarak dua jari sebelumnya (0 = tidak sedang mencubit)
+  const span = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
+  el.addEventListener('contextmenu', (e) => e.preventDefault()); // klik kanan dipakai untuk memutar kamera
+  el.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // cegah auto-scroll klik tengah
+  el.addEventListener('pointerdown', (e) => {
+    el.focus();
+    if (camCtl.freeLook) return;
+    el.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size >= 2) { drag = null; pinch = span(); return; }
+    }
+    drag = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: 0, button: e.button };
+  });
   el.addEventListener('pointermove', (e) => {
+    if (camCtl.freeLook) { if (mode === 'play') lookBy(-e.movementX * 0.004, e.movementY * 0.003); return; }
+    if (touches.has(e.pointerId)) {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && touches.size >= 2) { const s = span(); zoomBy(pinch / s); pinch = s; return; }
+    }
     if (mode === 'overview' && !drag) { const id = pickIsland(e); el.style.cursor = id !== null ? 'pointer' : 'grab'; overview.hover = id; }
     if (mode === 'play' && (!drag || drag.moved < 6) && e.pointerType === 'mouse') { const p = groundPoint(e); aim.point = p; aim.active = Boolean(p); aim.lastMove = performance.now(); }
     if (!drag || drag.id !== e.pointerId) return;
     const dx = e.clientX - drag.x; const dy = e.clientY - drag.y;
     drag.moved += Math.abs(dx) + Math.abs(dy);
+    // Klik kiri/sentuh baru memutar setelah bergeser sedikit, agar klik "jalan ke sana" tidak melepas kunci target.
     if (mode === 'overview') overview.yaw -= dx * 0.005;
-    else { cam.yaw -= dx * 0.006; cam.pitch = Math.min(PITCH_MAX, Math.max(PITCH_MIN, cam.pitch + dy * 0.004)); }
+    else if (camMode === 'iso' && drag.button === 0) { if (drag.moved >= 6) panByPixels(dx, dy); } // Isometrik: seret kiri/jari = geser layar
+    else if (drag.button !== 0 || drag.moved >= 6) lookBy(-dx * 0.006, dy * 0.004);
     drag.x = e.clientX; drag.y = e.clientY;
   });
-  el.addEventListener('pointerup', (e) => {
-    if (mode === 'overview' && drag && drag.moved < 6) { const id = pickIsland(e); if (id !== null) selectIsland(id); }
-    if (mode === 'play' && drag && drag.moved < 6 && !panelOpen) { const p = groundPoint(e); if (p) { const c = W.clamp(toPx(p.x), toPy(p.z), allowedSet()); walkTo.point = new THREE.Vector3(toX(c.x), 0, toZ(c.y)); fx.ring({ x: walkTo.point.x, y: 0, z: walkTo.point.z }, { color: '#f5b72b', from: 0.2, to: 1.4, life: 0.45 }); } }
+  const endPointer = (e, cancelled) => {
+    touches.delete(e.pointerId);
+    if (pinch) { if (touches.size < 2) pinch = 0; drag = null; return; }
+    if (!drag || drag.id !== e.pointerId) return;
+    const click = !cancelled && drag.moved < 6 && drag.button === 0; // klik kanan/tengah hanya memutar kamera
     drag = null;
-  });
-  el.addEventListener('pointercancel', () => { drag = null; });
+    if (!click) return;
+    if (mode === 'overview') { const id = pickIsland(e); if (id !== null) selectIsland(id); }
+    if (mode === 'play' && !panelOpen) { const p = groundPoint(e); if (p) { const c = W.clamp(toPx(p.x), toPy(p.z), allowedSet()); walkTo.point = new THREE.Vector3(toX(c.x), 0, toZ(c.y)); fx.ring({ x: walkTo.point.x, y: 0, z: walkTo.point.z }, { color: '#f5b72b', from: 0.2, to: 1.4, life: 0.45 }); } }
+  };
+  el.addEventListener('pointerup', (e) => endPointer(e, false));
+  el.addEventListener('pointercancel', (e) => endPointer(e, true));
   el.addEventListener('pointerleave', () => { aim.active = false; });
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
-    if (mode === 'overview') overview.dist = Math.min(120, Math.max(40, overview.dist + e.deltaY * 0.05));
-    else cam.dist = Math.min(20, Math.max(5, cam.dist + e.deltaY * 0.01));
+    // Normalisasi satuan gulir (piksel/baris/halaman), lalu zoom berkelipatan agar terasa halus.
+    const dy = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1);
+    zoomBy(Math.exp(Math.max(-300, Math.min(300, dy)) * 0.0012));
   }, { passive: false });
 
   const pad = document.getElementById('w3-stick');
@@ -944,6 +1206,7 @@ function bindInput(el) {
   pad.addEventListener('pointercancel', release);
   document.getElementById('w3-jump').addEventListener('pointerdown', (e) => { e.preventDefault(); if (mode === 'drop') drop.openLeaf = true; else jumpQueued = true; });
   document.getElementById('w3-act').addEventListener('pointerdown', (e) => { e.preventDefault(); interact(); });
+  document.getElementById('w3-lock').addEventListener('pointerdown', (e) => { e.preventDefault(); toggleLock(); });
 }
 
 wrap.querySelector('.w3-emotes').addEventListener('click', (e) => { const b = e.target.closest('[data-emote]'); if (b) doEmote(b.dataset.emote); });
@@ -1073,6 +1336,8 @@ ov.addEventListener('click', (e) => {
 function showOverview({ onBack, onDrop } = {}) {
   overview.onBack = onBack;
   overview.onDrop = onDrop;
+  exitFreeLook();
+  camCtl.lock = null;
   const next = MISSIONS.find((m) => !game.state.posts[m.id].sealed && allowedSet().has(m.id));
   overview.selected = next ? next.id : 0;
   ov.hidden = false;
@@ -1106,7 +1371,9 @@ function startDrop(id, px, py) {
   self.x = tx; self.z = tz; self.h = 48; self.vy = -20; self.grounded = false;
   self.island = id;
   self.obj.visible = true;
-  cam.yaw = 0.25; cam.pitch = 0.55; cam.dist = 11;
+  cam.yaw = 0.25;
+  if (camMode === 'orbit') { cam.pitch = 0.55; cam.dist = 11; }
+  camCtl.lock = null; camCtl.reset = false; camCtl.pan.set(0, 0, 0);
   drop.t = 0; drop.island = id; drop.openLeaf = false; drop.phase = 'fall';
   mode = 'drop';
   landed = true;
@@ -1140,11 +1407,18 @@ function updateDrop(dt) {
     fx.dust({ x: self.x, y: 0.1, z: self.z });
     fx.ring({ x: self.x, y: 0, z: self.z }, { color: '#ffffff', from: 0.3, to: 3.2, life: 0.6 });
     drop.shake = 0.35;
+    camCtl.blend = reducedMotion() ? 0 : 0.8; // kamera terjun berpindah halus ke mode kamera pilihan
     mode = 'play';
     document.getElementById('w3-drophint').hidden = true;
     if (net) net.sendMove(toPx(self.x), toPy(self.z), 0);
     arrive(drop.island, true);
-    if (!sessionStorage.getItem('nutrantara-tip-arah')) { try { sessionStorage.setItem('nutrantara-tip-arah', '1'); } catch { /* abaikan */ } setTimeout(() => game.showToast('Tip: ← → memutar arah hadap, ↑ ↓ maju/mundur, R/F menoleh ke atas/bawah. Arahkan kursor untuk menoleh, klik tanah untuk berjalan.'), 2500); }
+    if (!sessionStorage.getItem('nutrantara-tip-kamera')) {
+      try { sessionStorage.setItem('nutrantara-tip-kamera', '1'); } catch { /* abaikan */ }
+      const tip = matchMedia('(pointer: coarse)').matches
+        ? 'Tip: joystick kiri untuk berjalan, geser layar untuk memutar kamera, cubit untuk zoom, BIDIK untuk mengunci kamera ke objek misi.'
+        : 'Tip: tahan klik kanan (atau seret) untuk memutar kamera, gulir untuk zoom. Q mengunci kamera ke objek misi, C mengembalikan kamera ke belakang, V kamera bebas.';
+      setTimeout(() => game.showToast(tip), 2500);
+    }
   }
   self.obj.position.set(self.x, self.h, self.z);
   self.obj.rotation.y = self.face;
@@ -1187,6 +1461,7 @@ function arrive(id, fromDrop) {
 function updatePlay(dt) {
   let ix = 0; let iz = 0;
   let turn = 0; let ahead = 0;
+  updateCamControl(dt);
   if (canMove()) {
     if (keys.has('f')) iz -= 1;
     if (keys.has('b')) iz += 1;
@@ -1196,16 +1471,20 @@ function updatePlay(dt) {
     if (keys.has('tr')) turn -= 1;
     if (keys.has('af')) ahead += 1;
     if (keys.has('ab')) ahead -= 1;
-    ix += stick.x; iz += stick.y;
+    ix += stick.x + gpad.lx; iz += stick.y + gpad.ly;
   }
-  // R/PageUp menengadah, F/PageDown menunduk.
-  if (keys.has('lu')) cam.pitch = Math.max(PITCH_MIN, cam.pitch - LOOK_SPEED * dt);
-  if (keys.has('ld')) cam.pitch = Math.min(PITCH_MAX, cam.pitch + LOOK_SPEED * dt);
-  // Tombol panah ←/→: memutar arah hadap; kamera ikut berputar ke belakang penjelajah.
+  // R/PageUp menengadah, F/PageDown menunduk (Isometrik: memiringkan pandangan atas sampai top-down).
+  if (keys.has('lu')) lookBy(0, -LOOK_SPEED * dt);
+  if (keys.has('ld')) lookBy(0, LOOK_SPEED * dt);
+  // Tombol panah ←/→: memutar arah hadap. Orbit: kamera ikut ke belakang penjelajah.
+  // Bahu & Orang Pertama: yang diputar kamera, penjelajah ikut. Isometrik: kamera diam.
   if (turn) {
-    self.face += turn * TURN_SPEED * dt;
-    let d = (self.face + Math.PI) - cam.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
-    cam.yaw += d * Math.min(1, dt * 5);
+    camCtl.reset = false; releaseLock(false);
+    if (followsView()) cam.yaw += turn * TURN_SPEED * dt;
+    else {
+      self.face += turn * TURN_SPEED * dt;
+      if (camMode === 'orbit') { let d = (self.face + Math.PI) - cam.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); cam.yaw += d * Math.min(1, dt * 5); }
+    }
     walkTo.point = null;
   }
   const len = Math.hypot(ix, iz);
@@ -1226,19 +1505,32 @@ function updatePlay(dt) {
   const moving = Math.hypot(mx, mz) > 0.05;
   const allowed = allowedSet();
   if (moving) {
-    const sp = SPEED * (keys.has('run') ? SPRINT : 1);
+    const sp = SPEED * (keys.has('run') || gpad.run ? SPRINT : 1);
     const c = W.clamp(toPx(self.x + mx * sp * dt), toPy(self.z + mz * sp * dt), allowed);
     self.x = toX(c.x); self.z = toZ(c.y);
-    if (faceMove && !turn) {
+    if (faceMove && !turn && !camCtl.lock && !followsView()) {
       let diff = Math.atan2(mx, mz) - self.face;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
       self.face += diff * Math.min(1, dt * 12);
     }
-  } else if (aim.active && aim.point && performance.now() - aim.lastMove < 4000 && !panelOpen && !turn) {
+    // Isometrik: geser layar kembali ke penjelajah saat ia berjalan (kecuali baru saja digeser).
+    if (camMode === 'iso' && performance.now() - camCtl.panAt > 1500) camCtl.pan.multiplyScalar(1 - Math.min(1, dt * 2));
+  } else if (aim.active && aim.point && performance.now() - aim.lastMove < 4000 && !panelOpen && !turn && !camCtl.lock && !followsView()) {
     // Diam: penjelajah menoleh ke arah kursor.
     const dx = aim.point.x - self.x; const dz = aim.point.z - self.z;
     if (Math.hypot(dx, dz) > 0.6) { let diff = Math.atan2(dx, dz) - self.face; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); self.face += diff * Math.min(1, dt * 8); }
   }
+  if (camCtl.lock) {
+    // Terkunci: penjelajah tetap menghadap target, juga saat bergeser ke samping.
+    const dx = camCtl.lock.x - self.x; const dz = camCtl.lock.z - self.z;
+    if (Math.hypot(dx, dz) > 0.8) { let diff = Math.atan2(dx, dz) - self.face; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); self.face += diff * Math.min(1, dt * 10); }
+  } else if (followsView()) {
+    // Bahu & Orang Pertama: penjelajah menghadap arah pandang kamera (bergeser ke samping dengan A/D).
+    let diff = (cam.yaw + Math.PI) - self.face; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    self.face += diff * Math.min(1, dt * 12);
+  }
+  self.obj.visible = camMode !== 'fp'; // Orang Pertama: tubuh sendiri tidak digambar
+  if (self.label) self.label.visible = camMode !== 'bahu'; // Bahu: label nama sendiri terlalu dekat dengan kamera
   updateFacingMarkers(moving);
   self.speed += ((moving ? Math.min(1, Math.max(len, Math.hypot(mx, mz))) : 0) - self.speed) * Math.min(1, dt * 10);
   if (jumpQueued && self.grounded && canMove()) { self.vy = JUMP; self.grounded = false; }
@@ -1259,8 +1551,10 @@ function updatePlay(dt) {
   self.obj.position.set(self.x, self.h, self.z);
   self.obj.rotation.y = self.face;
   self.obj.userData.animate(dt, { speed: self.speed, airborne: !self.grounded, height: self.h - floor });
-  const lookUp = Math.max(0, 0.25 - cam.pitch) / (0.25 - PITCH_MIN); // 0..1
-  const lookDown = Math.max(0, cam.pitch - 0.85) / (PITCH_MAX - 0.85); // 0..1
+  // Kepala ikut menengadah/menunduk mengikuti kamera orang ketiga (Isometrik: kemiringan kamera bukan arah pandang).
+  const tilt = camMode === 'orbit' || camMode === 'bahu';
+  const lookUp = tilt ? Math.min(1, Math.max(0, 0.25 - cam.pitch) / (0.25 - PITCH_MIN)) : 0; // 0..1
+  const lookDown = tilt ? Math.min(1, Math.max(0, cam.pitch - 0.85) / (PITCH_MAX - 0.85)) : 0; // 0..1
   self.obj.userData.head.rotation.x = -lookUp * 0.55 + lookDown * 0.35;
 
   const isl = islandAt3(self.x, self.z);
@@ -1272,8 +1566,9 @@ function updatePlay(dt) {
   const key = `${px},${py},${Math.round(self.h * 10)}`;
   if (now - lastSent > 100 && key !== lastKey) { lastSent = now; lastKey = key; if (net) net.sendMove(px, py, self.h); }
 
-  // Nara mengikuti di samping penjelajah
-  const off = new THREE.Vector3(-1.5, 0, 1.2).applyAxisAngle(new THREE.Vector3(0, 1, 0), self.face);
+  // Nara mengikuti di samping penjelajah: depan-kanan; di mode Bahu & Orang Pertama pindah ke kiri agar tidak menutupi pandangan.
+  const [nox, noz] = followsView() ? [1.7, 0.3] : [-1.5, 1.2];
+  const off = new THREE.Vector3(nox, 0, noz).applyAxisAngle(new THREE.Vector3(0, 1, 0), self.face);
   const nx = self.x + off.x; const nz = self.z + off.z;
   const nd = Math.hypot(nx - nara.position.x, nz - nara.position.z);
   if (nd > 0.6) { nara.position.x += (nx - nara.position.x) * Math.min(1, dt * 2.2); nara.position.z += (nz - nara.position.z) * Math.min(1, dt * 2.2); }
@@ -1390,13 +1685,21 @@ function updateFacingMarkers(moving) {
   if (!facingArrow) return;
   const t = clock.elapsedTime;
   const dist = 1.75 + (moving ? 0.2 : Math.sin(t * 4) * 0.1);
-  facingArrow.visible = mode === 'play';
+  facingArrow.visible = mode === 'play' && camMode !== 'fp'; // Orang Pertama: arah hadap = arah layar
   facingArrow.position.set(self.x + Math.sin(self.face) * dist, self.h + 0.06, self.z + Math.cos(self.face) * dist);
   facingArrow.rotation.set(-Math.PI / 2, self.face, 0);
   facingArrow.material.opacity = 0.75 + Math.sin(t * 4) * 0.15;
-  const showAim = mode === 'play' && aim.active && aim.point && performance.now() - aim.lastMove < 4000 && !panelOpen;
+  const showAim = mode === 'play' && aim.active && aim.point && performance.now() - aim.lastMove < 4000 && !panelOpen && !followsView();
   aimRing.visible = Boolean(showAim);
   if (showAim) { aimRing.position.set(aim.point.x, 0.06, aim.point.z); aimRing.scale.setScalar(1 + Math.sin(t * 6) * 0.08); }
+  const L = mode === 'play' ? camCtl.lock : null;
+  lockRing.visible = Boolean(L);
+  if (L) {
+    // Cincin membesar untuk target jauh agar tetap terlihat.
+    const far = Math.max(1, Math.hypot(L.x - self.x, L.z - self.z) / 25);
+    lockRing.position.set(L.x, 0.08, L.z); lockRing.rotation.z = -t * 1.5;
+    lockRing.scale.setScalar((1 + (L.reach || 0)) * far * (1 + Math.sin(t * 5) * 0.06));
+  }
   walkMarker.visible = Boolean(walkTo.point) && mode === 'play';
   if (walkTo.point) { walkMarker.position.set(walkTo.point.x, 0.07, walkTo.point.z); walkMarker.rotation.z = t * 2; }
 }
@@ -1443,20 +1746,56 @@ function updateNearby() {
   actionBtn.hidden = false;
 }
 
+// Arah dari titik fokus ke kamera untuk yaw kamera dan kemiringan p (p > 0 = kamera di atas).
+const camDir = (p) => new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(p), Math.sin(p), Math.cos(cam.yaw) * Math.cos(p));
+
 function updateCamera(dt) {
-  const target = new THREE.Vector3(self.x, self.h * 0.6 + 1.3, self.z);
-  const p = Math.max(0.04, cam.pitch);
-  const up = Math.max(0, 0.04 - cam.pitch); // seberapa jauh menengadah (0..0.54)
-  const dist = cam.dist * (1 - up * 0.6);
-  const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(p), Math.sin(p), Math.cos(cam.yaw) * Math.cos(p)).multiplyScalar(dist);
-  const pos = target.clone().add(off);
-  pos.y = Math.max(self.h + 0.5, pos.y - up * 2.2);
-  target.y += up * 26; // titik pandang naik ke langit
-  if (cam.pitch > 1.0) target.y -= (cam.pitch - 1.0) * 3; // menunduk lebih dalam
-  camera.position.lerp(pos, Math.min(1, dt * 6));
+  let pos; let target; let follow = 6; // follow = kecepatan kamera menyusul posisi idealnya
+  if (camMode === 'fp') {
+    // Orang Pertama: kamera di mata penjelajah, memandang searah yaw/pitch.
+    pos = new THREE.Vector3(self.x, self.h + EYE_H, self.z);
+    target = pos.clone().sub(camDir(cam.pitch));
+    follow = 0;
+  } else if (camMode === 'bahu') {
+    // Bahu: titik fokus sedikit di kanan kepala, sehingga penjelajah tampak di sisi kiri layar.
+    target = new THREE.Vector3(self.x + Math.cos(cam.yaw) * SHOULDER, self.h + 1.45, self.z - Math.sin(cam.yaw) * SHOULDER);
+    pos = target.clone().addScaledVector(camDir(cam.pitch), cam.dist);
+    pos.y = Math.max(self.h + 0.3, pos.y);
+    follow = 12;
+  } else if (camMode === 'iso') {
+    // Isometrik: kamera tinggi dengan sudut tetap; fokus bisa digeser, atau dipusatkan di antara penjelajah dan target terkunci.
+    const L = camCtl.lock;
+    if (L) {
+      // Geser ke arah target, tetapi penjelajah tetap terlihat di layar.
+      const hx = (L.x - self.x) / 2; const hz = (L.z - self.z) / 2; const hl = Math.hypot(hx, hz);
+      const k = Math.min(1, (cam.dist * 0.15) / Math.max(0.001, hl));
+      target = new THREE.Vector3(self.x + hx * k, 0, self.z + hz * k);
+    } else target = new THREE.Vector3(self.x + camCtl.pan.x, self.h * 0.5, self.z + camCtl.pan.z);
+    pos = target.clone().addScaledVector(camDir(cam.pitch), cam.dist);
+  } else {
+    target = new THREE.Vector3(self.x, self.h * 0.6 + 1.3, self.z);
+    const p = Math.max(0.04, cam.pitch);
+    const up = Math.max(0, 0.04 - cam.pitch); // seberapa jauh menengadah (0..0.54)
+    pos = target.clone().addScaledVector(camDir(p), cam.dist * (1 - up * 0.6));
+    pos.y = Math.max(self.h + 0.5, pos.y - up * 2.2);
+    target.y += up * 26; // titik pandang naik ke langit
+    if (cam.pitch > 1.0) target.y -= (cam.pitch - 1.0) * 3; // menunduk lebih dalam
+  }
+  // Setelah ganti mode (atau mendarat), kamera berpindah halus ke posisi barunya.
+  if (camCtl.blend > 0) { camCtl.blend -= dt; follow = camMode === 'fp' ? 8 : 5; } // FP lebih cepat agar tidak "melompat" saat transisi selesai
+  if (follow) camera.position.lerp(pos, Math.min(1, dt * follow));
+  else camera.position.copy(pos);
   if (drop.shake > 0) { drop.shake -= dt; camera.position.x += (Math.random() - 0.5) * drop.shake; camera.position.y += (Math.random() - 0.5) * drop.shake; }
   camera.lookAt(target);
-  if (sun.castShadow) { sun.target.position.set(self.x, 0, self.z); sun.position.copy(SUN_DIR).multiplyScalar(50).add(sun.target.position); }
+  if (sun.castShadow) {
+    // Isometrik melihat area lebih luas, jadi kotak bayangan matahari diperbesar.
+    const half = camMode === 'iso' ? 50 : 26;
+    const sc = sun.shadow.camera;
+    if (sc.right !== half) { sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.updateProjectionMatrix(); }
+    const fx0 = camMode === 'iso' ? target.x : self.x; const fz0 = camMode === 'iso' ? target.z : self.z;
+    sun.target.position.set(fx0, 0, fz0);
+    sun.position.copy(SUN_DIR).multiplyScalar(50).add(sun.target.position);
+  }
 }
 
 function updateOverview(dt) {
@@ -1606,10 +1945,17 @@ function frameLoop() {
   const dt = Math.min(0.05, clock.getDelta());
   statusTimer -= dt;
   if (statusTimer <= 0) { statusTimer = 0.5; quests.refresh(); refreshIslands(); updateSelfLabel(); updateGoal(); }
+  pollGamepad(dt);
   if (mode === 'overview') updateOverview(dt);
   else if (mode === 'drop') updateDrop(dt);
   else if (mode === 'play') updatePlay(dt);
-  if (mode !== 'overview') { selectRing.visible = false; setView(PLAY_VIEW); }
+  if (mode !== 'overview') { selectRing.visible = false; setView(mode === 'play' && camMode === 'iso' ? isoView() : PLAY_VIEW); }
+  // Sudut pandang (FOV) mengikuti mode kamera; Orang Pertama memakai FOV sebagai zoom.
+  const wantFov = mode === 'play' ? camFov() : 50;
+  if (Math.abs(camera.fov - wantFov) > 0.05) {
+    camera.fov += (wantFov - camera.fov) * (reducedMotion() ? 1 : Math.min(1, dt * 8));
+    camera.updateProjectionMatrix();
+  }
   updateOthers(dt);
   animateWorld(dt);
   if (horizon) horizon.position.set(camera.position.x, 0, camera.position.z);
@@ -1631,7 +1977,7 @@ function start() {
   requestAnimationFrame(frameLoop);
 }
 
-function stop() { running = false; keys.clear(); stick.x = stick.y = 0; nearby = null; walkTo.point = null; aim.active = false; if (quests) quests.closePanel(true); panelOpen = false; }
+function stop() { running = false; keys.clear(); stick.x = stick.y = 0; nearby = null; walkTo.point = null; aim.active = false; camCtl.lock = null; camCtl.reset = false; exitFreeLook(); if (quests) quests.closePanel(true); panelOpen = false; }
 
 function applyMode(prev) {
   const is3d = gfx !== '2d';
@@ -1640,6 +1986,7 @@ function applyMode(prev) {
   canvas2d.hidden = is3d;
   document.querySelector('.world-screen').classList.toggle('is-3d', is3d);
   renderGfxBar();
+  renderCamBar();
   if (prev && prev !== gfx) {
     game.showToast(gfx === '2d' ? 'Mode 2D aktif.' : gfx === 'high' ? 'Grafis 3D tinggi aktif.' : 'Grafis 3D ringan aktif (hemat baterai).');
     if (is3d && !built) { prepare().then(() => { if (landed && game.visibleScreen === 'world') { mode = 'play'; start(); } }); return; }
@@ -1697,7 +2044,7 @@ window.NutraWorld3D = {
   },
   leave() { stop(); mode = 'off'; landed = false; hideOverview(); visited.clear(); },
   /** Untuk uji otomatis (QA): akses posisi pemain & interaksi. */
-  debug: { get self() { return self; }, get nearby() { return nearby; }, interact: () => interact(), get items() { return quests ? quests.items.map(({ kind, pos, row, x, z }) => ({ kind, pos, row, x, z })) : []; } },
+  debug: { get self() { return self; }, get nearby() { return nearby; }, get cam() { return { mode: camMode, yaw: cam.yaw, pitch: cam.pitch, zoom: cam.dist, fov: camera ? camera.fov : null, lock: camCtl.lock ? camCtl.lock.kind : null, pan: camCtl.pan.length(), freeLook: camCtl.freeLook }; }, interact: () => interact(), get items() { return quests ? quests.items.map(({ kind, pos, row, x, z }) => ({ kind, pos, row, x, z })) : []; } },
   stop
 };
 
