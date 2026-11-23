@@ -43,6 +43,8 @@ function client() {
       waiters.push(w);
       setTimeout(() => { if (waiters.includes(w)) { waiters.splice(waiters.indexOf(w), 1); reject(new Error(`timeout menunggu pesan`)); } }, ms);
     }),
+    // Buang pesan lama di kotak masuk agar wait() berikutnya hanya melihat pesan baru.
+    drain: (pred) => { for (let i = inbox.length - 1; i >= 0; i--) if (pred(inbox[i])) inbox.splice(i, 1); },
     open: () => new Promise((r) => ws.once('open', r))
   };
 }
@@ -85,6 +87,8 @@ async function adminProbe() {
     const three = await fetch(`http://localhost:${PORT}/vendor/three/three.module.min.js`);
     ok(three.ok && three.headers.get('cache-control').includes('max-age'), 'Three.js lokal disajikan dengan cache');
     ok((await fetch(`http://localhost:${PORT}/server.js`)).status === 404, 'berkas server tidak dapat diunduh');
+    const health = await fetch(`http://localhost:${PORT}/health`).then((r) => r.json());
+    ok(health.ok === true && health.storage === true, '/health melaporkan folder data bisa ditulis');
 
     // ---------- Akun ----------
     const regA = await api('register', { username: 'Penjelajah07', password: 'rahasia123', color: '#ffd17c' });
@@ -197,6 +201,8 @@ async function adminProbe() {
     // Jawaban salah tetap sah (0 poin) dan pos boleh disegel.
     const wrongState = fakeState();
     wrongState.posts[1].challenges = [{ complete: true, attempts: 1, response: 'salah-total', correct: true }, { complete: true, attempts: 1, response: ['x'], correct: true }];
+    // Papan peringkat lama (TimTempe 80 poin dari langkah Ruang Arsip) tidak boleh terbaca di sini.
+    b.drain(type('leaderboard'));
     b.send({ type: 'progress', state: wrongState });
     const wb2 = await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.seals === 1));
     ok(wb2.leaderboard.find((r) => r.alias === 'TimTempe').score === 20, 'jawaban salah = 0 poin, segel tetap sah (klaim "benar" dari klien diabaikan)');

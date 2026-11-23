@@ -28,8 +28,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -t nutrantara .
-      - name: Jalankan & cek /health
+      - name: Jalankan & cek /health (disk data milik root, seperti disk permanen Render)
         run: |
-          docker run -d --name nt -p 3000:3000 -e NUTRANTARA_ADMIN_PIN=ci-pin-123456 nutrantara
-          for i in $(seq 1 20); do curl -fs http://localhost:3000/health && exit 0; sleep 1; done
-          docker logs nt; exit 1
+          # Folder host yang dibuat Docker dimiliki root; server (user node) harus tetap bisa menulis ke /data.
+          docker run -d --name nt -p 3000:3000 -v "$RUNNER_TEMP/nt-data:/data" -e NUTRANTARA_ADMIN_PIN=ci-pin-123456 nutrantara
+          for i in $(seq 1 20); do curl -fs http://localhost:3000/health | grep -q '"storage":true' && exit 0; sleep 1; done
+          curl -s http://localhost:3000/health || true; docker logs nt; exit 1

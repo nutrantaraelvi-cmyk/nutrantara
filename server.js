@@ -70,6 +70,22 @@ function loadDb() {
 const db = loadDb();
 let saveTimer = null;
 
+// Folder data harus bisa ditulis (mis. disk permanen Render di /data); tanpanya progres siswa hilang.
+// Dicek saat server mulai dan setiap kali menyimpan, lalu dilaporkan di /health sebagai "storage".
+function checkStorage() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const probe = path.join(DATA_DIR, '.uji-tulis');
+    fs.writeFileSync(probe, new Date().toISOString());
+    fs.unlinkSync(probe);
+    return true;
+  } catch (err) {
+    console.error(`[data] Folder data tidak bisa ditulis (${DATA_DIR}): ${err.message}. Progres siswa TIDAK akan tersimpan.`);
+    return false;
+  }
+}
+let storageOk = checkStorage();
+
 function flushDb() {
   clearTimeout(saveTimer);
   saveTimer = null;
@@ -78,7 +94,9 @@ function flushDb() {
     const tmp = `${DATA_FILE}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
     fs.renameSync(tmp, DATA_FILE);
+    storageOk = true;
   } catch (err) {
+    storageOk = false;
     console.error('[data] Gagal menyimpan data kelas:', err.message);
   }
 }
@@ -1070,7 +1088,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
-    return res.end(JSON.stringify({ ok: true, players: onlineIds().size }));
+    return res.end(JSON.stringify({ ok: true, players: onlineIds().size, storage: storageOk }));
   }
   const file = STATIC[url.pathname];
   if (!file || req.method !== 'GET') {
@@ -1168,7 +1186,7 @@ server.listen(PORT, () => {
   lanAddresses().forEach((ip) => console.log(`            http://${ip}:${PORT}/play   (bagikan ke siswa di jaringan yang sama)`));
   console.log(`  Admin   : http://localhost:${PORT}/admin`);
   console.log(`  PIN     : ${PRODUCTION ? '(dari NUTRANTARA_ADMIN_PIN, tidak ditampilkan)' : ADMIN_PIN}${PRODUCTION ? '' : process.env.NUTRANTARA_ADMIN_PIN ? ' (dari NUTRANTARA_ADMIN_PIN)' : ' (acak — atur NUTRANTARA_ADMIN_PIN agar tetap)'}`);
-  console.log(`  Data    : ${DATA_FILE}\n`);
+  console.log(`  Data    : ${DATA_FILE}${storageOk ? '' : '  ⚠ TIDAK BISA DITULIS: progres tidak akan tersimpan'}\n`);
 });
 
 function shutdown() {
