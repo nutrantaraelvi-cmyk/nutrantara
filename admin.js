@@ -127,8 +127,6 @@
     return new Date(iso).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' });
   }
 
-  const SCREEN_LABEL = { world: 'Dunia', map: 'Peta', mission: 'Misi', kitchen: 'Dapur', passport: 'Paspor', leaderboard: 'Peringkat', welcome: 'Sambutan' };
-
   function renderPlayers() {
     if (!snapshot) return;
     // Jangan menggambar ulang saat menu aksi sedang terbuka.

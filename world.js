@@ -21,7 +21,6 @@
   const chatInput = document.getElementById('chat-input');
   const chatState = document.getElementById('chat-state');
   const modeEl = document.getElementById('world-mode');
-  const $ = (s) => document.querySelector(s);
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const keys = new Set();

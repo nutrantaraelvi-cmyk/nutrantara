@@ -56,18 +56,55 @@ function freshDb() {
   };
 }
 
+// Cadangan bergulir: salinan classroom.json di data/backup, dibuat saat mulai, tiap 30 menit bila ada perubahan,
+// dan saat server berhenti. Hanya BACKUP_KEEP berkas terbaru yang disimpan.
+const BACKUP_DIR = path.join(DATA_DIR, 'backup');
+const BACKUP_KEEP = Number(process.env.NUTRANTARA_BACKUP_KEEP) || 48;
+const BACKUP_EVERY_MS = 30 * 60 * 1000;
+const BACKUP_RE = /^classroom-\d{8}-\d{6}(-\d+)?\.json$/;
+let dataRecovery = null; // null | 'backup' | 'empty': diisi bila classroom.json rusak saat server mulai
+
+const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+const listBackups = () => { try { return fs.readdirSync(BACKUP_DIR).filter((f) => BACKUP_RE.test(f)).sort(); } catch { return []; } };
+
+function parseDb(text) {
+  const saved = JSON.parse(text);
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) throw new Error('isi berkas bukan objek data kelas');
+  const base = freshDb();
+  return { ...base, ...saved, settings: { ...base.settings, ...saved.settings }, players: saved.players || {}, teams: saved.teams || {}, chat: saved.chat || [] };
+}
+
 function loadDb() {
+  let text;
   try {
-    const saved = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    const base = freshDb();
-    return { ...base, ...saved, settings: { ...base.settings, ...saved.settings }, players: saved.players || {}, teams: saved.teams || {}, chat: saved.chat || [] };
+    text = fs.readFileSync(DATA_FILE, 'utf8');
   } catch (err) {
-    if (err.code !== 'ENOENT') console.warn('[data] Gagal membaca data kelas, memulai data baru:', err.message);
+    if (err.code !== 'ENOENT') console.warn('[data] Gagal membaca data kelas:', err.message);
+    return freshDb();
+  }
+  try {
+    return parseDb(text);
+  } catch (err) {
+    // Berkas rusak TIDAK boleh tertimpa data kosong: simpan dengan nama lain, lalu pulihkan dari cadangan terbaru.
+    const corrupt = path.join(DATA_DIR, `classroom.corrupt-${stamp()}.json`);
+    try { fs.renameSync(DATA_FILE, corrupt); } catch { /* biarkan, tetap jangan ditimpa diam-diam */ }
+    console.error(`[data] ⚠ classroom.json rusak (${err.message}). Berkas asli disimpan sebagai ${corrupt}.`);
+    for (const file of listBackups().reverse()) {
+      try {
+        const restored = parseDb(fs.readFileSync(path.join(BACKUP_DIR, file), 'utf8'));
+        console.error(`[data] Data kelas dipulihkan dari cadangan ${file}. Periksa progres siswa sejak cadangan itu dibuat.`);
+        dataRecovery = 'backup';
+        return restored;
+      } catch { /* cadangan ini juga rusak, coba yang lebih lama */ }
+    }
+    console.error('[data] Tidak ada cadangan yang bisa dipakai. Memulai data kelas kosong.');
+    dataRecovery = 'empty';
     return freshDb();
   }
 }
 
 const db = loadDb();
+let backupDirty = true;
 let saveTimer = null;
 
 // Folder data harus bisa ditulis (mis. disk permanen Render di /data); tanpanya progres siswa hilang.
@@ -101,9 +138,33 @@ function flushDb() {
   }
 }
 
+/** Salin classroom.json ke data/backup dan hapus cadangan lama di luar BACKUP_KEEP. */
+function backupDb() {
+  if (!backupDirty) return;
+  flushDb();
+  if (!storageOk) return;
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    let name = `classroom-${stamp()}.json`;
+    for (let i = 1; fs.existsSync(path.join(BACKUP_DIR, name)); i += 1) name = `classroom-${stamp()}-${i}.json`;
+    fs.copyFileSync(DATA_FILE, path.join(BACKUP_DIR, name));
+    backupDirty = false;
+    const all = listBackups();
+    all.slice(0, Math.max(0, all.length - BACKUP_KEEP)).forEach((f) => fs.unlinkSync(path.join(BACKUP_DIR, f)));
+  } catch (err) {
+    console.error('[data] Gagal membuat cadangan:', err.message);
+  }
+}
+
 function scheduleSave() {
+  backupDirty = true;
   if (!saveTimer) saveTimer = setTimeout(flushDb, 1000);
 }
+
+if (dataRecovery) { flushDb(); backupDirty = false; } // data pulihan langsung ditulis sebagai classroom.json baru
+else if (fs.existsSync(DATA_FILE)) backupDb(); // cadangan saat mulai, sebelum ada perubahan
+else backupDirty = false;
+setInterval(backupDb, BACKUP_EVERY_MS).unref();
 
 // ---------- Utilitas ----------
 
@@ -118,12 +179,6 @@ function cleanText(value, max) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
-}
-
-function colorFor(alias) {
-  let h = 0;
-  for (const ch of alias) h = (h * 31 + ch.codePointAt(0)) % 360;
-  return `hsl(${h} 75% 62%)`;
 }
 
 function safeEqual(a, b) {
@@ -220,7 +275,7 @@ function validateProgress(state) {
         // Kebenaran selalu dihitung ulang dari kunci, bukan dari klaim klien.
         const empty = c.response === null || c.response === undefined || (Array.isArray(c.response) && !c.response.length);
         if (empty) { flags.push(`Pos ${m.id} tantangan ${i + 1}: ditandai selesai tanpa jawaban`); c.complete = false; c.points = 0; allDone = false; return; }
-        c.attempts = Math.max(1, Math.floor(Number(c.attempts)) || 1);
+        c.attempts = 1; // satu jawaban per tantangan (sejak 0.7); jumlah percobaan dari klien diabaikan
         c.correct = isCorrect(def, c.response);
         c.points = c.correct ? awardForAttempt(c.attempts) : 0;
         score += c.points;
@@ -242,6 +297,52 @@ function validateProgress(state) {
     prevSealed = Boolean(p.sealed);
   }
   return { score, seals, flags };
+}
+
+/**
+ * Jawaban yang sudah tersimpan di server terkunci: tantangan yang sudah dijawab tidak bisa diganti
+ * (mis. setelah siswa melihat kunci), dan nomor varian kasus tidak bisa ditukar setelah pos dimulai.
+ * Pos yang dimiliki regu dilewati karena bagian itu ditimpa data regu (`overlayTeam`).
+ * Mengembalikan { flags, corrected }: flags = upaya mengganti jawaban (tampil ⚠ di panel guru),
+ * corrected = state klien diubah sehingga klien perlu dikirimi progres server.
+ */
+function lockAnswers(prev, state, team) {
+  const flags = [];
+  let corrected = false;
+  const oldPosts = (prev && prev.posts) || {};
+  const posts = state.posts;
+  for (const m of MISSIONS) {
+    if (m.type !== 'analysis' || (team && team.posts[m.id])) continue;
+    const o = oldPosts[m.id];
+    if (!o || typeof o !== 'object') continue;
+    const oldList = Array.isArray(o.challenges) ? o.challenges : [];
+    const answered = oldList.some((c) => c && c.complete);
+    let p = posts[m.id];
+    if (!p || typeof p !== 'object') {
+      if (!answered && o.variant === undefined) continue;
+      p = posts[m.id] = {};
+      corrected = true;
+    }
+    // Progres lama tanpa nomor varian dinilai sebagai varian 0 (sama dengan `challengesFor`).
+    const ov = Number.isInteger(o.variant) ? o.variant : 0;
+    const nv = Number.isInteger(p.variant) ? p.variant : 0;
+    if (m.variants && (Number.isInteger(o.variant) || answered) && nv !== ov) {
+      flags.push(`Pos ${m.id}: nomor varian tidak boleh diganti, dikembalikan ke varian ${ov + 1}`);
+      p.variant = ov;
+      corrected = true;
+    }
+    if (!answered) continue;
+    if (!Array.isArray(p.challenges)) p.challenges = [];
+    oldList.forEach((c, i) => {
+      if (!c || !c.complete) return;
+      const n = p.challenges[i];
+      if (n && n.complete && same(n.response, c.response)) return;
+      if (n && n.complete) flags.push(`Pos ${m.id} tantangan ${i + 1}: jawaban yang sudah terkunci tidak bisa diganti`);
+      p.challenges[i] = clone(c);
+      corrected = true;
+    });
+  }
+  return { flags, corrected };
 }
 
 // ---------- Ringkasan untuk klien ----------
@@ -364,7 +465,6 @@ function handleJoin(ws, conn, msg) {
   // Tab/perangkat lain dengan akun yang sama ditutup.
   socketsOf(player.id).forEach((other) => { if (other !== ws) { send(other, { type: 'replaced' }); other.close(4001, 'replaced'); } });
   player.zone = 'lobby';
-  const token = null;
 
   conn.role = 'player';
   conn.playerId = player.id;
@@ -376,7 +476,6 @@ function handleJoin(ws, conn, msg) {
   send(ws, {
     type: 'welcome',
     you: { ...publicPlayer(player), muted: player.muted },
-    token,
     progress: player.progress,
     progressUpdatedAt: player.progressUpdatedAt,
     settings: publicSettings(),
@@ -785,8 +884,10 @@ function handleProgress(ws, conn, msg) {
   if (!p || !msg.state || typeof msg.state !== 'object' || !msg.state.posts) return;
   const state = msg.state;
   state.alias = p.alias;
+  const lock = lockAnswers(p.progress, state, teamOf(p));
   overlayTeam(state, teamOf(p));
-  const { score, seals, flags } = validateProgress(state);
+  const { score, seals, flags: checkFlags } = validateProgress(state);
+  const flags = [...lock.flags, ...checkFlags];
   p.progress = state;
   p.progressUpdatedAt = now();
   p.screen = cleanText(msg.screen, 20) || p.screen;
@@ -802,9 +903,9 @@ function handleProgress(ws, conn, msg) {
     const team = teamOf(p);
     if (team) teamChanged(team.code);
   }
-  if (flags.length) {
-    p.flags = [...flags.map((f) => `${now()} · ${f}`), ...(p.flags || [])].slice(0, 20);
-    send(ws, { type: 'progress-sync', progress: state, message: 'Sebagian progres tidak sah menurut server dan telah dikoreksi.' });
+  if (flags.length) p.flags = [...flags.map((f) => `${now()} · ${f}`), ...(p.flags || [])].slice(0, 20);
+  if (flags.length || lock.corrected) {
+    send(ws, { type: 'progress-sync', progress: state, message: flags.length ? 'Sebagian progres tidak sah menurut server dan telah dikoreksi.' : 'Progres disamakan dengan data di server.' });
   }
   positionsDirty = true; // seals/activePos ikut tampil di dunia
   adminDirty = true;
@@ -1089,7 +1190,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
-    return res.end(JSON.stringify({ ok: true, players: onlineIds().size, storage: storageOk }));
+    return res.end(JSON.stringify({ ok: true, players: onlineIds().size, storage: storageOk, recovery: dataRecovery }));
   }
   const file = STATIC[url.pathname];
   if (!file || req.method !== 'GET') {
@@ -1152,15 +1253,34 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// Siaran posisi 10×/detik, ringkasan admin 1×/detik, heartbeat 30 detik.
+// Siaran posisi per wilayah: tiap 100 ms seorang pemain hanya menerima posisi pemain di dunia dalam radius
+// NEAR_UNITS (400 m, lebih jauh dari kabut 330 m) dan teman satu regunya. Daftar lengkap dikirim ke semua
+// pemain setiap 2 detik (untuk peta mini besar dan papan nama), dan ke guru setiap 100 ms.
+// Ringkasan admin 1×/detik, heartbeat 30 detik.
+const NEAR_UNITS = 4000; // 1 unit = 0,1 m
+const FULL_EVERY = 20; // × 100 ms
+let positionTick = 0;
+let farDirty = false;
 setInterval(() => {
   for (const c of conns.values()) c.budget = Math.min(40, c.budget + 4);
-  if (!positionsDirty) return;
+  positionTick += 1;
+  if (positionsDirty) farDirty = true;
+  const full = farDirty && positionTick % FULL_EVERY === 0;
+  if (!positionsDirty && !full) return;
   positionsDirty = false;
-  const online = onlineIds();
-  const list = [...online].map((id) => db.players[id]).filter(Boolean).map((p) => [p.id, Math.round(p.x), Math.round(p.y), p.seals, p.activePos || 0, p.h || 0, p.zone === 'world' ? 1 : 0]);
-  toPlayers({ type: 'positions', list });
+  const online = [...onlineIds()].map((id) => db.players[id]).filter(Boolean);
+  const entry = (p) => [p.id, Math.round(p.x), Math.round(p.y), p.seals, p.activePos || 0, p.h || 0, p.zone === 'world' ? 1 : 0];
+  const list = online.map(entry);
   toAdmins({ type: 'positions', list });
+  if (full) { farDirty = false; return toPlayers({ type: 'positions', list }); }
+  const near = (a, b) => a === b || sameTeam(a, b) || (a.zone === 'world' && b.zone === 'world' && Math.hypot(a.x - b.x, a.y - b.y) <= NEAR_UNITS);
+  for (const [ws, c] of conns) {
+    if (c.role !== 'player' || ws.readyState !== 1) continue;
+    const me = db.players[c.playerId];
+    if (!me) continue;
+    const mine = online.filter((p) => near(me, p)).map(entry);
+    if (mine.length) ws.send(JSON.stringify({ type: 'positions', list: mine }));
+  }
 }, 100);
 
 setInterval(() => {
@@ -1187,11 +1307,13 @@ server.listen(PORT, () => {
   lanAddresses().forEach((ip) => console.log(`            http://${ip}:${PORT}/play   (bagikan ke siswa di jaringan yang sama)`));
   console.log(`  Admin   : http://localhost:${PORT}/admin`);
   console.log(`  PIN     : ${PRODUCTION ? '(dari NUTRANTARA_ADMIN_PIN, tidak ditampilkan)' : ADMIN_PIN}${PRODUCTION ? '' : process.env.NUTRANTARA_ADMIN_PIN ? ' (dari NUTRANTARA_ADMIN_PIN)' : ' (acak — atur NUTRANTARA_ADMIN_PIN agar tetap)'}`);
-  console.log(`  Data    : ${DATA_FILE}${storageOk ? '' : '  ⚠ TIDAK BISA DITULIS: progres tidak akan tersimpan'}\n`);
+  console.log(`  Data    : ${DATA_FILE}${storageOk ? '' : '  ⚠ TIDAK BISA DITULIS: progres tidak akan tersimpan'}`);
+  console.log(`  Cadangan: ${BACKUP_DIR} (tiap 30 menit, ${BACKUP_KEEP} terakhir)${dataRecovery ? `  ⚠ classroom.json rusak, data ${dataRecovery === 'backup' ? 'dipulihkan dari cadangan' : 'dimulai kosong'}` : ''}\n`);
 });
 
 function shutdown() {
   flushDb();
+  backupDb();
   process.exit(0);
 }
 process.on('SIGINT', shutdown);

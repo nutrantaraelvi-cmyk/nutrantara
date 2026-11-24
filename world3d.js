@@ -1378,7 +1378,6 @@ function startDrop(id, px, py) {
   mode = 'drop';
   landed = true;
   document.getElementById('w3-drophint').hidden = false;
-  const m = missionOf(id);
   document.getElementById('w3-place').textContent = placeName(id);
   if (camera) camera.position.set(tx + 6, 70, tz + 14);
   // Nara turun lebih dulu dan menunggu di dekat titik pendaratan.

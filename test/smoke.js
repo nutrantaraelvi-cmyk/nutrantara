@@ -201,24 +201,48 @@ async function adminProbe() {
     a.send({ type: 'spawn', island: 2 });
     ok((await a.wait(type('spawned'))).island === 2, 'segel Pos 1 membuka Pulau Pos 2');
 
+    // Tiap skenario penilaian dimulai dari progres kosong (guru mengatur ulang), karena jawaban
+    // yang sudah tersimpan di server terkunci dan tidak bisa diganti lewat progres baru.
+    const resetB = async () => {
+      const probe = client(); await probe.open();
+      probe.send({ type: 'admin-auth', pin: PIN });
+      await probe.wait(type('admin-state'));
+      probe.send({ type: 'admin', action: 'reset', playerId: wb.you.id });
+      await b.wait(type('reset'));
+      probe.ws.close();
+      b.drain(() => true);
+    };
+    const scoreB = (pred) => b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && pred(r)));
+
     // Jawaban salah tetap sah (0 poin) dan pos boleh disegel.
+    await resetB();
     const wrongState = fakeState();
     wrongState.posts[1].challenges = [{ complete: true, attempts: 1, response: 'salah-total', correct: true }, { complete: true, attempts: 1, response: ['x'], correct: true }];
-    // Papan peringkat lama (TimTempe 80 poin dari langkah Ruang Arsip) tidak boleh terbaca di sini.
-    b.drain(type('leaderboard'));
     b.send({ type: 'progress', state: wrongState });
-    const wb2 = await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.seals === 1));
+    const wb2 = await scoreB((r) => r.seals === 1);
     ok(wb2.leaderboard.find((r) => r.alias === 'TimTempe').score === 20, 'jawaban salah = 0 poin, segel tetap sah (klaim "benar" dari klien diabaikan)');
+
+    // Setelah melihat kunci, jawaban yang sudah terkunci tidak bisa diganti lewat progres.
+    b.send({ type: 'progress', state: fakeState() });
+    const relock = await b.wait(type('progress-sync'));
+    ok(relock.progress.posts[1].challenges[0].response === 'salah-total', 'jawaban yang sudah terkunci tidak bisa diganti lewat progres');
+    const afterTry = (await adminProbe()).players.find((p) => p.alias === 'TimTempe');
+    ok(afterTry.score === 20 && afterTry.flags.some((f) => f.includes('sudah terkunci')), 'skor tetap 20 dan guru melihat catatan upaya mengganti jawaban');
 
     // Pos 1 punya 100 varian kasus; server menilai dengan kunci varian milik siswa.
     const V = MISSIONS[0].variants;
     ok(V.length === 100 && new Set(V.map((v) => v.mission.stimulus.columns.join('|'))).size === 100, 'Pos 1 punya 100 varian dengan pasangan menu berbeda');
     const k = V.findIndex((v, i) => i > 0 && JSON.stringify(v.mission.challenges[1].correct) !== JSON.stringify(V[0].mission.challenges[1].correct));
-    const variantState = (keys) => { const st = fakeState(); st.posts[1].variant = k; st.posts[1].challenges = keys.map((r) => ({ complete: true, attempts: 1, response: r, log: [] })); return st; };
-    b.send({ type: 'progress', state: variantState(V[k].mission.challenges.map((c) => c.correct)) });
-    ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 80))), `jawaban benar varian ${k + 1} = 80 poin`);
-    b.send({ type: 'progress', state: variantState(V[0].mission.challenges.map((c) => c.correct)) });
-    ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 50))), 'kunci kasus asli tidak berlaku untuk varian lain');
+    const variantState = (keys, variant = k) => { const st = fakeState(); st.posts[1].variant = variant; st.posts[1].challenges = keys.map((r) => ({ complete: true, attempts: 1, response: r, log: [] })); return st; };
+    await resetB();
+    b.send({ type: 'progress', state: variantState(V[k].mission.challenges.map((x) => x.correct)) });
+    ok(Boolean(await scoreB((r) => r.score === 80)), `jawaban benar varian ${k + 1} = 80 poin`);
+    await resetB();
+    b.send({ type: 'progress', state: variantState(V[0].mission.challenges.map((x) => x.correct)) });
+    ok(Boolean(await scoreB((r) => r.score === 50)), 'kunci kasus asli tidak berlaku untuk varian lain');
+    // Varian tidak bisa ditukar ke varian 0 (kuncinya paling mudah ditemukan) setelah pos dimulai.
+    b.send({ type: 'progress', state: variantState(V[0].mission.challenges.map((x) => x.correct), 0) });
+    ok((await b.wait(type('progress-sync'))).progress.posts[1].variant === k, 'nomor varian tidak bisa ditukar setelah pos dimulai');
 
     // Pos 2 punya 4 kasus gangguan jalur; tiap kasus cocok dengan kasus Meja Uji Reagen.
     const P2 = MISSIONS[1];
@@ -239,9 +263,11 @@ async function adminProbe() {
     const AR = MISSIONS[5].activity.archive;
     ok(MISSIONS[5].type === 'project' && AR && ['k', 'b', 'p'].every((id) => AR.rubric.some((r) => r.id === id)) && AR.plus.length >= 3 && AR.tips.length >= 3, 'Pos 6: Ruang Arsip punya rubrik Klaim–Bukti–Penalaran dan kalimat pemandu masukan');
     const p2State = (v, keys) => { const st = fakeState({ 2: { started: true, sealed: false, reason: '', variant: v, challenges: keys.map((r) => ({ complete: true, attempts: 1, response: r, log: [] })) } }); st.posts[1].variant = 0; return st; };
+    await resetB();
     b.send({ type: 'progress', state: p2State(3, P2.variants[3].mission.challenges.map((c) => c.correct)) });
-    ok(Boolean(await b.wait((m) => m.type === 'leaderboard' && m.leaderboard.some((r) => r.alias === 'TimTempe' && r.score === 140))), 'kasus empedu Pos 2 dinilai dengan kuncinya sendiri');
+    ok(Boolean(await scoreB((r) => r.score === 140)), 'kasus empedu Pos 2 dinilai dengan kuncinya sendiri');
 
+    await resetB();
     const forged = fakeState({ 2: { started: true, sealed: true, reason: 'aaaaaaaaaaaaaaaaaaaaaaaaa', challenges: [{ complete: false, attempts: 0 }, { complete: false, attempts: 0 }] } });
     b.send({ type: 'progress', state: forged });
     const sync = await b.wait(type('progress-sync'));
@@ -317,7 +343,8 @@ async function adminProbe() {
     console.error('✗ Uji berhenti:', err.message);
     failures += 1;
   } finally {
-    server.kill();
+    // Tunggu server berhenti (ia menyimpan data dan cadangan terakhir) sebelum folder uji dihapus.
+    await new Promise((r) => { server.once('exit', r); server.kill(); });
     fs.rmSync(dataDir, { recursive: true, force: true });
     console.log(failures ? `\n${failures} uji gagal` : '\nSemua uji lulus');
     process.exit(failures ? 1 : 0);
