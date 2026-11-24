@@ -1082,7 +1082,7 @@ const STATIC = {
   '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/team.js': 'team.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
   '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js', '/peta3d.js': 'peta3d.js',
   '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/lab.js': 'lab.js', '/absorb.js': 'absorb.js', '/causal.js': 'causal.js', '/claims.js': 'claims.js', '/archive.js': 'archive.js', '/theme.css': 'theme.css',
-  '/map-art.js': 'map-art.js', '/sky.js': 'sky.js', '/region.js': 'region.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
+  '/map-art.js': 'map-art.js', '/sky.js': 'sky.js', '/region.js': 'region.js', '/terrain.js': 'terrain.js', '/weather.js': 'weather.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
   '/splash.js': 'splash.js', '/assets/layar-muat.webp': 'assets/layar-muat.webp', '/assets/layar-muat-960.webp': 'assets/layar-muat-960.webp',
   '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };

@@ -4,12 +4,16 @@
  * Mode: 'overview' (pilih map) → 'drop' (terjun dengan daun pisang) → 'play' (jelajah & misi di dalam dunia).
  * Koordinat server tetap 2D (world-data.js, 32400×15200); di sini dipetakan ke ruang 3D (1 px = 0,1 satuan ≈ 0,1 m).
  * Sejak 0.9 tiap pos adalah wilayah dunia terbuka ±1000 × 650 m; isinya dibangun di region.js.
+ * Sejak 1.1 wilayah pos bermedan blok (terrain.js: bukit, gunung, lembah, danau, struktur) dan tiap pulau punya
+ * cuaca bergilir (weather.js). Penjelajah naik/turun 1 blok otomatis, melompati 2 blok, dan berenang di air.
  */
 import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, createLabel, createBubble, toon, PALETTE } from './characters.js';
 import { createFx } from './fx.js';
 import { createQuests } from './quest.js';
-import { buildRegions } from './region.js';
+import { buildRegion } from './region.js';
+import { createTerrain } from './terrain.js';
+import { createWeather, forecast, WEATHER } from './weather.js';
 import { SUN_DIR, createSkyDome, createCloudSea, cumulusTextures, createCumulus } from './sky.js';
 import { createCandiBentar, createMeru, createPenjor, createKite, createPinisi, createStupa, createRumahGadang, createGunungan, createGong, createOndelOndel, createCorn, createTempe, createPapaya, kawungTexture } from './culture.js';
 
@@ -30,6 +34,9 @@ const GRAVITY = 26;
 const JUMP = 9.6;
 const ISLAND_COLORS = { 0: '#78f4bd', 1: '#ff9f91', 2: '#ffd17c', 3: '#f59e5b', 4: '#68dce7', 5: '#c58cf0', 6: '#ffd17c', 7: '#9bdc5a', 8: '#4fb56a', 9: '#5ec8e8', 10: '#f5c66b', 11: '#f472b6', 12: '#e2853f' };
 const SPRINT = 1.65; // Shift = berlari
+const STEP_UP = 1.05; // undakan 1 blok dinaiki/dituruni otomatis
+const SWIM_Y = -1;    // di air yang lebih dalam, penjelajah berenang di ketinggian ini
+const SWIM_SPEED = 0.6;
 const islandOf = (id) => W.islands.find((x) => x.id === id);
 const HALF_W = (W.width * S) / 2; // setengah lebar peta dalam meter
 const HALF_H = (W.height * S) / 2;
@@ -51,6 +58,10 @@ const missionOf = (id) => MISSIONS.find((m) => m.id === id);
 const sealedIds = () => MISSIONS.filter((m) => game.state.posts[m.id] && game.state.posts[m.id].sealed).map((m) => m.id);
 const allowedSet = () => W.allowedIslands(sealedIds(), net && net.online ? net.settings.openPosts : null);
 const islandAt3 = (x, z) => W.islandAt(toPx(x), toPy(z));
+// Tinggi blok medan (0 di luar wilayah pos) dan lantai pijakan: di air dalam, penjelajah berenang di SWIM_Y.
+const terrainH = (x, z) => (terrain ? terrain.heightAt(x, z) : 0);
+const groundAt = (x, z) => Math.max(SWIM_Y, terrainH(x, z));
+const inWater = (x, z) => terrainH(x, z) < 0;
 
 // ---------- DOM ----------
 const stage = document.querySelector('.world-stage');
@@ -64,6 +75,7 @@ wrap.innerHTML = `
   <div class="w3-hud">
     <div class="w3-hud-left">
       <div class="w3-chip w3-place" id="w3-place">—</div>
+      <div class="w3-chip w3-weather" id="w3-weather" title="Cuaca pulau ini dan cuaca berikutnya">—</div>
       <div class="w3-chip" title="Kepingan arsip yang sudah dikumpulkan"><span aria-hidden="true">✦</span> <b id="w3-shards">0</b>/<span id="w3-shards-total">0</span> <small>KEPINGAN</small></div>
     </div>
     <div class="w3-chip w3-goal" id="w3-goal" aria-live="polite"></div>
@@ -118,8 +130,14 @@ let renderer = null;
 let scene;
 let camera;
 let sun;
+let hemi;
+let skyDome;
 let fx;
 let quests;
+let terrain = null;
+let weather = null;
+let weatherIsland = 0; // pulau terakhir yang dipijak (cuaca tetap terasa di atas jembatan)
+const regionTops = []; // permukaan datar wilayah pos, disembunyikan saat medan blok tampil
 const clock = new THREE.Clock();
 let running = false;
 let built = false;
@@ -166,29 +184,37 @@ function initRenderer() {
   const sky = new THREE.Color('#86d4f7');
   scene.background = sky;
   scene.fog = new THREE.Fog('#bfe9fb', 110, 330);
-  scene.add(createSkyDome({ radius: 650, horizon: '#bfe9fb' }));
+  skyDome = createSkyDome({ radius: 650, horizon: '#bfe9fb' });
+  scene.add(skyDome);
   camera = new THREE.PerspectiveCamera(50, 16 / 9, PLAY_VIEW.near, PLAY_VIEW.far);
-  scene.add(new THREE.HemisphereLight('#fffaf0', '#5aa86a', 1.9));
+  hemi = new THREE.HemisphereLight('#fffaf0', '#5aa86a', 1.9);
+  scene.add(hemi);
   sun = new THREE.DirectionalLight('#ffe9b8', 2.5);
   sun.position.copy(SUN_DIR).multiplyScalar(50);
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 });
+  Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 140 });
   sun.shadow.bias = -0.0008;
   scene.add(sun, sun.target);
   fx = createFx(scene);
+  weather = createWeather({ scene, sky: skyDome, hemi, sun, gfx, reduce: motionMQ.matches });
   bindInput(renderer.domElement);
   return true;
 }
 
 // Rentang pandang: dekat saat bermain (kabut menutup wilayah jauh), jauh saat melihat peta dari atas.
 const PLAY_VIEW = { near: 0.1, far: 800, fogNear: 110, fogFar: 330 };
+// 3D Ringan: medan blok dimuat dalam radius lebih kecil, jadi kabut juga lebih dekat.
+const PLAY_VIEW_LOW = { near: 0.1, far: 600, fogNear: 80, fogFar: 235 };
+const playView = () => (gfx === 'low' ? PLAY_VIEW_LOW : PLAY_VIEW);
 // Isometrik: kamera jauh di atas, jadi kabut dimulai sesudah jarak kamera agar area sekitar tetap jelas.
 const ISO_VIEW = { near: 0.1, far: 800, fogNear: 0, fogFar: 0 };
-function isoView() { ISO_VIEW.fogNear = cam.dist + 70; ISO_VIEW.fogFar = cam.dist + 300; return ISO_VIEW; }
+function isoView() { const v = playView(); ISO_VIEW.far = v.far; ISO_VIEW.fogNear = cam.dist + v.fogNear * 0.64; ISO_VIEW.fogFar = cam.dist + v.fogFar * 0.9; return ISO_VIEW; }
+// Jarak kabut dasar; cuaca (weather.js) mengalikannya setiap bingkai.
+const viewFog = { near: 110, far: 330 };
 function setView(v) {
-  if (camera.near === v.near && camera.far === v.far && scene.fog.near === v.fogNear) return;
+  viewFog.near = v.fogNear; viewFog.far = v.fogFar;
+  if (camera.near === v.near && camera.far === v.far) return;
   camera.near = v.near; camera.far = v.far; camera.updateProjectionMatrix();
-  scene.fog.near = v.fogNear; scene.fog.far = v.fogFar;
 }
 
 function applyQuality() {
@@ -197,6 +223,8 @@ function applyQuality() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, high ? 2 : 1));
   renderer.shadowMap.enabled = high;
   sun.castShadow = high;
+  if (terrain) terrain.setQuality(gfx);
+  if (weather) weather.setQuality(gfx);
   scene.traverse((o) => { if (o.material && !Array.isArray(o.material)) o.material.needsUpdate = true; });
 }
 
@@ -232,17 +260,20 @@ function buildIsland(isl) {
   const g = new THREE.Group();
   const big = isBig(f);
   const seg = big ? 200 : 48; // tepi wilayah besar harus halus agar sama dengan batas gerak elips
-  const sand = cyl(1, 0.97, 0.5, '#ecd8a0', seg); sand.scale.set(f.rx + 0.6, 1, f.rz + 0.6);
+  // Wilayah pos: tepi pasir & tebing tanpa tutup, agar danau dan lembah medan blok tidak tertutup cakram.
+  const sand = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.97, 0.5, seg, 1, big), toon('#ecd8a0', big ? { side: THREE.DoubleSide } : {}));
+  sand.scale.set(f.rx + 0.6, 1, f.rz + 0.6);
   add(sand, 0, -0.32, 0, g);
   const top = cyl(1, 1, 0.5, isl.id === 0 ? '#74d46f' : isl.id === 10 ? '#ecd79a' : '#68cf67', seg); top.scale.set(f.rx, 1, f.rz);
   add(top, 0, -0.25, 0, g);
   top.userData.islandId = isl.id;
   islandTops.push(top);
+  if (big) regionTops.push(top);
   // Tebing berlapis
   const layers = [[1.02, 0.82, 2.4, '#8b6b4e'], [0.82, 0.5, 2.8, '#735a45'], [0.5, 0.12, 3.6, '#5e4a3b']].map(([rt, rb, h, c]) => [rt, rb, big ? h * 4 : h, c]);
   let y = -0.57;
   layers.forEach(([rt, rb, h, c]) => {
-    const l = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, big ? 64 : 14), toon(c));
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, big ? 64 : 14, 1, big), toon(c));
     l.scale.set(f.rx + 0.6, 1, f.rz + 0.6);
     y -= h / 2;
     add(l, 0, y, 0, g);
@@ -714,10 +745,11 @@ function buildShards() {
   });
   const spots = [[0, 10.4, 3.2, -6.2], [0, -11, 2.5, 7.4], [0, 15, 0.9, 6], [0, -16, 0.9, -1],
     [1, -0.6, 0.9, 0.55], [2, 0.7, 0.9, 0.55], [3, -0.6, 0.9, 0.5], [4, 0.6, 0.9, 0.5], [5, -0.6, 0.9, 0.55], [6, 0.65, 0.9, 0.5], [0, -4, 0.9, 9], [0, 17, 0.9, -5]];
-  spots.forEach(([isl, lx, y, lz], i) => {
+  spots.forEach(([isl, lx, y0, lz], i) => {
     const f = frame(isl);
     const x = isl === 0 ? f.x + lx : f.x + lx * f.rx;
     const z = isl === 0 ? f.z + lz : f.z + lz * f.rz;
+    const y = y0 + (isl === 0 ? 0 : groundAt(x, z)); // di wilayah pos, kepingan melayang di atas blok medan
     const g = new THREE.Group();
     const leaf = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), toon(PALETTE.gold, { emissive: '#c98a1a', emissiveIntensity: 0.55 }));
     leaf.scale.set(0.7, 1.15, 0.35);
@@ -726,8 +758,9 @@ function buildShards() {
     add(g, x, y, z);
     shards.push({ id: i, obj: g, x, y, z, island: isl, taken: false });
   });
-  // Kepingan di pulau jelajah (ditambahkan di belakang agar id lama tetap sama).
-  wildShards.forEach(([x, y, z, isl]) => {
+  // Kepingan di pulau jelajah dan wilayah pos (ditambahkan di belakang agar id lama tetap sama),
+  // lalu kepingan di puncak menara pandang medan blok (sejak 1.1).
+  [...wildShards, ...(terrain ? terrain.shardSpots : [])].forEach(([x, y, z, isl]) => {
     const g = new THREE.Group();
     const leaf = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), toon(PALETTE.gold, { emissive: '#c98a1a', emissiveIntensity: 0.55 }));
     leaf.scale.set(0.7, 1.15, 0.35);
@@ -758,7 +791,9 @@ async function prepare(onProgress = () => {}) {
         onSealed: sealed
       });
     },
-    () => buildRegions({ scene, W, frame, toX, toZ, items: quests.items, platforms, shardSpots: wildShards, animated, gfx }),
+    () => { terrain = createTerrain({ scene, gfx, anisotropy: gfx === 'high' ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 1 }); terrain.visible = false; },
+    // Satu langkah per wilayah pos: grid medan blok + isinya (agar layar muat tetap bergerak).
+    ...W.islands.filter((i) => W.isPost(i.id)).map((isl) => () => buildRegion({ scene, W, frame, toX, toZ, items: quests.items, platforms, shardSpots: wildShards, animated, gfx, terrain }, isl.id)),
     () => buildDecor(),
     () => buildShards(),
     () => {
@@ -966,8 +1001,10 @@ function groundPoint(e) {
   const r = renderer.domElement.getBoundingClientRect();
   const p = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(p, camera);
-  const hit = raycaster.intersectObjects(islandTops, false)[0];
-  if (hit) return new THREE.Vector3(hit.point.x, 0, hit.point.z);
+  // Medan blok dulu (bukit menutupi permukaan datar di bawahnya); permukaan wilayah pos yang tersembunyi dilewati.
+  const surfaces = terrain && terrain.group.visible ? [...terrain.pickables, ...islandTops.filter((t) => t.visible)] : islandTops;
+  const hit = raycaster.intersectObjects(surfaces, false)[0];
+  if (hit) return new THREE.Vector3(hit.point.x, groundAt(hit.point.x, hit.point.z), hit.point.z);
   groundPlane.constant = 0;
   const out = new THREE.Vector3();
   return raycaster.ray.intersectPlane(groundPlane, out) ? out.setY(0) : null;
@@ -1176,7 +1213,7 @@ function bindInput(el) {
     drag = null;
     if (!click) return;
     if (mode === 'overview') { const id = pickIsland(e); if (id !== null) selectIsland(id); }
-    if (mode === 'play' && !panelOpen) { const p = groundPoint(e); if (p) { const c = W.clamp(toPx(p.x), toPy(p.z), allowedSet()); walkTo.point = new THREE.Vector3(toX(c.x), 0, toZ(c.y)); fx.ring({ x: walkTo.point.x, y: 0, z: walkTo.point.z }, { color: '#f5b72b', from: 0.2, to: 1.4, life: 0.45 }); } }
+    if (mode === 'play' && !panelOpen) { const p = groundPoint(e); if (p) { const c = W.clamp(toPx(p.x), toPy(p.z), allowedSet()); walkTo.point = new THREE.Vector3(toX(c.x), 0, toZ(c.y)); walkTo.point.y = groundAt(walkTo.point.x, walkTo.point.z); fx.ring({ x: walkTo.point.x, y: walkTo.point.y, z: walkTo.point.z }, { color: '#f5b72b', from: 0.2, to: 1.4, life: 0.45 }); } }
   };
   el.addEventListener('pointerup', (e) => endPointer(e, false));
   el.addEventListener('pointercancel', (e) => endPointer(e, true));
@@ -1317,6 +1354,7 @@ function renderOverview() {
     <h3>${m ? `${m.title} <em>${m.titleEm}</em>` : W.isWild(id) ? islandOf(id).name : 'Alun-alun <em>Nusantara</em>'}</h3>
     <p>${m ? m.description : W.isWild(id) ? `${islandOf(id).desc} Tidak ada soal di sini: bebas menjelajah dan mencari kepingan arsip.` : 'Titik kumpul kelas bersama Nara. Ada gapura, sawah bertingkat, kolam, dan blok tempe berisi kepingan arsip.'}</p>
     ${progress}
+    ${(() => { const w = weatherText(id); const b = terrain && terrain.biomeOf(id); return `<p class="ov-weather">${b ? `<b>Medan:</b> ${b.name} (${b.desc}).<br>` : ''}<b>Iklim:</b> ${w.climate} · <b>Cuaca:</b> ${w.now}, ${w.minutes} mnt lagi ${w.next}</p>`; })()}
     <p class="ov-status ${st.key}">${st.text}</p>
     <button type="button" class="button button-primary ov-drop" id="ov-drop"${st.key === 'locked' ? ' disabled' : ''}>${st.key === 'locked' ? '⌑ Terkunci' : 'Terjun ke sini ↓'}</button>`;
 }
@@ -1380,8 +1418,10 @@ function startDrop(id, px, py) {
   document.getElementById('w3-drophint').hidden = false;
   document.getElementById('w3-place').textContent = placeName(id);
   if (camera) camera.position.set(tx + 6, 70, tz + 14);
+  // Medan di sekitar titik pendaratan dibangun dulu agar tanah sudah ada saat tiba.
+  if (terrain) { terrain.visible = true; terrain.prime(tx, tz); }
   // Nara turun lebih dulu dan menunggu di dekat titik pendaratan.
-  nara.position.set(tx - 1.8, 0, tz + 0.8);
+  nara.position.set(tx - 1.8, groundAt(tx - 1.8, tz + 0.8), tz + 0.8);
   start();
 }
 
@@ -1400,11 +1440,12 @@ function updateDrop(dt) {
   }
   self.h += self.vy * dt;
   self.face += dt * (drop.phase === 'fall' ? 1.2 : 0.4);
-  if (self.h <= 0) {
-    self.h = 0; self.vy = 0; self.grounded = true;
+  const landY = groundAt(self.x, self.z);
+  if (self.h <= landY) {
+    self.h = landY; self.vy = 0; self.grounded = true;
     self.obj.userData.land();
-    fx.dust({ x: self.x, y: 0.1, z: self.z });
-    fx.ring({ x: self.x, y: 0, z: self.z }, { color: '#ffffff', from: 0.3, to: 3.2, life: 0.6 });
+    fx.dust({ x: self.x, y: landY + 0.1, z: self.z });
+    fx.ring({ x: self.x, y: landY, z: self.z }, { color: '#ffffff', from: 0.3, to: 3.2, life: 0.6 });
     drop.shake = 0.35;
     camCtl.blend = reducedMotion() ? 0 : 0.8; // kamera terjun berpindah halus ke mode kamera pilihan
     mode = 'play';
@@ -1504,9 +1545,18 @@ function updatePlay(dt) {
   const moving = Math.hypot(mx, mz) > 0.05;
   const allowed = allowedSet();
   if (moving) {
-    const sp = SPEED * (keys.has('run') || gpad.run ? SPRINT : 1);
+    const sp = SPEED * (keys.has('run') || gpad.run ? SPRINT : 1) * (self.grounded && inWater(self.x, self.z) ? SWIM_SPEED : 1);
     const c = W.clamp(toPx(self.x + mx * sp * dt), toPy(self.z + mz * sp * dt), allowed);
-    self.x = toX(c.x); self.z = toZ(c.y);
+    let nx = toX(c.x); let nz = toZ(c.y);
+    // Medan blok: undakan setinggi ≤ 1 blok di atas kaki bisa dimasuki (saat melompat: sampai 2 blok);
+    // dinding yang lebih tinggi menahan, dan penjelajah menyusur sepanjang dinding.
+    const enter = (x, z) => groundAt(x, z) <= self.h + STEP_UP;
+    if (!enter(nx, nz)) {
+      if (enter(nx, self.z)) nz = self.z;
+      else if (enter(self.x, nz)) nx = self.x;
+      else { nx = self.x; nz = self.z; }
+    }
+    self.x = nx; self.z = nz;
     if (faceMove && !turn && !camCtl.lock && !followsView()) {
       let diff = Math.atan2(mx, mz) - self.face;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
@@ -1535,19 +1585,30 @@ function updatePlay(dt) {
   if (jumpQueued && self.grounded && canMove()) { self.vy = JUMP; self.grounded = false; }
   jumpQueued = false;
   const prevH = self.h;
+  const wasGrounded = self.grounded;
   self.vy -= GRAVITY * dt;
   self.h += self.vy * dt;
-  let floor = 0;
+  let floor = groundAt(self.x, self.z);
   platforms.forEach((p) => { if (Math.abs(self.x - p.x) <= p.hw + 0.2 && Math.abs(self.z - p.z) <= p.hd + 0.2 && prevH >= p.top - 0.05) floor = Math.max(floor, p.top); });
   if (self.h <= floor) {
-    if (!self.grounded && prevH - floor > 0.6) fx.dust({ x: self.x, y: floor + 0.05, z: self.z });
+    // Mendarat, atau naik satu undakan (tubuh menyusul halus lewat stepOff).
+    if (!wasGrounded && prevH - floor > 0.6) fx.dust({ x: self.x, y: floor + 0.05, z: self.z });
+    if (wasGrounded && floor - prevH > 0.05) self.stepOff = (self.stepOff || 0) - (floor - prevH);
+    self.h = floor; self.vy = 0; self.grounded = true;
+  } else if (wasGrounded && self.vy <= 0 && prevH - floor <= STEP_UP) {
+    // Turun satu undakan tanpa melayang.
+    self.stepOff = (self.stepOff || 0) + (prevH - floor);
     self.h = floor; self.vy = 0; self.grounded = true;
   } else self.grounded = false;
+  self.stepOff = (self.stepOff || 0) * Math.exp(-dt * 16);
 
-  // Debu langkah
-  if (self.grounded && self.speed > 0.6 && Math.random() < dt * 4) fx.dust({ x: self.x, y: floor + 0.05, z: self.z });
+  // Debu langkah (di air: cipratan)
+  if (self.grounded && self.speed > 0.6 && Math.random() < dt * 4) {
+    if (inWater(self.x, self.z)) fx.ring({ x: self.x, y: -0.25, z: self.z }, { color: '#e8f8ff', from: 0.2, to: 1.1, life: 0.4 });
+    else fx.dust({ x: self.x, y: floor + 0.05, z: self.z });
+  }
 
-  self.obj.position.set(self.x, self.h, self.z);
+  self.obj.position.set(self.x, self.h + self.stepOff, self.z);
   self.obj.rotation.y = self.face;
   self.obj.userData.animate(dt, { speed: self.speed, airborne: !self.grounded, height: self.h - floor });
   // Kepala ikut menengadah/menunduk mengikuti kamera orang ketiga (Isometrik: kemiringan kamera bukan arah pandang).
@@ -1562,8 +1623,10 @@ function updatePlay(dt) {
 
   const now = performance.now();
   const px = Math.round(toPx(self.x)); const py = Math.round(toPy(self.z));
-  const key = `${px},${py},${Math.round(self.h * 10)}`;
-  if (now - lastSent > 100 && key !== lastKey) { lastSent = now; lastKey = key; if (net) net.sendMove(px, py, self.h); }
+  // Server menyimpan tinggi di atas blok medan (0–8 m); pemain lain menambahkannya ke medan di posisi itu.
+  const relH = Math.max(0, self.h - terrainH(self.x, self.z));
+  const key = `${px},${py},${Math.round(relH * 10)}`;
+  if (now - lastSent > 100 && key !== lastKey) { lastSent = now; lastKey = key; if (net) net.sendMove(px, py, relH); }
 
   // Nara mengikuti di samping penjelajah: depan-kanan; di mode Bahu & Orang Pertama pindah ke kiri agar tidak menutupi pandangan.
   const [nox, noz] = followsView() ? [1.7, 0.3] : [-1.5, 1.2];
@@ -1571,7 +1634,8 @@ function updatePlay(dt) {
   const nx = self.x + off.x; const nz = self.z + off.z;
   const nd = Math.hypot(nx - nara.position.x, nz - nara.position.z);
   if (nd > 0.6) { nara.position.x += (nx - nara.position.x) * Math.min(1, dt * 2.2); nara.position.z += (nz - nara.position.z) * Math.min(1, dt * 2.2); }
-  nara.position.y += ((self.h > 0.5 ? self.h * 0.7 : 0) - nara.position.y) * Math.min(1, dt * 3);
+  const lift = self.h - groundAt(self.x, self.z); // Nara ikut naik sedikit saat penjelajah melompat/berada di pijakan
+  nara.position.y += (groundAt(nara.position.x, nara.position.z) + (lift > 0.5 ? lift * 0.7 : 0) - nara.position.y) * Math.min(1, dt * 3);
   const toSelf = Math.atan2(self.x - nara.position.x, self.z - nara.position.z);
   let nd2 = toSelf - nara.rotation.y; nd2 = Math.atan2(Math.sin(nd2), Math.cos(nd2));
   nara.rotation.y += nd2 * Math.min(1, dt * 4);
@@ -1685,22 +1749,23 @@ function updateFacingMarkers(moving) {
   const t = clock.elapsedTime;
   const dist = 1.75 + (moving ? 0.2 : Math.sin(t * 4) * 0.1);
   facingArrow.visible = mode === 'play' && camMode !== 'fp'; // Orang Pertama: arah hadap = arah layar
-  facingArrow.position.set(self.x + Math.sin(self.face) * dist, self.h + 0.06, self.z + Math.cos(self.face) * dist);
+  const ax = self.x + Math.sin(self.face) * dist; const az = self.z + Math.cos(self.face) * dist;
+  facingArrow.position.set(ax, Math.max(self.h, groundAt(ax, az)) + 0.06, az);
   facingArrow.rotation.set(-Math.PI / 2, self.face, 0);
   facingArrow.material.opacity = 0.75 + Math.sin(t * 4) * 0.15;
   const showAim = mode === 'play' && aim.active && aim.point && performance.now() - aim.lastMove < 4000 && !panelOpen && !followsView();
   aimRing.visible = Boolean(showAim);
-  if (showAim) { aimRing.position.set(aim.point.x, 0.06, aim.point.z); aimRing.scale.setScalar(1 + Math.sin(t * 6) * 0.08); }
+  if (showAim) { aimRing.position.set(aim.point.x, aim.point.y + 0.06, aim.point.z); aimRing.scale.setScalar(1 + Math.sin(t * 6) * 0.08); }
   const L = mode === 'play' ? camCtl.lock : null;
   lockRing.visible = Boolean(L);
   if (L) {
     // Cincin membesar untuk target jauh agar tetap terlihat.
     const far = Math.max(1, Math.hypot(L.x - self.x, L.z - self.z) / 25);
-    lockRing.position.set(L.x, 0.08, L.z); lockRing.rotation.z = -t * 1.5;
+    lockRing.position.set(L.x, groundAt(L.x, L.z) + 0.08, L.z); lockRing.rotation.z = -t * 1.5;
     lockRing.scale.setScalar((1 + (L.reach || 0)) * far * (1 + Math.sin(t * 5) * 0.06));
   }
   walkMarker.visible = Boolean(walkTo.point) && mode === 'play';
-  if (walkTo.point) { walkMarker.position.set(walkTo.point.x, 0.07, walkTo.point.z); walkMarker.rotation.z = t * 2; }
+  if (walkTo.point) { walkMarker.position.set(walkTo.point.x, walkTo.point.y + 0.07, walkTo.point.z); walkMarker.rotation.z = t * 2; }
 }
 
 function updateShards(dt) {
@@ -1732,7 +1797,7 @@ function updateShardHud() { document.getElementById('w3-shards').textContent = S
 
 function updateNearby() {
   let found = null;
-  const it = quests.nearest(self.x, self.z, self.h);
+  const it = quests.nearest(self.x, self.z, self.h - groundAt(self.x, self.z));
   if (it) found = { kind: 'item', item: it, key: `${it.kind}${it.pos}${it.row ?? ''}` };
   else if (Math.hypot(nara.position.x - self.x, nara.position.z - self.z) < 2.2) found = { kind: 'nara', key: 'nara' };
   const prev = nearby === undefined ? 'init' : nearby ? nearby.key : 'none';
@@ -1750,9 +1815,10 @@ const camDir = (p) => new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(p), Math.si
 
 function updateCamera(dt) {
   let pos; let target; let follow = 6; // follow = kecepatan kamera menyusul posisi idealnya
+  const gH = groundAt(self.x, self.z); const rel = self.h - gH; // fokus kamera mengikuti tanah, lompatan hanya sebagian
   if (camMode === 'fp') {
     // Orang Pertama: kamera di mata penjelajah, memandang searah yaw/pitch.
-    pos = new THREE.Vector3(self.x, self.h + EYE_H, self.z);
+    pos = new THREE.Vector3(self.x, self.h + (self.stepOff || 0) + EYE_H, self.z);
     target = pos.clone().sub(camDir(cam.pitch));
     follow = 0;
   } else if (camMode === 'bahu') {
@@ -1768,17 +1834,25 @@ function updateCamera(dt) {
       // Geser ke arah target, tetapi penjelajah tetap terlihat di layar.
       const hx = (L.x - self.x) / 2; const hz = (L.z - self.z) / 2; const hl = Math.hypot(hx, hz);
       const k = Math.min(1, (cam.dist * 0.15) / Math.max(0.001, hl));
-      target = new THREE.Vector3(self.x + hx * k, 0, self.z + hz * k);
-    } else target = new THREE.Vector3(self.x + camCtl.pan.x, self.h * 0.5, self.z + camCtl.pan.z);
+      target = new THREE.Vector3(self.x + hx * k, gH, self.z + hz * k);
+    } else target = new THREE.Vector3(self.x + camCtl.pan.x, gH + rel * 0.5, self.z + camCtl.pan.z);
     pos = target.clone().addScaledVector(camDir(cam.pitch), cam.dist);
   } else {
-    target = new THREE.Vector3(self.x, self.h * 0.6 + 1.3, self.z);
+    target = new THREE.Vector3(self.x, gH + rel * 0.6 + 1.3, self.z);
     const p = Math.max(0.04, cam.pitch);
     const up = Math.max(0, 0.04 - cam.pitch); // seberapa jauh menengadah (0..0.54)
     pos = target.clone().addScaledVector(camDir(p), cam.dist * (1 - up * 0.6));
     pos.y = Math.max(self.h + 0.5, pos.y - up * 2.2);
     target.y += up * 26; // titik pandang naik ke langit
     if (cam.pitch > 1.0) target.y -= (cam.pitch - 1.0) * 3; // menunduk lebih dalam
+  }
+  // Medan blok: kamera tidak boleh masuk ke dalam bukit di antara fokus dan posisinya.
+  if (terrain && camMode !== 'fp') {
+    for (const k of [0.35, 0.7, 1]) {
+      const g = groundAt(target.x + (pos.x - target.x) * k, target.z + (pos.z - target.z) * k) + 0.8;
+      const lineY = target.y + (pos.y - target.y) * k;
+      if (lineY < g) pos.y = target.y + (g - target.y) / k;
+    }
   }
   // Setelah ganti mode (atau mendarat), kamera berpindah halus ke posisi barunya.
   if (camCtl.blend > 0) { camCtl.blend -= dt; follow = camMode === 'fp' ? 8 : 5; } // FP lebih cepat agar tidak "melompat" saat transisi selesai
@@ -1792,7 +1866,7 @@ function updateCamera(dt) {
     const sc = sun.shadow.camera;
     if (sc.right !== half) { sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.updateProjectionMatrix(); }
     const fx0 = camMode === 'iso' ? target.x : self.x; const fz0 = camMode === 'iso' ? target.z : self.z;
-    sun.target.position.set(fx0, 0, fz0);
+    sun.target.position.set(fx0, camMode === 'iso' ? target.y : self.h, fz0);
     sun.position.copy(SUN_DIR).multiplyScalar(50).add(sun.target.position);
   }
 }
@@ -1824,12 +1898,14 @@ function updateOthers(dt) {
     let o = others.get(id);
     if (!o) {
       const obj = createExplorer(p.color);
-      add(obj, toX(p.tx ?? p.x), 0, toZ(p.ty ?? p.y));
-      o = { obj, label: null, labelText: '', x: obj.position.x, z: obj.position.z, h: 0, face: 0, speed: 0 };
+      const ox = toX(p.tx ?? p.x); const oz = toZ(p.ty ?? p.y);
+      add(obj, ox, groundAt(ox, oz), oz);
+      o = { obj, label: null, labelText: '', x: ox, z: oz, h: groundAt(ox, oz), face: 0, speed: 0 };
       others.set(id, o);
-      fx.ring({ x: o.x, y: 0, z: o.z }, { color: p.color.startsWith('#') ? p.color : PALETTE.cyan });
+      fx.ring({ x: o.x, y: o.h, z: o.z }, { color: p.color.startsWith('#') ? p.color : PALETTE.cyan });
     }
-    const tx = toX(p.tx ?? p.x); const tz = toZ(p.ty ?? p.y); const th = p.th || 0;
+    // Tinggi dari server = tinggi di atas blok medan, jadi ditambah tinggi medan di posisi pemain itu.
+    const tx = toX(p.tx ?? p.x); const tz = toZ(p.ty ?? p.y); const th = terrainH(tx, tz) + (p.th || 0);
     const k = Math.min(1, dt * 10);
     const dx = (tx - o.x) * k; const dz = (tz - o.z) * k;
     if (Math.hypot(tx - o.x, tz - o.z) > 12) { o.x = tx; o.z = tz; } else { o.x += dx; o.z += dz; }
@@ -1839,7 +1915,8 @@ function updateOthers(dt) {
     if (sp > 0.3) o.face = Math.atan2(dx, dz);
     o.obj.position.set(o.x, o.h, o.z);
     o.obj.rotation.y = o.face;
-    o.obj.userData.animate(dt, { speed: o.speed, airborne: o.h > 0.05, height: o.h });
+    const oFloor = groundAt(o.x, o.z);
+    o.obj.userData.animate(dt, { speed: o.speed, airborne: o.h - oFloor > 0.05, height: o.h - oFloor });
     const mate = net.isTeammate(id);
     const text = `${mate ? '🤝 ' : ''}${p.alias}${p.seals ? `  ✦${p.seals}` : ''}`;
     if (text !== o.labelText) {
@@ -1851,6 +1928,26 @@ function updateOthers(dt) {
     }
   });
   others.forEach((o, id) => { if (!seen.has(id)) { scene.remove(o.obj); others.delete(id); } });
+}
+
+// Cuaca pulau sekarang + berikutnya (teks, bukan hanya ikon/warna).
+const weatherText = (id) => {
+  const f = forecast(id);
+  const w = WEATHER[f.kind]; const n = WEATHER[f.next];
+  return { now: `${w.icon} ${w.label}`, next: `${n.icon} ${n.label}`, minutes: f.minutesLeft, climate: f.climate.name };
+};
+let weatherHudText = '';
+function updateWeatherHud() {
+  const el = document.getElementById('w3-weather');
+  const show = mode === 'play' || mode === 'drop';
+  el.hidden = !show;
+  if (!show) return;
+  const w = weatherText(weatherIsland);
+  const text = `${w.now} · ${w.minutes} mnt lagi ${w.next}`;
+  if (text === weatherHudText) return;
+  weatherHudText = text;
+  el.textContent = text;
+  el.title = `Iklim: ${w.climate}. Sekarang ${w.now}; ${w.minutes} menit lagi berganti ${w.next}. Cuaca hanya mengubah suasana.`;
 }
 
 let selfLabelText = '';
@@ -1875,7 +1972,7 @@ function updateGoal() {
   arrow.visible = Boolean(p) && mode === 'play';
   if (p) arrow.userData.base = p;
   beacon.visible = arrow.visible && d > 25;
-  if (p) beacon.position.set(p.x, 0, p.z);
+  if (p) beacon.position.set(p.x, terrainH(p.x, p.z), p.z);
 }
 
 function animateWorld(dt) {
@@ -1943,12 +2040,22 @@ function frameLoop() {
   if (!running) return;
   const dt = Math.min(0.05, clock.getDelta());
   statusTimer -= dt;
-  if (statusTimer <= 0) { statusTimer = 0.5; quests.refresh(); refreshIslands(); updateSelfLabel(); updateGoal(); }
+  if (statusTimer <= 0) { statusTimer = 0.5; quests.refresh(); refreshIslands(); updateSelfLabel(); updateGoal(); updateWeatherHud(); }
   pollGamepad(dt);
   if (mode === 'overview') updateOverview(dt);
   else if (mode === 'drop') updateDrop(dt);
   else if (mode === 'play') updatePlay(dt);
-  if (mode !== 'overview') { selectRing.visible = false; setView(mode === 'play' && camMode === 'iso' ? isoView() : PLAY_VIEW); }
+  if (mode !== 'overview') { selectRing.visible = false; setView(mode === 'play' && camMode === 'iso' ? isoView() : playView()); }
+  // Medan blok tampil saat bermain/terjun (permukaan datar wilayah pos disembunyikan); mode peta memakai permukaan datar.
+  const blocks = Boolean(terrain) && mode !== 'overview';
+  if (terrain) {
+    terrain.visible = blocks;
+    if (blocks) terrain.update(camMode === 'iso' ? camera.position.x : self.x, camMode === 'iso' ? camera.position.z : self.z);
+  }
+  regionTops.forEach((t) => { t.visible = !blocks; });
+  if (self.island >= 0) weatherIsland = self.island;
+  // Kabut tidak boleh lebih jauh dari radius medan yang dimuat (saat bermain); mode peta memakai kabut jauhnya sendiri.
+  if (weather) weather.update(dt, clock.elapsedTime, { island: weatherIsland, active: mode === 'play' || mode === 'drop', camera, fogNear: viewFog.near, fogFar: viewFog.far, maxFar: blocks ? terrain.radius - 10 : Infinity });
   // Sudut pandang (FOV) mengikuti mode kamera; Orang Pertama memakai FOV sebagai zoom.
   const wantFov = mode === 'play' ? camFov() : 50;
   if (Math.abs(camera.fov - wantFov) > 0.05) {
@@ -2016,7 +2123,7 @@ document.addEventListener('nutra:screen', (e) => {
 
 if (net) {
   net.on('welcome', ({ you }) => { if (self.obj) self.obj.userData.setColor(you.color); });
-  net.on('teleport', ({ x, y }) => { if (built && gfx !== '2d' && mode === 'play') { self.x = toX(x); self.z = toZ(y); self.h = 0; fx.ring({ x: self.x, y: 0, z: self.z }); game.showToast('Guru memindahkan posisimu.'); } });
+  net.on('teleport', ({ x, y }) => { if (built && gfx !== '2d' && mode === 'play') { self.x = toX(x); self.z = toZ(y); if (terrain) terrain.prime(self.x, self.z, 70); self.h = groundAt(self.x, self.z); self.vy = 0; fx.ring({ x: self.x, y: self.h, z: self.z }); game.showToast('Guru memindahkan posisimu.'); } });
   net.on('chat', (entry) => {
     if (!built || gfx === '2d') return;
     const target = net.me && entry.playerId === net.me.id ? self.obj : others.get(entry.playerId) && others.get(entry.playerId).obj;
@@ -2043,7 +2150,7 @@ window.NutraWorld3D = {
   },
   leave() { stop(); mode = 'off'; landed = false; hideOverview(); visited.clear(); },
   /** Untuk uji otomatis (QA): akses posisi pemain & interaksi. */
-  debug: { get self() { return self; }, get nearby() { return nearby; }, get cam() { return { mode: camMode, yaw: cam.yaw, pitch: cam.pitch, zoom: cam.dist, fov: camera ? camera.fov : null, lock: camCtl.lock ? camCtl.lock.kind : null, pan: camCtl.pan.length(), freeLook: camCtl.freeLook }; }, interact: () => interact(), get items() { return quests ? quests.items.map(({ kind, pos, row, x, z }) => ({ kind, pos, row, x, z })) : []; } },
+  debug: { get self() { return self; }, get nearby() { return nearby; }, ground: (x, z) => groundAt(x, z), surface: (x, z) => (terrain ? terrain.surface(x, z) : null), get weather() { return weatherText(weatherIsland); }, get chunks() { return terrain ? terrain.pickables.length : 0; }, get waterMeshes() { return terrain ? terrain.group.children.filter((m) => m.material && m.material.transparent).length : 0; }, setCam: (yaw, pitch) => { camCtl.reset = false; releaseLock(false); cam.yaw = yaw; cam.pitch = pitch; }, get cam() { return { mode: camMode, yaw: cam.yaw, pitch: cam.pitch, zoom: cam.dist, fov: camera ? camera.fov : null, lock: camCtl.lock ? camCtl.lock.kind : null, pan: camCtl.pan.length(), freeLook: camCtl.freeLook }; }, interact: () => interact(), get items() { return quests ? quests.items.map(({ kind, pos, row, x, z }) => ({ kind, pos, row, x, z })) : []; } },
   stop
 };
 

@@ -853,6 +853,14 @@ body.in-world .world-screen.is-3d .w3-cam{bottom:104px}
 /* Pilihan aktif (KAMERA & GRAFIS) ditandai ✓, bukan hanya warna */
 .w3-gfx button[aria-pressed="true"]::before{content:"✓ "}
 
+/* ---------- Cuaca tiap pulau (weather.js) ----------
+ * Chip HUD menulis cuaca sekarang & berikutnya sebagai teks (bukan hanya ikon/warna). */
+.w3-weather{max-width:min(46vw,360px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-color:rgba(31,195,211,.45)!important}
+.w3-weather[hidden]{display:none}
+.ov-weather{margin:0 0 10px;padding:8px 10px;border-radius:10px;background:rgba(31,195,211,.1);border:1px solid rgba(31,195,211,.35);font-size:12px;line-height:1.45;color:#3b2a1a}
+.ov-weather b{color:#0e7f8c}
+@media (max-width:700px){.w3-weather{max-width:62vw;font-size:11px}}
+
 /* ---------- Layar pembuka beranda (splash.js): intro interaktif 3 detik ----------
  * Ilustrasi 1672×941 selalu utuh (contain); sisa layar diisi versi buramnya.
  * Tombol, bilah muat, dan semua lapisan efek diletakkan dalam persen ilustrasi, tepat di atas bagian yang

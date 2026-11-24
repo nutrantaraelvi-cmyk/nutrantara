@@ -2,7 +2,8 @@
  * Isi wilayah dunia terbuka tiap pos (sejak 0.9): wilayah ±1000 × 650 m berisi desa pusat, jalan setapak ke tiap
  * objek misi dan jembatan, hutan berkelompok, semak, batu, bunga, rumput, kolam, bukit terasering yang bisa didaki,
  * dan kampung budaya. Semua deterministik (benih per pos), jadi tiap siswa melihat wilayah yang sama.
- * Vegetasi memakai InstancedMesh per pos agar ringan: wilayah di luar jarak pandang tidak digambar.
+ * Sejak 1.1 area-area itu dikunci rata di medan blok (terrain.js), dan tanaman bergaya blok mengikuti bioma pos:
+ * berdiri di atas blok, tidak tumbuh di air, struktur, atau embun beku. Vegetasi memakai InstancedMesh per pos.
  */
 import * as THREE from './vendor/three/three.module.min.js';
 import { toon, createLabel } from './characters.js';
@@ -28,17 +29,28 @@ const distSeg = (px, pz, a, b) => {
   return Math.hypot(px - (a.x + vx * t), pz - (a.z + vz * t));
 };
 
+// Tanaman per bioma (pengali jumlah dasar) dan warna daun.
+const FLORA = {
+  hutan: { trees: 1.4, pines: 0.3, palms: 0, mangroves: 0, bushes: 1, rocks: 0.4, flowers: 1, grass: 1, leaf: ['#3f9a5a', '#4fb56a', '#68c26a'] },
+  lembah: { trees: 0.8, pines: 0.3, palms: 0.12, mangroves: 0, bushes: 1, rocks: 0.6, flowers: 1.6, grass: 1.2, leaf: ['#4fb56a', '#68c26a', '#8ccf66'] },
+  gunung: { trees: 0.25, pines: 2.2, palms: 0, mangroves: 0, bushes: 0.6, rocks: 2, flowers: 0.4, grass: 0.8, leaf: ['#2f8a4c', '#3b9a58', '#4caf6e'] },
+  rawa: { trees: 0.2, pines: 0, palms: 0.1, mangroves: 1.4, bushes: 1.6, rocks: 0.2, flowers: 0.6, grass: 1.4, leaf: ['#2f7d4a', '#3f8f52', '#4f9e5a'] },
+  gumuk: { trees: 0.1, pines: 0, palms: 0.4, mangroves: 0, bushes: 0.6, rocks: 0.9, flowers: 0.3, grass: 1, leaf: ['#8a9a3a', '#9aa84a', '#7c8f3c'] },
+  kaldera: { trees: 0.5, pines: 0.5, palms: 0, mangroves: 0, bushes: 0.6, rocks: 2.2, flowers: 0.3, grass: 0.6, leaf: ['#3f8a4c', '#4a9a52', '#5aa65a'] }
+};
+
 /**
  * Bangun isi semua wilayah pos.
- * ctx: { scene, W, frame, toX, toZ, items (objek misi quest.js), platforms, shardSpots, animated, gfx }
+ * ctx: { scene, W, frame, toX, toZ, items (objek misi quest.js), platforms, shardSpots, animated, gfx, terrain }
  */
 export function buildRegions(ctx) {
   const { W } = ctx;
   W.islands.filter((i) => W.isPost(i.id)).forEach((isl) => buildRegion(ctx, isl.id));
 }
 
-function buildRegion(ctx, id) {
-  const { scene, W, frame, toX, toZ, items, platforms, shardSpots, animated, gfx } = ctx;
+/** Bangun isi satu wilayah pos (dipanggil per langkah muat agar layar tidak membeku). */
+export function buildRegion(ctx, id) {
+  const { scene, W, frame, toX, toZ, items, platforms, shardSpots, animated, gfx, terrain } = ctx;
   const f = frame(id);
   const rand = seeded(7000 + id * 7919);
   const high = gfx === 'high';
@@ -84,6 +96,19 @@ function buildRegion(ctx, id) {
   camps.forEach((c) => route(hub, c));
   hills.forEach((h) => route(hub, { x: h.x, z: h.z + 14 }));
   buildPaths(root, segs);
+
+  // ---- Medan blok: semua titik penting & jalan setapak dikunci rata di ketinggian 0 ----
+  if (terrain) {
+    const points = [
+      { ...hub, r: 30 }, { ...station, r: 12 },
+      ...quest.map((q) => ({ ...q, r: 10 })), ...ends.map((e) => ({ ...e, r: 15 })),
+      ...camps.map((c) => ({ x: c.x, z: c.z, r: 13 })), ...hills.map((h) => ({ x: h.x, z: h.z, r: 20 })),
+      ...ponds.map((p) => ({ x: p.x, z: p.z, r: p.r + 3 }))
+    ];
+    terrain.addRegion(id, f, { points, segs });
+  }
+  const flora = FLORA[(terrain && terrain.biomeOf(id) || { key: 'hutan' }).key];
+  const ground = (x, z) => (terrain ? terrain.surface(x, z) : { h: 0, water: false, built: false, shore: false });
 
   // ---- Kampung budaya ----
   camps.forEach((c, i) => {
@@ -171,37 +196,82 @@ function buildRegion(ctx, id) {
     return segs.some(([a, b]) => distSeg(x, z, a, b) < 2.6 + pad);
   };
   const groves = Array.from({ length: 18 }, () => randomPoint(30));
-  const scatter = (count, { grove = 0, spread = 18, pad = 0 } = {}) => {
+  // Tanaman bergaya blok berdiri tepat di tengah kolom 2 × 2 m, satu tanaman per kolom.
+  const taken = new Set();
+  const fits = {
+    land: (s) => !s.water && !s.built && !s.frost,
+    shore: (s) => !s.built && ((s.shore && s.h === 0) || s.h === -1),
+    dry: (s) => !s.water && !s.built && !s.frost && !s.sand,
+    any: (s) => !s.built && s.h >= -1
+  };
+  const scatter = (count, { grove = 0, spread = 18, pad = 0, on = 'land' } = {}) => {
     const out = [];
+    if (count < 1) return out;
     for (let i = 0; i < count; i += 1) {
-      for (let tries = 0; tries < 6; tries += 1) {
+      for (let tries = 0; tries < (on === 'shore' ? 14 : 6); tries += 1) {
         let x; let z;
         if (rand() < grove) {
           const g = groves[Math.floor(rand() * groves.length)];
           const a = rand() * Math.PI * 2; const r = Math.sqrt(-2 * Math.log(1 - rand() * 0.999)) * spread;
           x = g.x + Math.cos(a) * r; z = g.z + Math.sin(a) * r;
         } else { const p = randomPoint(6); x = p.x; z = p.z; }
-        if (!blocked(x, z, pad)) { out.push({ x, z, s: 0.75 + rand() * 0.6, rot: rand() * Math.PI * 2, c: rand() }); break; }
+        x = (Math.floor(x / 2) + 0.5) * 2; z = (Math.floor(z / 2) + 0.5) * 2;
+        const key = `${x},${z}`;
+        if (taken.has(key) || blocked(x, z, pad)) continue;
+        const s = ground(x, z);
+        if (!fits[on](s)) continue;
+        taken.add(key);
+        out.push({ x, y: Math.max(s.h, -1), z, s: 0.8 + rand() * 0.45, rot: Math.floor(rand() * 4) * (Math.PI / 2), c: rand() });
+        break;
       }
     }
     return out;
   };
-  const n = (hi, lo) => (high ? hi : lo);
-  const trees = scatter(n(520, 220), { grove: 0.75, pad: 1 });
-  const pines = scatter(n(170, 70), { grove: 0.5, spread: 12, pad: 1 });
-  const bushes = scatter(n(380, 150), { grove: 0.4, spread: 24 });
-  const rocks = scatter(n(90, 40));
-  const flowers = high ? scatter(520, { grove: 0.2, spread: 30 }) : [];
-  const grass = high ? scatter(900) : [];
+  const n = (hi, lo, k) => Math.round((high ? hi : lo) * k);
+  const trees = scatter(n(520, 220, flora.trees), { grove: 0.75, pad: 1 });
+  const pines = scatter(n(170, 70, flora.pines), { grove: 0.5, spread: 12, pad: 1 });
+  const palms = scatter(n(120, 50, flora.palms), { grove: 0.3, spread: 20, pad: 1, on: 'dry' });
+  const mangroves = scatter(n(260, 110, flora.mangroves), { grove: 0, pad: 1, on: 'shore' });
+  const bushes = scatter(n(380, 150, flora.bushes), { grove: 0.4, spread: 24 });
+  const rocks = scatter(n(90, 40, flora.rocks), { on: 'any' });
+  const flowers = high ? scatter(n(520, 0, flora.flowers), { grove: 0.2, spread: 30, on: 'dry' }) : [];
+  const grass = high ? scatter(n(900, 0, flora.grass), { on: 'dry' }) : [];
 
-  const trunkGeo = new THREE.CylinderGeometry(0.22, 0.32, 2.2, 6).translate(0, 1.1, 0);
-  instanced(root, trunkGeo, '#8a5f37', [...trees, ...pines], () => '#8a5f37', { shadow: high });
-  instanced(root, new THREE.IcosahedronGeometry(1.6, 0).translate(0, 3.1, 0), '#ffffff', trees, (t) => (t.c < 0.33 ? '#3f9a5a' : t.c < 0.66 ? '#4fb56a' : '#68c26a'), { shadow: high });
-  instanced(root, new THREE.ConeGeometry(1.4, 3.8, 7).translate(0, 3.4, 0), '#ffffff', pines, (t) => (t.c < 0.5 ? '#2f8a4c' : '#3b9a58'), { shadow: high });
-  instanced(root, new THREE.IcosahedronGeometry(0.8, 0).scale(1, 0.7, 1).translate(0, 0.45, 0), '#ffffff', bushes, (t) => (t.c < 0.5 ? '#4caf6e' : '#5fbf63'));
-  instanced(root, new THREE.DodecahedronGeometry(0.7, 0).translate(0, 0.25, 0), '#ffffff', rocks, (t) => (t.c < 0.5 ? '#94857a' : '#7d6a5a'));
-  if (flowers.length) instanced(root, new THREE.SphereGeometry(0.15, 6, 4).translate(0, 0.32, 0), '#ffffff', flowers, (t) => ['#ff9f91', '#ffd17c', '#ffffff', '#f59e5b', '#f472b6'][Math.floor(t.c * 5)]);
-  if (grass.length) instanced(root, new THREE.ConeGeometry(0.14, 0.6, 3).translate(0, 0.3, 0), '#ffffff', grass, (t) => (t.c < 0.5 ? '#5cb860' : '#7cc65a'));
+  const leaf = (t) => flora.leaf[Math.min(flora.leaf.length - 1, Math.floor(t.c * flora.leaf.length))];
+  instanced(root, boxes([[0.55, 2.6, 0.55, 0, 1.3, 0]]), '#8a5f37', [...trees, ...pines], () => '#8a5f37', { shadow: high });
+  instanced(root, boxes([[2.8, 1.6, 2.8, 0, 3.2, 0], [1.8, 1.1, 1.8, 0, 4.4, 0], [1.1, 0.8, 3.3, 0, 3.3, 0], [3.3, 0.8, 1.1, 0, 3.3, 0]]), '#ffffff', trees, leaf, { shadow: high });
+  instanced(root, boxes([[2.6, 1, 2.6, 0, 2.4, 0], [1.9, 1, 1.9, 0, 3.4, 0], [1.2, 1, 1.2, 0, 4.4, 0], [0.5, 0.8, 0.5, 0, 5.3, 0]]), '#ffffff', pines, (t) => (t.c < 0.5 ? '#2f8a4c' : '#3b9a58'), { shadow: high });
+  // Lontar/kelapa: batang tinggi ramping, tajuk berbentuk silang.
+  instanced(root, boxes([[0.42, 5.2, 0.42, 0, 2.6, 0]]), '#9a6c40', palms, () => '#9a6c40', { shadow: high });
+  instanced(root, boxes([[3.8, 0.3, 0.9, 0, 5.3, 0], [0.9, 0.3, 3.8, 0, 5.3, 0], [1, 0.7, 1, 0, 5.45, 0]]), '#ffffff', palms, leaf, { shadow: high });
+  // Bakau: akar penyangga di atas air, tajuk lebar.
+  instanced(root, boxes([[0.45, 2.2, 0.45, 0, 1.7, 0], [0.2, 1.3, 0.2, 0.6, 0.55, 0], [0.2, 1.3, 0.2, -0.6, 0.55, 0], [0.2, 1.3, 0.2, 0, 0.55, 0.6], [0.2, 1.3, 0.2, 0, 0.55, -0.6]]), '#6e5034', mangroves, () => '#6e5034', { shadow: high });
+  instanced(root, boxes([[3.4, 1.1, 3.4, 0, 3.1, 0], [2, 0.8, 2, 0, 4, 0]]), '#ffffff', mangroves, leaf, { shadow: high });
+  instanced(root, boxes([[1.3, 0.9, 1.3, 0, 0.45, 0], [0.8, 0.5, 0.8, 0.3, 1.1, -0.2]]), '#ffffff', bushes, (t) => (t.c < 0.5 ? leaf(t) : '#5fbf63'));
+  instanced(root, boxes([[1.4, 0.9, 1.1, 0, 0.45, 0], [0.8, 0.6, 0.7, 0.35, 1.2, 0.1]]), '#ffffff', rocks, (t) => (t.c < 0.5 ? '#94908a' : '#7d776f'));
+  if (flowers.length) instanced(root, boxes([[0.08, 0.35, 0.08, 0, 0.17, 0], [0.26, 0.2, 0.26, 0, 0.42, 0]]), '#ffffff', flowers, (t) => ['#ff9f91', '#ffd17c', '#ffffff', '#f59e5b', '#f472b6'][Math.floor(t.c * 5)]);
+  if (grass.length) instanced(root, boxes([[0.1, 0.5, 0.1, 0, 0.25, 0], [0.1, 0.38, 0.1, 0.18, 0.19, 0.08], [0.1, 0.42, 0.1, -0.15, 0.21, -0.1]]), '#ffffff', grass, (t) => (flora === FLORA.gumuk ? (t.c < 0.5 ? '#c9b35a' : '#b7a24c') : t.c < 0.5 ? '#5cb860' : '#7cc65a'));
+}
+
+/** Gabungkan beberapa kotak [lebar, tinggi, dalam, x, y, z] menjadi satu geometri (untuk tanaman bergaya blok). */
+function boxes(list) {
+  const parts = list.map(([w, h, d, x, y, z]) => new THREE.BoxGeometry(w, h, d).translate(x, y, z));
+  let count = 0; let icount = 0;
+  parts.forEach((g) => { count += g.attributes.position.count; icount += g.index.count; });
+  const pos = new Float32Array(count * 3); const nor = new Float32Array(count * 3); const idx = new Uint16Array(icount);
+  let v = 0; let ii = 0;
+  parts.forEach((g) => {
+    pos.set(g.attributes.position.array, v * 3);
+    nor.set(g.attributes.normal.array, v * 3);
+    g.index.array.forEach((n) => { idx[ii] = n + v; ii += 1; });
+    v += g.attributes.position.count;
+    g.dispose();
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  return geo;
 }
 
 function instanced(root, geo, base, list, colorOf, { shadow = false } = {}) {
@@ -211,7 +281,7 @@ function instanced(root, geo, base, list, colorOf, { shadow = false } = {}) {
   const c = new THREE.Color();
   list.forEach((t, i) => {
     q.setFromAxisAngle(up, t.rot);
-    m.compose(new THREE.Vector3(t.x, 0, t.z), q, new THREE.Vector3(t.s, t.s, t.s));
+    m.compose(new THREE.Vector3(t.x, t.y || 0, t.z), q, new THREE.Vector3(t.s, t.s, t.s));
     mesh.setMatrixAt(i, m);
     mesh.setColorAt(i, c.set(colorOf(t)));
   });

@@ -87,6 +87,16 @@ async function adminProbe() {
     ok(splashAssets.every((r) => r.ok), 'skrip & ilustrasi layar muat disajikan server');
     const play = await fetch(`http://localhost:${PORT}/play`).then((r) => r.text());
     ok(play.includes('world3d.js') && play.includes('app.js'), 'halaman game disajikan di /play');
+    // Semua modul ES yang diimpor halaman (termasuk terrain.js & weather.js sejak 1.1) harus ada di whitelist STATIC.
+    const modules = new Set(); const queue = ['app.js', 'world3d.js', 'landing.js'];
+    while (queue.length) {
+      const file = queue.shift();
+      if (modules.has(file)) continue;
+      modules.add(file);
+      for (const m of fs.readFileSync(path.join(__dirname, '..', file), 'utf8').matchAll(/from '\.\/([\w./-]+\.js)'/g)) if (!m[1].startsWith('vendor/')) queue.push(m[1]);
+    }
+    const served = await Promise.all([...modules].map(async (f) => [f, (await fetch(`http://localhost:${PORT}/${f}`)).ok]));
+    ok(served.every(([, s]) => s) && modules.has('terrain.js') && modules.has('weather.js'), `semua modul halaman disajikan server (${served.filter(([, s]) => !s).map(([f]) => f).join(', ') || `${served.length} modul`})`);
     const three = await fetch(`http://localhost:${PORT}/vendor/three/three.module.min.js`);
     ok(three.ok && three.headers.get('cache-control').includes('max-age'), 'Three.js lokal disajikan dengan cache');
     ok((await fetch(`http://localhost:${PORT}/server.js`)).status === 404, 'berkas server tidak dapat diunduh');
