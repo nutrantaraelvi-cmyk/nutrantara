@@ -5,7 +5,7 @@
  * Koordinat server tetap 2D (world-data.js, 32400×15200); di sini dipetakan ke ruang 3D (1 px = 0,1 satuan ≈ 0,1 m).
  * Sejak 0.9 tiap pos adalah wilayah dunia terbuka ±1000 × 650 m; isinya dibangun di region.js.
  * Sejak 1.1 wilayah pos bermedan blok (terrain.js: bukit, gunung, lembah, danau, struktur) dan tiap pulau punya
- * cuaca bergilir (weather.js). Penjelajah naik/turun 1 blok otomatis, melompati 2 blok, dan berenang di air.
+ * cuaca bergilir (weather.js); sejak 1.4 tiap pulau juga bermusim (warna daun, buah, salju, serakan). Penjelajah naik/turun 1 blok otomatis, melompati 2 blok, dan berenang di air.
  */
 import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, createLabel, createBubble, toon, PALETTE } from './characters.js';
@@ -13,7 +13,7 @@ import { createFx } from './fx.js';
 import { createQuests } from './quest.js';
 import { buildRegion } from './region.js';
 import { createTerrain } from './terrain.js';
-import { createWeather, forecast, WEATHER } from './weather.js';
+import { createWeather, forecast, WEATHER, seasonOf } from './weather.js';
 import { applyOutfit, clothMaterial } from './fashion.js';
 import { SUN_DIR, createSkyDome, createCloudSea, cumulusTextures, createCumulus } from './sky.js';
 import { createCandiBentar, createMeru, createPenjor, createKite, createPinisi, createStupa, createRumahGadang, createGunungan, createGong, createOndelOndel, createCorn, createTempe, createPapaya, kawungTexture } from './culture.js';
@@ -265,7 +265,8 @@ function buildIsland(isl) {
   const sand = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.97, 0.5, seg, 1, big), toon('#ecd8a0', big ? { side: THREE.DoubleSide } : {}));
   sand.scale.set(f.rx + 0.6, 1, f.rz + 0.6);
   add(sand, 0, -0.32, 0, g);
-  const top = cyl(1, 1, 0.5, isl.id === 0 ? '#74d46f' : isl.id === 10 ? '#ecd79a' : '#68cf67', seg); top.scale.set(f.rx, 1, f.rz);
+  const sea = seasonOf(isl.id).ground; // rumput ikut musim pulau
+  const top = cyl(1, 1, 0.5, `#${new THREE.Color(isl.id === 0 ? '#74d46f' : isl.id === 10 ? '#ecd79a' : '#68cf67').lerp(new THREE.Color(sea[0]), sea[1] * (isl.id === 10 ? 0.4 : 1)).getHexString()}`, seg); top.scale.set(f.rx, 1, f.rz);
   add(top, 0, -0.25, 0, g);
   top.userData.islandId = isl.id;
   islandTops.push(top);
@@ -645,13 +646,108 @@ function buildDecor() {
       if (W.bridges.some((br) => { const ax = toX(br.a[0]); const az = toZ(br.a[1]); const bx = toX(br.b[0]); const bz = toZ(br.b[1]); return Math.hypot(ax - x, az - z) < 3 || Math.hypot(bx - x, bz - z) < 3; })) continue;
       const k = rand();
       if (k < 0.4) buildPalm(x, z, 0.8 + rand() * 0.4);
-      else if (k < 0.7) add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.35 + rand() * 0.35, 0), toon(rand() < 0.5 ? '#3f9a5a' : '#2f8a4c')), x, 0.25, z);
+      else if (k < 0.7) { const lv = seasonOf(isl.id).leaf; add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.35 + rand() * 0.35, 0), toon(rand() < 0.5 ? lv[0] : lv[lv.length - 1])), x, 0.25, z); }
       else { const fl = new THREE.Group(); add(cyl(0.02, 0.02, 0.3, '#3f9a5a', 4), 0, 0.15, 0, fl); add(sph(0.11, ['#ff9f91', '#ffd17c', '#ffffff', '#f59e5b'][Math.floor(rand() * 4)], 6), 0, 0.33, 0, fl); add(fl, x, 0, z); }
     }
   });
   W.trees.forEach(([tx, ty]) => {
     const x = toX(tx); const z = toZ(ty);
     if (W.islandAt(tx, ty) === 0) buildPalm(x, z, 1 + rand() * 0.3);
+  });
+}
+
+// ---------- Musim di pulau kecil (alun-alun & pulau jelajah, sejak 1.4) ----------
+// Pohon bulat, semak, batu, bunga, serakan tanah, dan benda musim (buah, topi salju, jamur, jerami, boneka salju).
+// Semua jenis digabung per InstancedMesh untuk seluruh peta (±20 panggilan gambar). Benih sendiri per pulau, jadi
+// urutan rand() global (dan posisi benda lain) tidak bergeser.
+function buildSeasonDecor() {
+  const lists = {};
+  const put = (k, x, y, z, s, rot, color) => (lists[k] || (lists[k] = [])).push({ x, y, z, s, rot, color });
+  const nearBridge = (x, z, d) => W.bridges.some((br) => Math.hypot(toX(br.a[0]) - x, toZ(br.a[1]) - z) < d || Math.hypot(toX(br.b[0]) - x, toZ(br.b[1]) - z) < d);
+  W.islands.forEach((isl) => {
+    const f = frame(isl.id);
+    if (isBig(f)) return; // wilayah pos diisi region.js
+    const season = seasonOf(isl.id);
+    let seed = 9100 + isl.id * 131;
+    const r = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    const pick = (arr) => arr[Math.floor(r() * arr.length) % arr.length];
+    const free = (x, z, pad) => !platforms.some((p) => Math.abs(p.x - x) < p.hw + pad && Math.abs(p.z - z) < p.hd + pad)
+      && !wildShards.some(([sx, , sz]) => Math.hypot(sx - x, sz - z) < 1.6 + pad)
+      && !nearBridge(x, z, 3 + pad)
+      && !(isl.id === 0 && (Math.hypot(x - (f.x + 11), z - (f.z + 6.5)) < 4.5 + pad || Math.hypot(x - toX(W.nara.x), z - toZ(W.nara.y)) < 2.5 + pad));
+    const spot = (r0, r1, pad) => {
+      for (let k = 0; k < 24; k += 1) {
+        const a = r() * Math.PI * 2; const rr = r0 + r() * (r1 - r0);
+        const x = f.x + Math.cos(a) * f.rx * rr; const z = f.z + Math.sin(a) * f.rz * rr;
+        if (free(x, z, pad)) return { x, z };
+      }
+      return null;
+    };
+    const big = isl.id === 0;
+    for (let i = 0; i < (big ? 16 : 11); i += 1) {
+      const p = spot(0.68, 0.9, 1);
+      if (!p) continue;
+      const s = 0.75 + r() * 0.5; const rot = r() * Math.PI * 2;
+      const crown = season.bloom && r() < 0.45 ? pick(season.bloom) : pick(season.leaf);
+      put('trunk', p.x, 0, p.z, s, rot, '#8a5f37');
+      put('crown', p.x, 0, p.z, s, rot, crown);
+      put('crown2', p.x, 0, p.z, s, rot, crown);
+      if (season.snow) { put('snowcap', p.x, 0, p.z, s, rot, '#ffffff'); put('snowcap2', p.x, 0, p.z, s, rot, '#ffffff'); }
+      if (season.fruit) [[0.75, 1.8, 0.3], [-0.5, 1.9, 0.65], [0.1, 1.7, -0.8], [0.6, 2.4, 0.6]].forEach(([ox, oy, oz]) => put('fruit', p.x + (Math.cos(rot) * ox + Math.sin(rot) * oz) * s, oy * s, p.z + (-Math.sin(rot) * ox + Math.cos(rot) * oz) * s, 1, 0, pick(season.fruit)));
+    }
+    for (let i = 0; i < (big ? 18 : 12); i += 1) {
+      const p = spot(0.55, 0.93, 0.5);
+      if (!p) continue;
+      const s = 0.7 + r() * 0.6; const rot = r() * Math.PI * 2;
+      put('bush', p.x, 0, p.z, s, rot, pick(season.leaf));
+      if (season.snow) put('bushcap', p.x, 0, p.z, s, rot, '#ffffff');
+    }
+    for (let i = 0; i < 5; i += 1) { const p = spot(0.6, 0.94, 0.4); if (p) put('rock', p.x, 0, p.z, 0.7 + r() * 0.8, r() * 6, r() < 0.5 ? '#94908a' : '#7d776f'); }
+    for (let i = 0; i < (big ? 36 : 22); i += 1) { const p = spot(0.3, 0.94, 0.2); if (p) { const s = 0.8 + r() * 0.4; put('stem', p.x, 0, p.z, s, 0, '#3f9a5a'); put('bloom', p.x, 0, p.z, s, 0, pick(season.flowers)); } }
+    const coverScale = season.snow ? 3 : season.puddle ? 2.4 : 1;
+    for (let i = 0; i < Math.round((big ? 70 : 45) * season.coverN); i += 1) { const p = spot(0.15, 0.94, 0); if (p) put(season.puddle ? 'puddle' : 'cover', p.x, 0, p.z, coverScale * (0.7 + r() * 0.6), r() * 6, pick(season.cover)); }
+    if (season.mushrooms) for (let i = 0; i < 8; i += 1) { const p = spot(0.6, 0.92, 0.2); if (p) { const s = 0.8 + r() * 0.6; put('mstem', p.x, 0, p.z, s, 0, '#f6efe2'); put('mcap', p.x, 0, p.z, s, 0, pick(['#e5533f', '#f5d43b', '#c98a5a'])); } }
+    if (season.hay) for (let i = 0; i < 3; i += 1) { const p = spot(0.7, 0.9, 1); if (p) { put('hay', p.x, 0, p.z, 0.9 + r() * 0.3, r() * 6, '#e2c25a'); put('hayTop', p.x, 0, p.z, 0.9 + r() * 0.3, 0, '#d4b04a'); } }
+    if (season.snow) for (let i = 0; i < 2; i += 1) { const p = spot(0.6, 0.85, 1); if (p) { const rot = r() * Math.PI * 2; ['sm1', 'sm2', 'sm3'].forEach((k) => put(k, p.x, 0, p.z, 1, rot, '#ffffff')); put('nose', p.x, 0, p.z, 1, rot, '#f08a3c'); } }
+  });
+  const half = (rad, h) => new THREE.SphereGeometry(rad, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, h, 1);
+  const GEO = {
+    trunk: () => new THREE.CylinderGeometry(0.12, 0.17, 1.5, 6).translate(0, 0.75, 0),
+    crown: () => new THREE.IcosahedronGeometry(0.95, 0).translate(0, 2, 0),
+    crown2: () => new THREE.IcosahedronGeometry(0.6, 0).translate(0.35, 2.65, 0.1),
+    snowcap: () => half(0.82, 0.45).translate(0, 2.5, 0),
+    snowcap2: () => half(0.52, 0.5).translate(0.35, 3.0, 0.1),
+    fruit: () => new THREE.SphereGeometry(0.16, 6, 4),
+    bush: () => new THREE.IcosahedronGeometry(0.5, 0).translate(0, 0.32, 0),
+    bushcap: () => half(0.44, 0.5).translate(0, 0.55, 0),
+    rock: () => new THREE.DodecahedronGeometry(0.4, 0).translate(0, 0.18, 0),
+    stem: () => new THREE.CylinderGeometry(0.02, 0.02, 0.3, 4).translate(0, 0.15, 0),
+    bloom: () => new THREE.SphereGeometry(0.11, 6, 4).translate(0, 0.33, 0),
+    cover: () => new THREE.CircleGeometry(0.32, 5).rotateX(-Math.PI / 2).translate(0, 0.025, 0),
+    puddle: () => new THREE.CircleGeometry(0.5, 10).rotateX(-Math.PI / 2).scale(1, 1, 0.65).translate(0, 0.022, 0),
+    mstem: () => new THREE.CylinderGeometry(0.05, 0.06, 0.22, 6).translate(0, 0.11, 0),
+    mcap: () => half(0.2, 0.7).translate(0, 0.2, 0),
+    hay: () => new THREE.CylinderGeometry(0.7, 0.8, 0.9, 8).translate(0, 0.45, 0),
+    hayTop: () => new THREE.ConeGeometry(0.78, 0.65, 8).translate(0, 1.22, 0),
+    sm1: () => new THREE.SphereGeometry(0.45, 10, 8).translate(0, 0.4, 0),
+    sm2: () => new THREE.SphereGeometry(0.32, 10, 8).translate(0, 1.05, 0),
+    sm3: () => new THREE.SphereGeometry(0.22, 10, 8).translate(0, 1.5, 0),
+    nose: () => new THREE.ConeGeometry(0.05, 0.25, 5).rotateX(Math.PI / 2).translate(0, 1.5, 0.3)
+  };
+  const SHADOW = new Set(['trunk', 'crown', 'crown2', 'hay', 'sm1', 'sm2']);
+  const m = new THREE.Matrix4(); const q = new THREE.Quaternion(); const up = new THREE.Vector3(0, 1, 0); const c = new THREE.Color(); const v = new THREE.Vector3(); const sc = new THREE.Vector3();
+  Object.entries(lists).forEach(([k, list]) => {
+    const mesh = new THREE.InstancedMesh(GEO[k](), toon('#ffffff', { unique: true }), list.length);
+    list.forEach((t, i) => {
+      q.setFromAxisAngle(up, t.rot);
+      mesh.setMatrixAt(i, m.compose(v.set(t.x, t.y, t.z), q, sc.setScalar(t.s)));
+      mesh.setColorAt(i, c.set(t.color));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
+    mesh.castShadow = gfx === 'high' && SHADOW.has(k);
+    scene.add(mesh);
   });
 }
 
@@ -842,6 +938,7 @@ async function prepare(onProgress = () => {}) {
     // Satu langkah per wilayah pos: grid medan blok + isinya (agar layar muat tetap bergerak).
     ...W.islands.filter((i) => W.isPost(i.id)).map((isl) => () => buildRegion({ scene, W, frame, toX, toZ, items: quests.items, platforms, shardSpots: wildShards, animated, gfx, terrain }, isl.id)),
     () => buildDecor(),
+    () => buildSeasonDecor(),
     () => buildBoutique(),
     () => buildShards(),
     () => {
@@ -1404,7 +1501,7 @@ function renderOverview() {
     <h3>${m ? `${m.title} <em>${m.titleEm}</em>` : W.isWild(id) ? islandOf(id).name : 'Alun-alun <em>Nusantara</em>'}</h3>
     <p>${m ? m.description : W.isWild(id) ? `${islandOf(id).desc} Tidak ada soal di sini: bebas menjelajah dan mencari kepingan arsip.` : 'Titik kumpul kelas bersama Nara. Ada gapura, sawah bertingkat, kolam, dan blok tempe berisi kepingan arsip.'}</p>
     ${progress}
-    ${(() => { const w = weatherText(id); const b = terrain && terrain.biomeOf(id); return `<p class="ov-weather">${b ? `<b>Medan:</b> ${b.name} (${b.desc}).<br>` : ''}<b>Iklim:</b> ${w.climate} · <b>Cuaca:</b> ${w.now}, ${w.minutes} mnt lagi ${w.next}</p>`; })()}
+    ${(() => { const w = weatherText(id); const b = terrain && terrain.biomeOf(id); return `<p class="ov-weather">${b ? `<b>Medan:</b> ${b.name} (${b.desc}).<br>` : ''}<b>Musim:</b> ${w.season} (${w.seasonDesc}).<br><b>Iklim:</b> ${w.climate} · <b>Cuaca:</b> ${w.now}, ${w.minutes} mnt lagi ${w.next}</p>`; })()}
     <p class="ov-status ${st.key}">${st.text}</p>
     <button type="button" class="button button-primary ov-drop" id="ov-drop"${st.key === 'locked' ? ' disabled' : ''}>${st.key === 'locked' ? '⌑ Terkunci' : 'Terjun ke sini ↓'}</button>`;
 }
@@ -1999,7 +2096,8 @@ function updateOthers(dt) {
 const weatherText = (id) => {
   const f = forecast(id);
   const w = WEATHER[f.kind]; const n = WEATHER[f.next];
-  return { now: `${w.icon} ${w.label}`, next: `${n.icon} ${n.label}`, minutes: f.minutesLeft, climate: f.climate.name };
+  const se = seasonOf(id);
+  return { now: `${w.icon} ${w.label}`, next: `${n.icon} ${n.label}`, minutes: f.minutesLeft, climate: f.climate.name, season: `${se.icon} ${se.name}`, seasonShort: `${se.icon} ${se.name.replace('Musim ', '')}`, seasonDesc: se.desc };
 };
 let weatherHudText = '';
 function updateWeatherHud() {
@@ -2008,11 +2106,11 @@ function updateWeatherHud() {
   el.hidden = !show;
   if (!show) return;
   const w = weatherText(weatherIsland);
-  const text = `${w.now} · ${w.minutes} mnt lagi ${w.next}`;
+  const text = `${w.seasonShort} · ${w.now} · ${w.minutes} mnt lagi ${w.next}`;
   if (text === weatherHudText) return;
   weatherHudText = text;
   el.textContent = text;
-  el.title = `Iklim: ${w.climate}. Sekarang ${w.now}; ${w.minutes} menit lagi berganti ${w.next}. Cuaca hanya mengubah suasana.`;
+  el.title = `${w.season}: ${w.seasonDesc}. Iklim: ${w.climate}. Sekarang ${w.now}; ${w.minutes} menit lagi berganti ${w.next}. Cuaca hanya mengubah suasana.`;
 }
 
 let selfLabelText = '';

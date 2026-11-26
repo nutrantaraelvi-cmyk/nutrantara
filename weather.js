@@ -25,23 +25,48 @@ export const WEATHER = {
   angin: { label: 'Berangin', icon: '🌬️', fog: 0.92, fogColor: '#d6e8ef', zenith: '#4e98d6', horizon: '#d2e8f1', hemi: 1, sun: 0.9, sunColor: '#ffe9b8', fall: { type: 'daun', amount: 0.75, wind: 8 } },
   debu: { label: 'Angin berpasir', icon: '🏜️', fog: 0.55, near: 0.2, fogColor: '#e9d3a6', zenith: '#b9a27a', horizon: '#ead6ac', hemi: 0.95, sun: 0.8, sunColor: '#ffe2b0', fall: { type: 'debu', amount: 0.9, wind: 12 } },
   abu: { label: 'Hujan abu tipis', icon: '🌋', fog: 0.55, near: 0.3, fogColor: '#b8aea6', zenith: '#7f7570', horizon: '#c2b6ab', hemi: 0.85, sun: 0.55, sunColor: '#ffd0a0', fall: { type: 'abu', amount: 0.8 } },
+  salju: { label: 'Hujan salju', icon: '🌨️', fog: 0.6, near: 0.3, fogColor: '#eef4f9', zenith: '#9dbbd6', horizon: '#eef4f9', hemi: 1.08, sun: 0.6, sunColor: '#eef6ff', fall: { type: 'salju', amount: 1, wind: 1.5 } },
+  kelopak: { label: 'Kelopak berguguran', icon: '🌸', fog: 0.95, fogColor: '#f3e4ee', zenith: '#5aa0dc', horizon: '#f1e2ec', hemi: 1.02, sun: 0.95, sunColor: '#fff0e6', fall: { type: 'kelopak', amount: 0.7, wind: 3 } },
+  gugur: { label: 'Daun berguguran', icon: '🍂', fog: 0.9, fogColor: '#efdcc0', zenith: '#6a9ccc', horizon: '#eedcc2', hemi: 1, sun: 0.85, sunColor: '#ffdcae', fall: { type: 'gugur', amount: 0.8, wind: 4 } },
   pelangi: { label: 'Pelangi', icon: '🌈', fog: 0.95, fogColor: '#c9eaf7', zenith: '#4b98d8', horizon: '#cdebf7', hemi: 1, sun: 1, sunColor: '#fff1cf', rainbow: true }
 };
 
-/** Iklim tiap pulau: nama dan urutan cuaca yang bergilir. */
+/**
+ * Musim tiap pulau (sejak 1.4). Kepulauan melayang ini punya musim yang berbeda-beda dan tetap per pulau, jadi semua
+ * pemain melihat musim yang sama tanpa server. Musim mengubah warna daun, bunga, rumput, tutupan tanah, buah/salju
+ * di pohon (region.js, world3d.js), warna rumput medan blok (terrain.js), dan cuaca yang bergilir di bawah ini.
+ * leaf = warna tajuk; bloom = sebagian pohon berbunga merah muda; fruit = warna buah; snow = topi salju;
+ * ground = warna rumput & seberapa kuat dicampur; cover = warna serakan di tanah (daun, kelopak, salju, genangan).
+ */
+export const SEASONS = {
+  semi: { name: 'Musim Semi', icon: '🌸', desc: 'pohon berbunga merah muda dan padang bunga', leaf: ['#5fc46a', '#7fd36e', '#94dd78'], bloom: ['#f7a8c8', '#f9c4da', '#ffffff'], flowers: ['#f472b6', '#ff9fc4', '#ffffff', '#ffd17c', '#c89bf0'], grass: ['#74cc62', '#8fd86c'], ground: ['#86d66a', 0.35], cover: ['#f7b6d0', '#ffffff', '#f9cfe0'], coverN: 1 },
+  panen: { name: 'Musim Panen', icon: '🥭', desc: 'pohon berbuah lebat dan jerami menumpuk', leaf: ['#3f9a5a', '#4fb56a', '#5aa84a'], fruit: ['#f5a623', '#e5533f', '#f5d43b', '#ff7a2f'], flowers: ['#ffd17c', '#f59e5b', '#ffffff', '#ff9f91'], grass: ['#8fbf4a', '#b5bf52'], ground: ['#a9c45a', 0.3], cover: ['#e9c46a', '#d9a94a'], coverN: 0.6, hay: true },
+  hujan: { name: 'Musim Hujan', icon: '🌧️', desc: 'hutan hijau pekat, genangan, dan jamur', leaf: ['#2f8a4c', '#3a9a52', '#2a7d46'], flowers: ['#ffffff', '#ffd17c', '#9fc8ff'], grass: ['#4fb256', '#5cbf5e'], ground: ['#5cb85a', 0.3], cover: ['#8fd3ea', '#7cc7e2'], coverN: 0.5, puddle: true, mushrooms: 1.6 },
+  kemarau: { name: 'Musim Kemarau', icon: '🌾', desc: 'rumput menguning, daun kering, dan tanah retak', leaf: ['#9aa84a', '#b5a842', '#8a9a3a'], flowers: ['#f5d43b', '#f59e5b', '#ffffff'], grass: ['#d4bf62', '#c4ad52'], ground: ['#d2c070', 0.55], cover: ['#c9a45a', '#b58a45', '#d9b870'], coverN: 0.9, hay: true },
+  gugur: { name: 'Musim Gugur', icon: '🍂', desc: 'daun jingga dan merah berguguran', leaf: ['#e2853f', '#f5b72b', '#c9512f', '#d96a2b', '#b8643a'], flowers: ['#f5b72b', '#e2553f', '#ffffff'], grass: ['#b9a85a', '#c9a24c'], ground: ['#c2ab5c', 0.45], cover: ['#e2853f', '#f5b72b', '#c9512f'], coverN: 1.3, mushrooms: 1 },
+  dingin: { name: 'Musim Dingin', icon: '❄️', desc: 'salju menutup bukit, pinus berselimut putih', leaf: ['#2f6f4c', '#3b7d58', '#2a6a48'], snow: true, flowers: ['#ffffff', '#cfe6ff'], grass: ['#dfeef5', '#cfe3d8'], ground: ['#f1f7fb', 0.75], cover: ['#ffffff', '#eef6fb'], coverN: 1.1 }
+};
+const ISLAND_SEASON = { 0: 'semi', 1: 'panen', 2: 'semi', 3: 'dingin', 4: 'hujan', 5: 'kemarau', 6: 'gugur', 7: 'panen', 8: 'hujan', 9: 'dingin', 10: 'kemarau', 11: 'gugur', 12: 'panen' };
+/** Musim pulau (objek SEASONS + key). */
+export function seasonOf(id) {
+  const key = ISLAND_SEASON[id] || 'semi';
+  return { key, ...SEASONS[key] };
+}
+
+/** Iklim tiap pulau: nama dan urutan cuaca yang bergilir (mengikuti musimnya). */
 export const CLIMATES = {
-  0: { name: 'Sejuk alun-alun', cycle: ['cerah', 'berawan', 'cerah'] },
+  0: { name: 'Sejuk alun-alun', cycle: ['cerah', 'kelopak', 'berawan', 'cerah'] },
   1: { name: 'Hutan tropis lembap', cycle: ['cerah', 'gerimis', 'berawan', 'gerimis'] },
-  2: { name: 'Lembah sungai basah', cycle: ['hujan', 'pelangi', 'berawan', 'cerah'] },
-  3: { name: 'Pegunungan dingin', cycle: ['kabut', 'embun', 'cerah'] },
+  2: { name: 'Lembah sungai berbunga', cycle: ['hujan', 'pelangi', 'kelopak', 'cerah'] },
+  3: { name: 'Pegunungan bersalju', cycle: ['salju', 'kabut', 'embun', 'cerah'] },
   4: { name: 'Rawa berbadai', cycle: ['badai', 'hujan', 'berawan', 'gerimis'] },
   5: { name: 'Gurun pasir & savana kering', cycle: ['terik', 'debu', 'cerah'] },
-  6: { name: 'Lereng gunung api', cycle: ['abu', 'berawan', 'cerah'] },
+  6: { name: 'Lereng gunung api', cycle: ['abu', 'gugur', 'berawan', 'cerah'] },
   7: { name: 'Sawah berembun', cycle: ['gerimis', 'pelangi', 'cerah'] },
-  8: { name: 'Hutan bambu berangin', cycle: ['angin', 'gerimis', 'berawan'] },
-  9: { name: 'Kawah berkabut', cycle: ['kabut', 'cerah', 'berawan'] },
+  8: { name: 'Hutan bambu basah', cycle: ['hujan', 'angin', 'gerimis', 'berawan'] },
+  9: { name: 'Kawah bersalju', cycle: ['salju', 'kabut', 'cerah'] },
   10: { name: 'Pantai tropis', cycle: ['terik', 'angin', 'cerah'] },
-  11: { name: 'Bukit berangin', cycle: ['angin', 'cerah', 'angin', 'berawan'] },
+  11: { name: 'Bukit berangin', cycle: ['gugur', 'angin', 'cerah', 'berawan'] },
   12: { name: 'Kebun rempah basah', cycle: ['hujan', 'cerah', 'gerimis'] }
 };
 
@@ -61,7 +86,10 @@ const FALL = {
   embun: { colors: ['#ffffff', '#e3f2ff'], speed: 1.3, size: 0.28, sway: 0.8 },
   abu: { colors: ['#9a918b', '#b3aaa3', '#7f7772'], speed: 1.6, size: 0.24, sway: 0.5 },
   daun: { colors: ['#4fb56a', '#8ccf66', '#f5b72b', '#e2853f'], speed: 1.8, size: 0.36, sway: 1.4 },
-  debu: { colors: ['#e3c48e', '#d9b77c', '#efd7a8'], speed: 0.3, size: 0.18, sway: 0.4, low: true }
+  debu: { colors: ['#e3c48e', '#d9b77c', '#efd7a8'], speed: 0.3, size: 0.18, sway: 0.4, low: true },
+  salju: { colors: ['#ffffff', '#f2f8ff'], speed: 1.5, size: 0.34, sway: 0.7 },
+  kelopak: { colors: ['#f7a8c8', '#f9c4da', '#ffffff', '#f472b6'], speed: 1.1, size: 0.3, sway: 1.6 },
+  gugur: { colors: ['#e2853f', '#f5b72b', '#c9512f', '#d96a2b'], speed: 1.5, size: 0.38, sway: 1.5 }
 };
 const WIND = new THREE.Vector3(0.8, 0, 0.6).normalize();
 const RAIN_BOX = 30; const RAIN_H = 18;

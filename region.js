@@ -4,9 +4,13 @@
  * dan kampung budaya. Semua deterministik (benih per pos), jadi tiap siswa melihat wilayah yang sama.
  * Sejak 1.1 area-area itu dikunci rata di medan blok (terrain.js), dan tanaman bergaya blok mengikuti bioma pos:
  * berdiri di atas blok, tidak tumbuh di air, struktur, atau embun beku. Vegetasi memakai InstancedMesh per pos.
+ * Sejak 1.4 tiap pulau bermusim (weather.js SEASONS): warna daun/bunga/rumput, pohon berbunga, buah, topi salju,
+ * serakan di tanah, dan benda tambahan (rumpun bambu, pisang, kayu tumbang, tunggul, jamur, jerami, boneka salju,
+ * lampu jalan) mengikuti musim dan bioma.
  */
 import * as THREE from './vendor/three/three.module.min.js';
 import { toon, createLabel } from './characters.js';
+import { seasonOf } from './weather.js';
 import { createRumahGadang, createMeru, createStupa, createGunungan, createOndelOndel, createGong, createPenjor, createKite, kawungTexture } from './culture.js';
 
 const CAMPS = [
@@ -31,12 +35,12 @@ const distSeg = (px, pz, a, b) => {
 
 // Tanaman per bioma (pengali jumlah dasar) dan warna daun.
 const FLORA = {
-  hutan: { trees: 1.4, pines: 0.3, palms: 0, mangroves: 0, bushes: 1, rocks: 0.4, flowers: 1, grass: 1, leaf: ['#3f9a5a', '#4fb56a', '#68c26a'] },
-  lembah: { trees: 0.8, pines: 0.3, palms: 0.12, mangroves: 0, bushes: 1, rocks: 0.6, flowers: 1.6, grass: 1.2, leaf: ['#4fb56a', '#68c26a', '#8ccf66'] },
-  gunung: { trees: 0.25, pines: 2.2, palms: 0, mangroves: 0, bushes: 0.6, rocks: 2, flowers: 0.4, grass: 0.8, leaf: ['#2f8a4c', '#3b9a58', '#4caf6e'] },
-  rawa: { trees: 0.2, pines: 0, palms: 0.1, mangroves: 1.4, bushes: 1.6, rocks: 0.2, flowers: 0.6, grass: 1.4, leaf: ['#2f7d4a', '#3f8f52', '#4f9e5a'] },
-  gumuk: { trees: 0.1, pines: 0, palms: 0.4, mangroves: 0, bushes: 0.6, rocks: 0.9, flowers: 0.3, grass: 1, leaf: ['#8a9a3a', '#9aa84a', '#7c8f3c'] },
-  kaldera: { trees: 0.5, pines: 0.5, palms: 0, mangroves: 0, bushes: 0.6, rocks: 2.2, flowers: 0.3, grass: 0.6, leaf: ['#3f8a4c', '#4a9a52', '#5aa65a'] }
+  hutan: { bamboo: 0.6, banana: 0.8, logs: 1, mush: 1, trees: 1.4, pines: 0.3, palms: 0, mangroves: 0, bushes: 1, rocks: 0.4, flowers: 1, grass: 1, leaf: ['#3f9a5a', '#4fb56a', '#68c26a'] },
+  lembah: { bamboo: 1, banana: 0.6, logs: 0.6, mush: 0.6, trees: 0.8, pines: 0.3, palms: 0.12, mangroves: 0, bushes: 1, rocks: 0.6, flowers: 1.6, grass: 1.2, leaf: ['#4fb56a', '#68c26a', '#8ccf66'] },
+  gunung: { bamboo: 0, banana: 0, logs: 1.2, mush: 0.4, trees: 0.25, pines: 2.2, palms: 0, mangroves: 0, bushes: 0.6, rocks: 2, flowers: 0.4, grass: 0.8, leaf: ['#2f8a4c', '#3b9a58', '#4caf6e'] },
+  rawa: { bamboo: 0.4, banana: 0.5, logs: 0.8, mush: 1.4, trees: 0.2, pines: 0, palms: 0.1, mangroves: 1.4, bushes: 1.6, rocks: 0.2, flowers: 0.6, grass: 1.4, leaf: ['#2f7d4a', '#3f8f52', '#4f9e5a'] },
+  gumuk: { bamboo: 0, banana: 0.1, logs: 0.3, mush: 0, trees: 0.1, pines: 0, palms: 0.4, mangroves: 0, bushes: 0.6, rocks: 0.9, flowers: 0.3, grass: 1, leaf: ['#8a9a3a', '#9aa84a', '#7c8f3c'] },
+  kaldera: { bamboo: 0.2, banana: 0.2, logs: 1, mush: 0.4, trees: 0.5, pines: 0.5, palms: 0, mangroves: 0, bushes: 0.6, rocks: 2.2, flowers: 0.3, grass: 0.6, leaf: ['#3f8a4c', '#4a9a52', '#5aa65a'] }
 };
 
 /**
@@ -105,7 +109,7 @@ export function buildRegion(ctx, id) {
       ...camps.map((c) => ({ x: c.x, z: c.z, r: 13 })), ...hills.map((h) => ({ x: h.x, z: h.z, r: 20 })),
       ...ponds.map((p) => ({ x: p.x, z: p.z, r: p.r + 3 }))
     ];
-    terrain.addRegion(id, f, { points, segs });
+    terrain.addRegion(id, f, { points, segs, tint: seasonOf(id).ground });
   }
   const flora = FLORA[(terrain && terrain.biomeOf(id) || { key: 'hutan' }).key];
   const ground = (x, z) => (terrain ? terrain.surface(x, z) : { h: 0, water: false, built: false, shore: false });
@@ -221,36 +225,98 @@ export function buildRegion(ctx, id) {
         const s = ground(x, z);
         if (!fits[on](s)) continue;
         taken.add(key);
-        out.push({ x, y: Math.max(s.h, -1), z, s: 0.8 + rand() * 0.45, rot: Math.floor(rand() * 4) * (Math.PI / 2), c: rand() });
+        out.push({ x, y: Math.max(s.h, -1), z, s: 0.8 + rand() * 0.45, rot: Math.floor(rand() * 4) * (Math.PI / 2), c: rand(), c2: rand() });
         break;
       }
     }
     return out;
   };
   const n = (hi, lo, k) => Math.round((high ? hi : lo) * k);
-  const trees = scatter(n(520, 220, flora.trees), { grove: 0.75, pad: 1 });
-  const pines = scatter(n(170, 70, flora.pines), { grove: 0.5, spread: 12, pad: 1 });
-  const palms = scatter(n(120, 50, flora.palms), { grove: 0.3, spread: 20, pad: 1, on: 'dry' });
-  const mangroves = scatter(n(260, 110, flora.mangroves), { grove: 0, pad: 1, on: 'shore' });
-  const bushes = scatter(n(380, 150, flora.bushes), { grove: 0.4, spread: 24 });
-  const rocks = scatter(n(90, 40, flora.rocks), { on: 'any' });
-  const flowers = high ? scatter(n(520, 0, flora.flowers), { grove: 0.2, spread: 30, on: 'dry' }) : [];
-  const grass = high ? scatter(n(900, 0, flora.grass), { on: 'dry' }) : [];
+  const season = seasonOf(id);
+  const trees = scatter(n(720, 280, flora.trees), { grove: 0.75, pad: 1 });
+  const pines = scatter(n(230, 90, flora.pines), { grove: 0.5, spread: 12, pad: 1 });
+  const palms = scatter(n(150, 60, flora.palms), { grove: 0.3, spread: 20, pad: 1, on: 'dry' });
+  const mangroves = scatter(n(300, 120, flora.mangroves), { grove: 0, pad: 1, on: 'shore' });
+  const bamboo = scatter(n(140, 50, flora.bamboo), { grove: 0.6, spread: 10, pad: 1, on: 'dry' });
+  const bananas = scatter(n(120, 45, flora.banana), { grove: 0.5, spread: 16, pad: 1, on: 'dry' });
+  const logs = scatter(n(70, 30, flora.logs), { grove: 0.6, spread: 22, on: 'dry' });
+  const stumps = scatter(n(90, 35, flora.logs), { grove: 0.6, spread: 22 });
+  const bushes = scatter(n(520, 200, flora.bushes), { grove: 0.4, spread: 24 });
+  const rocks = scatter(n(130, 55, flora.rocks), { on: 'any' });
+  const mushrooms = scatter(n(160, 50, flora.mush * (season.mushrooms || 0.4)), { grove: 0.8, spread: 14, on: 'dry' });
+  const hay = season.hay ? scatter(n(45, 18, 1), { on: 'dry', pad: 1 }) : [];
+  const snowmen = season.snow ? scatter(n(16, 8, 1), { on: 'any', pad: 2 }) : [];
+  const cover = scatter(n(800, 260, season.coverN), { grove: season.puddle ? 0.1 : 0.55, spread: 20, on: season.puddle ? 'dry' : 'land' });
+  const flowers = high ? scatter(n(800, 0, flora.flowers * (season.key === 'semi' ? 1.5 : 1)), { grove: 0.2, spread: 30, on: 'dry' }) : [];
+  const grass = high ? scatter(n(1400, 0, flora.grass), { on: 'dry' }) : [];
 
-  const leaf = (t) => flora.leaf[Math.min(flora.leaf.length - 1, Math.floor(t.c * flora.leaf.length))];
+  const pick = (arr, v) => arr[Math.min(arr.length - 1, Math.floor(v * arr.length))];
+  // Musim semi: sepertiga pohon berbunga merah muda.
+  const leaf = (t) => (season.bloom && t.c2 < 0.35 ? pick(season.bloom, t.c) : pick(season.leaf, t.c));
+  const shade = (t) => pick(season.leaf, t.c);
   instanced(root, boxes([[0.55, 2.6, 0.55, 0, 1.3, 0]]), '#8a5f37', [...trees, ...pines], () => '#8a5f37', { shadow: high });
   instanced(root, boxes([[2.8, 1.6, 2.8, 0, 3.2, 0], [1.8, 1.1, 1.8, 0, 4.4, 0], [1.1, 0.8, 3.3, 0, 3.3, 0], [3.3, 0.8, 1.1, 0, 3.3, 0]]), '#ffffff', trees, leaf, { shadow: high });
-  instanced(root, boxes([[2.6, 1, 2.6, 0, 2.4, 0], [1.9, 1, 1.9, 0, 3.4, 0], [1.2, 1, 1.2, 0, 4.4, 0], [0.5, 0.8, 0.5, 0, 5.3, 0]]), '#ffffff', pines, (t) => (t.c < 0.5 ? '#2f8a4c' : '#3b9a58'), { shadow: high });
+  instanced(root, boxes([[2.6, 1, 2.6, 0, 2.4, 0], [1.9, 1, 1.9, 0, 3.4, 0], [1.2, 1, 1.2, 0, 4.4, 0], [0.5, 0.8, 0.5, 0, 5.3, 0]]), '#ffffff', pines, (t) => (season.snow ? shade(t) : t.c < 0.5 ? '#2f8a4c' : '#3b9a58'), { shadow: high });
   // Lontar/kelapa: batang tinggi ramping, tajuk berbentuk silang.
   instanced(root, boxes([[0.42, 5.2, 0.42, 0, 2.6, 0]]), '#9a6c40', palms, () => '#9a6c40', { shadow: high });
-  instanced(root, boxes([[3.8, 0.3, 0.9, 0, 5.3, 0], [0.9, 0.3, 3.8, 0, 5.3, 0], [1, 0.7, 1, 0, 5.45, 0]]), '#ffffff', palms, leaf, { shadow: high });
+  instanced(root, boxes([[3.8, 0.3, 0.9, 0, 5.3, 0], [0.9, 0.3, 3.8, 0, 5.3, 0], [1, 0.7, 1, 0, 5.45, 0]]), '#ffffff', palms, shade, { shadow: high });
   // Bakau: akar penyangga di atas air, tajuk lebar.
   instanced(root, boxes([[0.45, 2.2, 0.45, 0, 1.7, 0], [0.2, 1.3, 0.2, 0.6, 0.55, 0], [0.2, 1.3, 0.2, -0.6, 0.55, 0], [0.2, 1.3, 0.2, 0, 0.55, 0.6], [0.2, 1.3, 0.2, 0, 0.55, -0.6]]), '#6e5034', mangroves, () => '#6e5034', { shadow: high });
-  instanced(root, boxes([[3.4, 1.1, 3.4, 0, 3.1, 0], [2, 0.8, 2, 0, 4, 0]]), '#ffffff', mangroves, leaf, { shadow: high });
-  instanced(root, boxes([[1.3, 0.9, 1.3, 0, 0.45, 0], [0.8, 0.5, 0.8, 0.3, 1.1, -0.2]]), '#ffffff', bushes, (t) => (t.c < 0.5 ? leaf(t) : '#5fbf63'));
+  instanced(root, boxes([[3.4, 1.1, 3.4, 0, 3.1, 0], [2, 0.8, 2, 0, 4, 0]]), '#ffffff', mangroves, shade, { shadow: high });
+  // Rumpun bambu: lima batang tinggi dan jumbai daun.
+  const dryStem = ['kemarau', 'gugur', 'dingin'].includes(season.key);
+  instanced(root, boxes([[0.22, 7, 0.22, 0, 3.5, 0], [0.2, 6, 0.2, 0.5, 3, 0.3], [0.2, 6.5, 0.2, -0.4, 3.25, 0.4], [0.2, 5.5, 0.2, 0.3, 2.75, -0.5], [0.2, 6.2, 0.2, -0.5, 3.1, -0.3]]), '#ffffff', bamboo, (t) => (dryStem ? (t.c < 0.5 ? '#b9b04a' : '#a89f45') : t.c < 0.5 ? '#7fb04a' : '#9cc25a'), { shadow: high });
+  instanced(root, boxes([[1.4, 0.6, 1.4, 0, 6.6, 0], [1, 0.5, 1, 0.5, 5.7, 0.3], [1, 0.5, 1, -0.5, 5.9, -0.2], [0.9, 0.5, 0.9, 0.2, 5.2, -0.5]]), '#ffffff', bamboo, shade);
+  // Pohon pisang: batang semu dan empat pelepah lebar.
+  instanced(root, boxes([[0.35, 2.2, 0.35, 0, 1.1, 0], [2.4, 0.12, 0.6, 0.9, 2.3, 0], [0.6, 0.12, 2.4, 0, 2.4, 0.9], [2.2, 0.12, 0.6, -0.85, 2.2, 0.1], [0.6, 0.12, 2.2, 0.1, 2.35, -0.85], [0.5, 1.2, 0.5, 0, 2.6, 0]]), '#ffffff', bananas, (t) => (dryStem ? shade(t) : t.c < 0.5 ? '#6fcf5a' : '#5fbf4e'));
+  instanced(root, boxes([[1.3, 0.9, 1.3, 0, 0.45, 0], [0.8, 0.5, 0.8, 0.3, 1.1, -0.2]]), '#ffffff', bushes, (t) => (t.c < 0.5 ? leaf(t) : shade({ c: 1 - t.c })));
   instanced(root, boxes([[1.4, 0.9, 1.1, 0, 0.45, 0], [0.8, 0.6, 0.7, 0.35, 1.2, 0.1]]), '#ffffff', rocks, (t) => (t.c < 0.5 ? '#94908a' : '#7d776f'));
-  if (flowers.length) instanced(root, boxes([[0.08, 0.35, 0.08, 0, 0.17, 0], [0.26, 0.2, 0.26, 0, 0.42, 0]]), '#ffffff', flowers, (t) => ['#ff9f91', '#ffd17c', '#ffffff', '#f59e5b', '#f472b6'][Math.floor(t.c * 5)]);
-  if (grass.length) instanced(root, boxes([[0.1, 0.5, 0.1, 0, 0.25, 0], [0.1, 0.38, 0.1, 0.18, 0.19, 0.08], [0.1, 0.42, 0.1, -0.15, 0.21, -0.1]]), '#ffffff', grass, (t) => (flora === FLORA.gumuk ? (t.c < 0.5 ? '#c9b35a' : '#b7a24c') : t.c < 0.5 ? '#5cb860' : '#7cc65a'));
+  // Kayu tumbang dan tunggul.
+  instanced(root, boxes([[3.2, 0.65, 0.65, 0, 0.33, 0], [0.3, 0.5, 0.3, 0.6, 0.8, 0.15], [0.7, 0.75, 0.75, 1.6, 0.38, 0]]), '#ffffff', logs, (t) => (t.c < 0.5 ? '#7a5434' : '#8a5f37'));
+  instanced(root, boxes([[0.9, 0.7, 0.9, 0, 0.35, 0], [0.35, 0.25, 0.35, 0.55, 0.13, 0.1]]), '#ffffff', stumps, (t) => (t.c < 0.5 ? '#9a6c40' : '#7a5434'));
+  // Jamur warna-warni di bawah pohon.
+  instanced(root, boxes([[0.12, 0.3, 0.12, 0, 0.15, 0], [0.45, 0.18, 0.45, 0, 0.36, 0], [0.08, 0.2, 0.08, 0.3, 0.1, 0.2], [0.28, 0.12, 0.28, 0.3, 0.24, 0.2]]), '#ffffff', mushrooms, (t) => pick(['#e5533f', '#f5d43b', '#f6efe2', '#c98a5a'], t.c));
+  // Tumpukan jerami (panen & kemarau) dan boneka salju (dingin).
+  instanced(root, boxes([[1.6, 1.1, 1.6, 0, 0.55, 0], [1.1, 0.6, 1.1, 0, 1.4, 0], [0.5, 0.4, 0.5, 0, 1.9, 0]]), '#ffffff', hay, (t) => (t.c < 0.5 ? '#e2c25a' : '#d4b04a'), { shadow: high });
+  instanced(root, boxes([[1.1, 1.1, 1.1, 0, 0.55, 0], [0.8, 0.8, 0.8, 0, 1.5, 0], [0.55, 0.55, 0.55, 0, 2.15, 0]]), '#ffffff', snowmen, () => '#ffffff', { shadow: high });
+  instanced(root, boxes([[0.12, 0.12, 0.4, 0, 2.15, 0.45], [0.9, 0.18, 0.9, 0, 1.92, 0], [0.1, 0.7, 0.1, 0.6, 1.5, 0]]), '#ffffff', snowmen, (t) => (t.c < 0.5 ? '#e5533f' : '#f08a3c'));
+  // Musim panen: buah di tajuk. Musim dingin: topi salju.
+  if (season.fruit) {
+    const fruiting = trees.filter((t) => t.c2 < 0.6);
+    instanced(root, boxes([[0.4, 0.4, 0.4, 1.45, 3.0, 0.3], [0.4, 0.4, 0.4, -0.5, 3.1, 1.45], [0.4, 0.4, 0.4, -1.45, 3.4, -0.4], [0.4, 0.4, 0.4, 0.6, 2.9, -1.45], [0.35, 0.35, 0.35, 0.9, 4.2, 0.9]]), '#ffffff', fruiting, (t) => pick(season.fruit, (t.c * 7) % 1));
+  }
+  if (season.snow) {
+    const white = () => '#ffffff';
+    instanced(root, boxes([[3.0, 0.3, 3.0, 0, 4.1, 0], [1.95, 0.3, 1.95, 0, 5.05, 0]]), '#ffffff', trees, white);
+    instanced(root, boxes([[2.7, 0.22, 2.7, 0, 2.95, 0], [2.0, 0.22, 2.0, 0, 3.95, 0], [1.3, 0.22, 1.3, 0, 4.95, 0], [0.6, 0.2, 0.6, 0, 5.75, 0]]), '#ffffff', pines, white);
+    instanced(root, boxes([[1.4, 0.18, 1.4, 0, 0.95, 0], [0.85, 0.15, 0.85, 0.3, 1.4, -0.2]]), '#ffffff', bushes, white);
+    instanced(root, boxes([[1.45, 0.15, 1.15, 0, 0.95, 0], [0.85, 0.12, 0.75, 0.35, 1.55, 0.1]]), '#ffffff', rocks, white);
+  }
+  // Serakan di tanah: kelopak, daun gugur, daun kering, salju, atau genangan air.
+  const coverGeo = season.puddle ? boxes([[1.8, 0.03, 1.3, 0, 0.02, 0], [0.9, 0.03, 0.7, 0.9, 0.02, 0.5]])
+    : season.snow ? boxes([[1.9, 0.08, 1.9, 0, 0.04, 0], [1.1, 0.06, 1.1, 0.7, 0.03, 0.7]])
+      : boxes([[0.6, 0.04, 0.45, 0, 0.03, 0], [0.45, 0.04, 0.55, 0.6, 0.03, 0.4], [0.4, 0.04, 0.4, -0.5, 0.03, -0.45], [0.35, 0.04, 0.3, 0.3, 0.03, -0.6]]);
+  instanced(root, coverGeo, '#ffffff', cover, (t) => pick(season.cover, t.c));
+  if (flowers.length) instanced(root, boxes([[0.08, 0.35, 0.08, 0, 0.17, 0], [0.26, 0.2, 0.26, 0, 0.42, 0]]), '#ffffff', flowers, (t) => pick(season.flowers, t.c));
+  if (grass.length) instanced(root, boxes([[0.1, 0.5, 0.1, 0, 0.25, 0], [0.1, 0.38, 0.1, 0.18, 0.19, 0.08], [0.1, 0.42, 0.1, -0.15, 0.21, -0.1]]), '#ffffff', grass, (t) => pick(season.grass, t.c));
+
+  // Lampu jalan di sepanjang jalan setapak (tiap ±34 m), di sisi jalan yang rata.
+  const lamps = [];
+  segs.forEach(([a, b], si) => {
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const side = si % 2 ? 1 : -1;
+    const nx = -(b.z - a.z) / (len || 1); const nz = (b.x - a.x) / (len || 1);
+    for (let d = 17; d < len - 8; d += 34) {
+      const t = d / len;
+      const x = a.x + (b.x - a.x) * t + nx * 2.3 * side; const z = a.z + (b.z - a.z) * t + nz * 2.3 * side;
+      if (Math.hypot(x - hub.x, z - hub.z) < 28) continue;
+      const sf = ground(x, z);
+      if (sf.water || sf.built) continue;
+      lamps.push({ x, y: sf.h, z, s: 1, rot: Math.atan2(nx, nz) + (side > 0 ? Math.PI : 0), c: 0 });
+    }
+  });
+  instanced(root, boxes([[0.16, 2.2, 0.16, 0, 1.1, 0], [0.5, 0.12, 0.5, 0, 0.06, 0], [0.12, 0.1, 0.7, 0, 2.2, 0.3]]), '#7a4a24', lamps, () => '#7a4a24');
+  instanced(root, boxes([[0.36, 0.45, 0.36, 0, 1.92, 0.6]]), '#ffd45c', lamps, () => '#ffd45c');
 }
 
 /** Gabungkan beberapa kotak [lebar, tinggi, dalam, x, y, z] menjadi satu geometri (untuk tanaman bergaya blok). */

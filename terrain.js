@@ -220,7 +220,7 @@ export function createTerrain({ scene, gfx = 'high', anisotropy = 1 }) {
    * Hitung grid medan satu wilayah pos.
    * f = bingkai wilayah { x, z, rx, rz }; flats = { points: [{ x, z, r }], segs: [[a, b]] } area yang dikunci rata.
    */
-  function addRegion(id, f, { points = [], segs = [] } = {}) {
+  function addRegion(id, f, { points = [], segs = [], tint = null } = {}) {
     const biome = BIOMES[id];
     if (!biome || regions.some((r) => r.id === id)) return;
     const gx0 = Math.floor((f.x - f.rx - 3) / BLOCK); const gx1 = Math.ceil((f.x + f.rx + 3) / BLOCK);
@@ -291,6 +291,11 @@ export function createTerrain({ scene, gfx = 'high', anisotropy = 1 }) {
     }
 
     const region = { id, biome, f, gx0, gz0, nx, nz, H, M: Mt, valid, minX: gx0 * BLOCK, maxX: gx1 * BLOCK, minZ: gz0 * BLOCK, maxZ: gz1 * BLOCK };
+    // Musim (sejak 1.4): bahan berumput dicampur ke warna rumput musim pulau ini; bentuk medan tidak berubah.
+    if (tint) {
+      const tc = new THREE.Color(tint[0]);
+      region.tops = colors.map((c, m) => ([M.rumput, M.rawa, M.savana, M.lumut].includes(m) ? c.top.clone().lerp(tc, tint[1]) : c.top));
+    }
 
     // ---- Struktur blok ----
     const rnd = seeded(seed + 501);
@@ -408,6 +413,7 @@ export function createTerrain({ scene, gfx = 'high', anisotropy = 1 }) {
     const WP = []; const WI = [];
     const { H, M: Mt, valid, nx, nz, gx0, gz0 } = r;
     const tmp = new THREE.Color();
+    const tops = r.tops || colors.map((c) => c.top);
     // Empat titik sudut berurutan; urutan segitiga dibalik bila tidak searah normal.
     const face = (v, n, col, uv) => {
       const b = P.length / 3;
@@ -427,7 +433,7 @@ export function createTerrain({ scene, gfx = 'high', anisotropy = 1 }) {
         let e = i + 1;
         while (e < i1 && valid[j * nx + e] && H[j * nx + e] === H[k] && Mt[j * nx + e] === Mt[k]) e += 1;
         const x0 = (gx0 + i) * BLOCK; const x1 = (gx0 + e) * BLOCK; const z0 = (gz0 + j) * BLOCK; const z1 = z0 + BLOCK; const y = H[k];
-        face([x0, y, z0, x0, y, z1, x1, y, z1, x1, y, z0], [0, 1, 0], jitter(k, colors[Mt[k]].top), [x0 / BLOCK, z0 / BLOCK, x0 / BLOCK, z1 / BLOCK, x1 / BLOCK, z1 / BLOCK, x1 / BLOCK, z0 / BLOCK]);
+        face([x0, y, z0, x0, y, z1, x1, y, z1, x1, y, z0], [0, 1, 0], jitter(k, tops[Mt[k]]), [x0 / BLOCK, z0 / BLOCK, x0 / BLOCK, z1 / BLOCK, x1 / BLOCK, z1 / BLOCK, x1 / BLOCK, z0 / BLOCK]);
         i = e;
       }
       // Air: satu pita per baris kolom yang tergenang.
