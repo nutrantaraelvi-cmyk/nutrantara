@@ -14,6 +14,7 @@ import { createQuests } from './quest.js';
 import { buildRegion } from './region.js';
 import { createTerrain } from './terrain.js';
 import { createWeather, forecast, WEATHER } from './weather.js';
+import { applyOutfit, clothMaterial } from './fashion.js';
 import { SUN_DIR, createSkyDome, createCloudSea, cumulusTextures, createCumulus } from './sky.js';
 import { createCandiBentar, createMeru, createPenjor, createKite, createPinisi, createStupa, createRumahGadang, createGunungan, createGong, createOndelOndel, createCorn, createTempe, createPapaya, kawungTexture } from './culture.js';
 
@@ -654,6 +655,52 @@ function buildDecor() {
   });
 }
 
+// ---------- Butik Nusantara: kios toko busana di Alun-alun (sejak 1.2) ----------
+// Manekin di kios berganti busana contoh setiap beberapa detik; dekati lalu tekan E untuk membuka layar Toko.
+const SHOWCASE = [
+  { kepala: 'siger', baju: 'songket', leher: 'ulos', punggung: 'payung' },
+  { kepala: 'kamboja', baju: 'megamendung', leher: 'melati', punggung: 'layangan' },
+  { kepala: 'blangkon', baju: 'parang', leher: 'manik', punggung: 'noken' },
+  { kepala: 'udeng', baju: 'tenun-ikat', leher: 'selendang', punggung: 'bakul' }
+];
+let boutique = null;
+function buildBoutique() {
+  const f = frame(0);
+  const lx = 11; const lz = 6.5; // sisi timur alun-alun, area yang masih lapang
+  const g = new THREE.Group();
+  g.position.set(f.x + lx, 0, f.z + lz);
+  g.rotation.y = Math.atan2(-lx, -lz); // menghadap pusat alun-alun
+  add(box(5.2, 0.06, 3.8, '#d9b68a'), 0, 0.03, 0, g);
+  [[-2.3, -1.6], [2.3, -1.6], [-2.3, 1.6], [2.3, 1.6]].forEach(([x, z]) => add(cyl(0.09, 0.11, 2.9, '#8a5a35', 8), x, 1.45, z, g));
+  const roof = add(new THREE.Mesh(new THREE.ConeGeometry(3.8, 1.3, 4), toon('#c0573a')), 0, 3.55, 0, g);
+  roof.rotation.y = Math.PI / 4; roof.scale.set(1, 1, 0.8);
+  const crown = add(new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.7, 4), toon('#9e4630')), 0, 4.4, 0, g);
+  crown.rotation.y = Math.PI / 4;
+  add(new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.95, 0.6), new THREE.MeshToonMaterial({ map: kawungTexture('#f6e3b8', '#b0743a', 2) })), 1.05, 0.5, 1.15, g);
+  const rail = add(cyl(0.04, 0.04, 3.9, '#7a4a24', 6), 0, 2.3, -1.35, g);
+  rail.rotation.z = Math.PI / 2;
+  ['kawung', 'parang', 'megamendung', 'tenun-ikat', 'songket'].forEach((id, i) => add(new THREE.Mesh(new THREE.BoxGeometry(0.58, 1.05, 0.04), clothMaterial(id)), -1.6 + i * 0.8, 1.72, -1.35, g));
+  add(cyl(0.45, 0.5, 0.2, '#f5e6c8', 20), -1.25, 0.13, 0.25, g);
+  const manikin = createExplorer('#f5b72b');
+  add(manikin, -1.25, 0.23, 0.25, g);
+  applyOutfit(manikin, SHOWCASE[0]);
+  const sign = createLabel('🛍 BUTIK NUSANTARA', { color: '#7a3f1c', bg: 'rgba(255,244,220,.95)', size: 28, scale: 0.012 });
+  sign.position.set(0, 4.95, 0);
+  g.add(sign);
+  scene.add(g);
+  boutique = { group: g, manikin, x: g.position.x, z: g.position.z, look: 0, t: 0, waved: 0 };
+}
+function animateBoutique(dt) {
+  if (!boutique) return;
+  const b = boutique;
+  b.t += dt;
+  b.manikin.rotation.y += dt * 0.6;
+  b.manikin.userData.animate(dt, { speed: 0 });
+  if (b.t > 6) { b.t = 0; b.look = (b.look + 1) % SHOWCASE.length; applyOutfit(b.manikin, SHOWCASE[b.look]); }
+  const near = mode === 'play' && Math.hypot(b.x - self.x, b.z - self.z) < 6;
+  if (near && performance.now() - b.waved > 9000) { b.waved = performance.now(); b.manikin.userData.emote('wave'); }
+}
+
 function buildPalm(x, z, s = 1) {
   const g = new THREE.Group();
   let px = 0; let py = 0;
@@ -795,6 +842,7 @@ async function prepare(onProgress = () => {}) {
     // Satu langkah per wilayah pos: grid medan blok + isinya (agar layar muat tetap bergerak).
     ...W.islands.filter((i) => W.isPost(i.id)).map((isl) => () => buildRegion({ scene, W, frame, toX, toZ, items: quests.items, platforms, shardSpots: wildShards, animated, gfx, terrain }, isl.id)),
     () => buildDecor(),
+    () => buildBoutique(),
     () => buildShards(),
     () => {
       nara = createNara();
@@ -839,6 +887,7 @@ async function prepare(onProgress = () => {}) {
       scene.add(lockRing);
       self.obj = createExplorer(net && net.me ? net.me.color : PALETTE.cyan);
       add(self.obj);
+      if (window.NutraShop) applyOutfit(self.obj, window.NutraShop.wear); // busana Butik Nusantara
     }
   ];
   for (let i = 0; i < steps.length; i += 1) {
@@ -1261,6 +1310,7 @@ function interact() {
   if (!nearby || mode !== 'play' || panelOpen) return;
   keys.clear();
   if (nearby.kind === 'nara') { naraTalk(); return; }
+  if (nearby.kind === 'shop') { game.goTo('shop'); return; }
   quests.activate(nearby.item);
 }
 
@@ -1706,6 +1756,12 @@ function drawMinimap() {
     g.fillText(mark, isl.cx, isl.cy);
     if (big) { g.font = `600 ${Math.round(11 * u)}px "DM Sans", sans-serif`; g.fillText(unknown ? '???' : isl.name, isl.cx, isl.cy + Math.max(isl.ry * 0.55, 14 * u)); }
   });
+  // Butik Nusantara di alun-alun (ikon + teks saat peta besar)
+  if (boutique) {
+    g.font = `700 ${Math.round((big ? 13 : 11) * u)}px "Baloo 2", sans-serif`;
+    g.fillText('🛍', toPx(boutique.x), toPy(boutique.z));
+    if (big) { g.font = `600 ${Math.round(10 * u)}px "DM Sans", sans-serif`; g.fillStyle = '#3b2a1a'; g.fillText('Butik', toPx(boutique.x), toPy(boutique.z) + 12 * u); }
+  }
   // Peta dekat: objek misi di sekitar (titik putih; hijau bila sudah selesai dipindai)
   if (!big && quests) quests.items.forEach((it) => {
     const ix = toPx(it.x); const iy = toPy(it.z);
@@ -1799,12 +1855,19 @@ function updateNearby() {
   let found = null;
   const it = quests.nearest(self.x, self.z, self.h - groundAt(self.x, self.z));
   if (it) found = { kind: 'item', item: it, key: `${it.kind}${it.pos}${it.row ?? ''}` };
+  else if (boutique && Math.hypot(boutique.x - self.x, boutique.z - self.z) < 5.2) found = { kind: 'shop', key: 'shop' }; // kios selebar 5,2 m
   else if (Math.hypot(nara.position.x - self.x, nara.position.z - self.z) < 2.2) found = { kind: 'nara', key: 'nara' };
   const prev = nearby === undefined ? 'init' : nearby ? nearby.key : 'none';
   nearby = found;
   if (found && found.kind === 'item') { promptEl.textContent = quests.hint(found.item); actionBtn.textContent = { terminal: 'Pindai', board: 'Buka papan', altar: 'Altar segel', station: 'Buka misi', ingredient: 'Ambil bahan', stage: 'Presentasi' }[found.item.kind] || 'Buka dapur'; actionBtn.hidden = false; return; }
   if ((found ? found.key : 'none') === prev) return;
   if (!found) { promptEl.textContent = 'Jelajahi pulau. Ikuti panah emas ke tujuan berikutnya, dekati objek bercahaya, lalu tekan E.'; actionBtn.hidden = true; return; }
+  if (found.kind === 'shop') {
+    promptEl.textContent = 'Butik Nusantara: tukar poin hasil belajarmu dengan busana khas daerah. Tekan E untuk membuka toko.';
+    actionBtn.textContent = 'Buka toko';
+    actionBtn.hidden = false;
+    return;
+  }
   promptEl.textContent = 'Nara ada di sampingmu. Tekan E untuk meminta arahan.';
   actionBtn.textContent = 'Tanya Nara';
   actionBtn.hidden = false;
@@ -1898,6 +1961,7 @@ function updateOthers(dt) {
     let o = others.get(id);
     if (!o) {
       const obj = createExplorer(p.color);
+      applyOutfit(obj, p.wear || {});
       const ox = toX(p.tx ?? p.x); const oz = toZ(p.ty ?? p.y);
       add(obj, ox, groundAt(ox, oz), oz);
       o = { obj, label: null, labelText: '', x: ox, z: oz, h: groundAt(ox, oz), face: 0, speed: 0 };
@@ -1905,6 +1969,7 @@ function updateOthers(dt) {
       fx.ring({ x: o.x, y: o.h, z: o.z }, { color: p.color.startsWith('#') ? p.color : PALETTE.cyan });
     }
     // Tinggi dari server = tinggi di atas blok medan, jadi ditambah tinggi medan di posisi pemain itu.
+    if (p.wear) applyOutfit(o.obj, p.wear); // tidak berbuat apa-apa bila busananya sama
     const tx = toX(p.tx ?? p.x); const tz = toZ(p.ty ?? p.y); const th = terrainH(tx, tz) + (p.th || 0);
     const k = Math.min(1, dt * 10);
     const dx = (tx - o.x) * k; const dz = (tz - o.z) * k;
@@ -1978,6 +2043,7 @@ function updateGoal() {
 function animateWorld(dt) {
   const t = clock.elapsedTime;
   nara.userData.animate(dt);
+  animateBoutique(dt);
   if (fx) fx.update(dt);
   if (quests) quests.update(dt, t);
   animated.forEach((o) => {
@@ -2115,6 +2181,8 @@ gfxBar.addEventListener('click', (e) => {
   localStorage.setItem(GFX_KEY, gfx);
   applyMode(prev);
 });
+
+document.addEventListener('nutra:outfit', (e) => { if (self.obj) applyOutfit(self.obj, e.detail || {}); });
 
 document.addEventListener('nutra:screen', (e) => {
   if (e.detail === 'world' && landed && gfx !== '2d') { if (window.NutraWorld2D) window.NutraWorld2D.stop(); if (mode === 'off') mode = 'play'; start(); }

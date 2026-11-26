@@ -52,7 +52,9 @@ Buka `play.html` langsung di browser, atau unggah ke hosting statis (`index.html
 - **Pulau NUTRANTARA** low-poly: gapura dan Nara di barat, jalur emas menuju enam portal, dan penanda khas di setiap pos (warung Menu A/B, kubah laboratorium pencernaan, lengkung vili, domino sebab-akibat, kristal klaim, dapur joglo dengan tumpeng).
 - **Kontrol:** **WASD** berjalan relatif kamera. Tombol **panah ← →** memutar arah hadap (kamera ikut ke belakang penjelajah), **↑ ↓** maju/mundur searah hadap. **R / Page Up** menengadah ke langit, **F / Page Down** menunduk (seret mouse ke atas/bawah juga bisa); kepala penjelajah ikut mendongak atau menunduk. **Kursor mouse**: penjelajah menoleh ke arah kursor (ada cincin penanda), dan **klik tanah** untuk berjalan ke titik itu. **Tanda panah emas** di tanah selalu menunjukkan arah hadap. **Spasi** melompat, **E** berinteraksi, **1–4** emote. Seret mouse untuk memutar kamera, gulir untuk zoom. Di layar sentuh tersedia joystick dan tombol lompat/aksi; ketuk tanah juga membuat penjelajah berjalan ke sana.
 - **Multipemain:** avatar siswa lain bergerak dan melompat secara langsung, dengan label alias, jumlah segel, dan gelembung obrolan.
-- **Kepingan arsip:** 12 koleksi di atas blok tempe melayang, hanya untuk kesenangan dan tidak memengaruhi skor.
+- **Medan blok & cuaca (1.1):** tiap wilayah pos bermedan blok dengan bioma sendiri: Hutan Tropis, Lembah Sungai, Pegunungan Kabut, Rawa & Danau, Gumuk Pasir & Savana, dan Kaldera Gunung Api. Ada bukit, gunung, lembah, danau yang bisa direnangi, serta menara pandang, candi, dan mesa. Undakan 1 blok dinaiki otomatis; area misi dan jalan tetap rata. Tiap pulau punya iklim dengan cuaca bergilir setiap 8 menit (hujan, kabut, embun beku, badai petir lembut, angin berpasir, hujan abu, pelangi). Cuaca hanya mengubah suasana.
+- **Butik Nusantara (1.2):** tukar poin hasil belajar dengan busana khas daerah, yaitu 20 barang dalam 4 jenis: topi & ikat kepala, rompi bermotif, hiasan leher, dan tas punggung. Toko dibuka lewat menu **Toko**, tombol **Butik** di lobi, atau kios di Alun-alun. Saldo = poin yang diperoleh − poin yang dibelanjakan, jadi **skor rapor dan peringkat tidak berkurang**. Busana terlihat oleh teman sekelas, dan ada pratinjau 3D untuk mencoba sebelum membeli.
+- **Kepingan arsip:** 48 koleksi (blok tempe melayang, pulau jelajah, wilayah pos, dan puncak menara pandang), hanya untuk kesenangan dan tidak memengaruhi skor.
 - **Grafis:** *3D Tinggi* (bayangan dan ombak), *3D Ringan* (untuk laptop lama/tablet), atau *2D*. Layar **Peta** tetap tersedia untuk pengguna papan ketik dan pembaca layar.
 - Desain karakter dan peta dijelaskan di [docs/KARAKTER.md](docs/KARAKTER.md).
 
@@ -63,6 +65,7 @@ Buka `play.html` langsung di browser, atau unggah ke hosting statis (`index.html
 | Jeda semua pemain | Menutup layar semua siswa dengan pesan jeda; progres tetap aman |
 | Bekukan gerak | Avatar tidak bisa bergerak, tetapi soal tetap bisa dikerjakan |
 | Matikan obrolan / bisukan siswa | Moderasi obrolan |
+| Tutup/buka Butik Nusantara | Menghentikan pembelian busana (mis. saat ulangan); busana yang sudah dimiliki tetap bisa dipakai. Detail siswa menampilkan busana yang dimiliki dan poin yang dibelanjakan |
 | Akses pos | Membuka atau menutup Pos 1–6 untuk seluruh kelas (misalnya "Hanya Pos 1" di pertemuan pertama) |
 | Pengumuman / pesan pribadi | Banner di layar semua siswa atau satu siswa |
 | Peta langsung | Melihat posisi siswa; pilih siswa lalu klik peta untuk memindahkannya, atau "Kumpulkan semua di Nara" |
@@ -128,8 +131,8 @@ Jawaban salah memunculkan petunjuk bertahap dari Nara. Tidak ada nyawa, dan pema
 
 ## Data dan privasi
 
-- **Mode kelas:** setiap siswa punya akun (nama pengguna + kata sandi, **tanpa email**). Kata sandi disimpan sebagai hash *scrypt*, dan sesi berlaku 30 hari. Progres disimpan di browser **dan** di `data/classroom.json` pada server guru (nama pengguna, posisi, progres, skor, obrolan). Guru bisa mengatur **kode kelas** agar orang luar tidak bisa mendaftar, dan bisa **mengatur ulang kata sandi** siswa yang lupa. Folder `data/` dikecualikan dari Git. Tidak ada layanan cloud.
-- **Mode satu pemain:** progres hanya ada di `localStorage` (`nutrantara-save-v1`).
+- **Mode kelas:** setiap siswa punya akun (nama pengguna + kata sandi, **tanpa email**). Kata sandi disimpan sebagai hash *scrypt*, dan sesi berlaku 30 hari. Progres disimpan di browser **dan** di `data/classroom.json` pada server guru (nama pengguna, posisi, progres, skor, obrolan, dan lemari busana Butik Nusantara). Atur ulang progres oleh guru ikut mengosongkan lemari. Guru bisa mengatur **kode kelas** agar orang luar tidak bisa mendaftar, dan bisa **mengatur ulang kata sandi** siswa yang lupa. Folder `data/` dikecualikan dari Git. Tidak ada layanan cloud.
+- **Mode satu pemain:** progres hanya ada di `localStorage` (`nutrantara-save-v2:<alias>`), begitu juga lemari busana (`nutrantara-lemari-v1:<alias>`).
 - Tetap gunakan alias, bukan nama lengkap. Obrolan dapat dibaca guru, dan siswa diberi tahu di layar.
 - Tombol **Unduh JSON** di Paspor tetap tersedia di kedua mode.
 - Hapus atau arsipkan `data/classroom.json` sesuai protokol data sekolah/penelitian setelah sesi selesai.

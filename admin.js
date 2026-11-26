@@ -99,6 +99,7 @@
     toggleBtn('#btn-pause', settings.paused, '▶ Lanjutkan permainan', '❚❚ Jeda semua pemain');
     toggleBtn('#btn-move', settings.movementLocked, '↔ Bebaskan gerak', '⌑ Bekukan gerak');
     toggleBtn('#btn-chat', !settings.chatEnabled, '✉ Nyalakan obrolan', '✕ Matikan obrolan');
+    toggleBtn('#btn-shop', settings.shopOpen === false, '🛍 Buka Butik Nusantara', '🛍 Tutup Butik Nusantara');
 
     $('#post-toggles').innerHTML = MISSIONS.map((m) => {
       const open = settings.openPosts.includes(m.id);
@@ -143,7 +144,7 @@
       const answered = p.posts.reduce((n, s) => n + (s.total ? s.done : 0), 0);
       const right = p.posts.reduce((n, s) => n + (s.total ? (s.correct ?? s.done) : 0), 0);
       const flags = p.flags.length ? ` <span class="warn" title="${esc(p.flags.join('\n'))}">⚠</span>` : '';
-      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}${p.party ? ` <span class="tag" title="Regu proyek">🤝 ${esc(p.party)}</span>` : ''}`;
+      const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}${p.party ? ` <span class="tag" title="Regu proyek">🤝 ${esc(p.party)}</span>` : ''}${p.pjbl && (p.pjbl.total || p.pjbl.menu) ? ` <span class="tag" title="Skor analisis PjBL POS 1–5 (terpisah dari skor ekspedisi)${p.pjbl.presented ? '; menu POS 6 sudah disajikan' : ''}">PjBL ${p.pjbl.total}/${p.pjbl.max}${p.pjbl.presented ? ' · menu ✓' : ''}</span>` : ''}`;
       return `<tr data-id="${p.id}"${selected === p.id ? ' class="selected"' : ''}>
         <th scope="row"><span class="roster-dot" style="background:${esc(p.color)}"></span> ${esc(p.alias)} <small class="${p.online ? 'on' : 'off'}">${p.online ? '● daring' : '○ luring'}</small>${flags}${tags}</th>
         <td>${p.score}</td><td>${p.seals} / 6</td><td class="pcells">${cells}</td><td>${right}/${answered}</td>
@@ -221,6 +222,7 @@
   $('#btn-pause').addEventListener('click', () => command('set-paused', { value: !snapshot.settings.paused }));
   $('#btn-move').addEventListener('click', () => command('set-movement', { value: !snapshot.settings.movementLocked }));
   $('#btn-chat').addEventListener('click', () => command('set-chat', { value: !snapshot.settings.chatEnabled }));
+  $('#btn-shop').addEventListener('click', () => command('set-shop', { value: snapshot.settings.shopOpen === false }));
   $('#btn-gather').addEventListener('click', () => command('teleport', { playerId: 'all', x: W.nara.x + 30, y: W.nara.y + 30 }));
   $('#post-toggles').addEventListener('click', (e) => {
     const b = e.target.closest('[data-post]');
@@ -327,10 +329,49 @@
       return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2>${kasus}<ul>${ch}</ul><p><b>Alasan:</b> ${esc(s.reason || '—')}</p></article>`;
     }).join('') : '<p>Belum ada progres.</p>';
     const flags = p.flags.length ? `<div class="feedback"><b>Catatan validasi server:</b><ul>${p.flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : '';
+    // Butik Nusantara: belanja tidak mengurangi skor; saldo = skor − poin dibelanjakan.
+    const SHOP = window.NUTRANTARA_SHOP;
+    const itemName = (id) => { const it = SHOP && SHOP.byId(id); return it ? it.name : id; };
+    const shop = p.shop ? `<article class="passport-record"><h2>Butik Nusantara</h2><p><b>Dibelanjakan:</b> ${p.shop.spent} poin · <b>Saldo:</b> ${p.shop.balance} poin (skor tetap ${p.score})</p><p><b>Busana milik:</b> ${p.shop.owned.length ? p.shop.owned.map((id) => esc(itemName(id))).join(', ') : '—'}</p><p><b>Sedang dipakai:</b> ${p.wear ? Object.values(p.wear).map((id) => esc(itemName(id))).join(', ') : '—'}</p></article>` : '';
     $('#detail-title').textContent = `DETAIL · ${p.alias.toUpperCase()} · ${p.score} POIN · ${p.seals}/6 SEGEL`;
-    $('#detail-body').innerHTML = `${flags}${posts}`;
+    $('#detail-body').innerHTML = `${flags}${pjblDetail(p)}${posts}${shop}`;
+    detailId = p.id;
     $('#detail-dialog').showModal();
   }
+
+  // Proyek PjBL POS 1–6 (sejak 1.3): skor analisis, logbook, prototype menu, rubrik guru, refleksi.
+  let detailId = null;
+  function pjblDetail(p) {
+    const C = window.NUTRANTARA_PJBL_CORE;
+    const d = p.pjblDetail;
+    if (!C || !d) return '';
+    const sum = d.summary;
+    const g = d.group;
+    const S = C.data.pos6;
+    const rows = sum.pos.map((s) => `<li>POS ${s.pos} · ${esc(C.data.steps[s.pos - 1].name)}: <b>${s.points}/100</b> (${s.done}/${s.total} soal${s.passed ? ', lulus' : s.done === s.total ? `, ${s.rereadLeft} feedback belum dibaca ulang` : ''})${g.logbook[s.pos] ? `<br><small>Logbook: ${esc(g.logbook[s.pos].text)}</small>` : ''}</li>`).join('');
+    let menu = '<p><b>Menu POS 6:</b> belum disusun.</p>';
+    if (g.menu) {
+      const v = C.validateMenu(g.menu);
+      menu = `<p><b>Menu POS 6:</b> ${esc(g.menu.name || '(tanpa nama)')} · ${v.passed}/${v.checks.length} kriteria · ${v.totals.energy} kkal · protein ${v.totals.protein} g · Rp${v.totals.price.toLocaleString('id-ID')} · ${g.presented ? `disajikan oleh ${esc(g.presented.by)}` : 'belum disajikan'}</p>
+        <p><small>${v.totals.rows.map((r) => `${esc(r.card.name)} (${esc(C.methods[r.method].name.toLowerCase())}, ${r.portion}×)`).join(', ')}</small></p>
+        ${v.failed ? `<p><small>Belum terpenuhi: ${v.checks.filter((c) => !c.ok).map((c) => esc(c.name)).join('; ')}</small></p>` : ''}
+        <p><b>Alasan:</b> ${esc(g.menu.reason || '—')}</p>`;
+    }
+    const auto = C.autoRubric(g.menu);
+    const rubric = `<table class="admin-rubric"><tbody>${S.rubric.map((r) => {
+      const val = g.rubric[r.id];
+      const opts = [`<option value="0">${r.auto ? `otomatis${auto[r.id] ? ` (${auto[r.id]})` : ''}` : '—'}</option>`, ...[1, 2, 3, 4].map((n) => `<option value="${n}" ${val === n ? 'selected' : ''}>${n} · ${esc(r.levels[n - 1])}</option>`)].join('');
+      return `<tr><th scope="row">${esc(r.name)}</th><td><label class="sr-only" for="rub-${r.id}">Skor ${esc(r.name)}</label><select id="rub-${r.id}" data-rubric="${r.id}">${opts}</select></td></tr>`;
+    }).join('')}</tbody></table>`;
+    const refl = S.reflection.map((r, i) => { const e = d.mine.reflect[i]; return `<li>${esc(r.q)}<br>${e ? `${esc(e.text)} <small>(${e.fb === 'good' ? 'berbukti' : 'perlu diperbaiki'})</small>` : '—'}</li>`; }).join('');
+    return `<article class="passport-record"><h2>Proyek PjBL · ${sum.total}/${sum.max} poin analisis${d.team ? ` · regu ${esc(d.team)}` : ''}</h2><ul>${rows}</ul>${menu}<h3>Rubrik prototype${d.team ? ' (berlaku untuk seluruh regu)' : ''}</h3>${rubric}<h3>Refleksi individu</h3><ol>${refl}</ol></article>`;
+  }
+  document.addEventListener('change', (e) => {
+    const sel = e.target.closest && e.target.closest('[data-rubric]');
+    if (!sel || !detailId) return;
+    command('pjbl-rubric', { playerId: detailId, aspect: sel.dataset.rubric, value: Number(sel.value) });
+    setTimeout(() => command('detail', { playerId: detailId }), 200);
+  });
   $('#detail-close').addEventListener('click', () => $('#detail-dialog').close());
 
   let exportFormat = 'json';
@@ -345,7 +386,7 @@
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     if (exportFormat === 'json') { download(`nutrantara-kelas-${stamp}.json`, JSON.stringify(data, null, 2), 'application/json'); toast('Data kelas diekspor (JSON).'); return; }
     const cell = (v) => { const s = String(v ?? ''); return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const head = ['alias', 'skor', 'segel', 'selesai', ...MISSIONS.flatMap((m) => [`pos${m.id}_segel`, `pos${m.id}_benar`, `pos${m.id}_alasan`]), 'catatan_validasi', 'dibuat', 'terakhir_aktif'];
+    const head = ['alias', 'skor', 'segel', 'selesai', ...MISSIONS.flatMap((m) => [`pos${m.id}_segel`, `pos${m.id}_benar`, `pos${m.id}_alasan`]), 'catatan_validasi', 'dibuat', 'terakhir_aktif', 'poin_dibelanjakan', 'busana_toko'];
     const lines = data.players.map((p) => {
       const posts = (p.progress && p.progress.posts) || {};
       const per = MISSIONS.flatMap((m) => {
@@ -354,7 +395,8 @@
         const reason = m.type === 'project' ? ((s.reflection && s.reflection.learned) || '') : (s.reason || '');
         return [s.sealed ? 'ya' : 'tidak', m.type === 'analysis' ? `${benar}/${m.challenges.length}` : '-', reason];
       });
-      return [p.alias, p.score, p.seals, p.finishedAt || '', ...per, (p.flags || []).join(' | '), p.createdAt, p.lastSeen].map(cell).join(',');
+      const shop = p.wardrobe || {};
+      return [p.alias, p.score, p.seals, p.finishedAt || '', ...per, (p.flags || []).join(' | '), p.createdAt, p.lastSeen, shop.spent || 0, (shop.owned || []).join(' | ')].map(cell).join(',');
     });
     download(`nutrantara-kelas-${stamp}.csv`, `﻿${[head.join(','), ...lines].join('\n')}`, 'text/csv');
     toast('Data kelas diekspor (CSV).');

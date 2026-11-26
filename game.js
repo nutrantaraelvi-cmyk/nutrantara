@@ -21,7 +21,7 @@
     { key: 'fiber', label: 'Serat', unit: 'g' }
   ];
   const NODE_CLASSES = ['node-one', 'node-two', 'node-three', 'node-four', 'node-five', 'node-six'];
-  const screens = ['world', 'map', 'mission', 'kitchen', 'passport', 'report', 'leaderboard'];
+  const screens = ['world', 'map', 'mission', 'kitchen', 'passport', 'report', 'leaderboard', 'shop', 'pjbl'];
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));

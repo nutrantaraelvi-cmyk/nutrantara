@@ -126,6 +126,7 @@ Scope sudah berubah beberapa kali atas permintaan pemilik produk. Ringkasannya p
 | 0.8–0.9 | Dunia terbuka: 6 pulau jelajah, tiap pos menjadi wilayah ±1000 × 650 m, peta mini, 42 kepingan arsip |
 | Konten | Pos 1: 100 varian kasus. Pos 2: Meja Uji Reagen, 4 kasus. Pos 3: Gerbang Pilah + Simulator Vili 3D |
 | 1.0 | Proyek regu PjBL 1–4 orang dengan peran berputar, voting jawaban regu, log kontribusi. Deploy Render Starter + disk permanen |
+| 1.3 | Integrasi PjBL POS 1–6: tiap POS = satu langkah sintaks PjBL; 50 soal analisis (POS 1–5) dijawab individu lalu dikunci kelompok, skor 10/5, buka POS berikutnya ≥ 70 atau baca ulang feedback; POS 6 tantangan prototype menu sehat harian kantin dengan validasi otomatis, rubrik, dan refleksi (lihat 5.7) |
 
 PRD ini mengacu pada keadaan 1.0. Bila dokumen desain dan keputusan di `MEMORY.md` berbeda, yang berlaku adalah keputusan terbaru di `MEMORY.md`.
 
@@ -285,6 +286,34 @@ Status: **Ada** = sudah di kode, **Sebagian** = ada tetapi belum memenuhi seluru
 | F-IN-08 | `/health` melaporkan apakah data bisa disimpan | Ada |
 
 ---
+
+### 5.7 Proyek PjBL POS 1–6 (sejak 1.3)
+
+Sumber konten: dokumen "Nutrantara — Integrasi PjBL & Pertanyaan Analisis POS 1–6". Data ada di `pjbl-data.js`, logika bersama di `pjbl-core.js` (dipakai peramban dan server), layar di `pjbl.js` (menu **Proyek PjBL** dan tombol **PjBL** di lobi).
+
+| POS | Langkah PjBL | Lokasi | Luaran kelompok (logbook) |
+| :-- | :-- | :-- | :-- |
+| 1 | Penentuan pertanyaan mendasar | Gerbang Kantin Desa | Rumusan pertanyaan mendasar |
+| 2 | Mendesain perencanaan proyek | Pasar Pangan Nusantara | Rencana proyek dan kriteria menu |
+| 3 | Menyusun jadwal | Dermaga Waktu | Linimasa proyek dan jadwal menu |
+| 4 | Memonitor kemajuan proyek | Laboratorium Hutan | Draf menu yang sudah direvisi |
+| 5 | Menguji hasil | Dapur Uji Rasa | Menu terpilih berbasis bukti |
+| 6 | Mengevaluasi pengalaman + produk akhir | Kantin Nusantara | Prototype menu sehat harian |
+
+| ID | Kebutuhan | Status |
+| :-- | :-- | :-- |
+| F-PJ-01 | POS 1–5 masing-masing berisi stimulus data dan 10 soal pilihan ganda dengan kunci serta feedback benar/salah dari dokumen | Ada |
+| F-PJ-02 | Setiap anggota memilih jawaban sendiri; jawaban kelompok baru bisa dikunci bila semua anggota yang daring sudah memilih. Isi pilihan teman dibuka setelah soal terkunci | Ada |
+| F-PJ-03 | Benar di percobaan 1 = 10 poin, percobaan 2 = 5 poin, dua kali salah = 0 lalu kunci dibuka. Feedback salah tidak membuka kunci. Maksimal 100 per POS | Ada |
+| F-PJ-04 | POS berikutnya terbuka bila semua soal selesai dan skor ≥ 70, atau kelompok menandai sudah membaca ulang feedback semua soal yang tidak benar di percobaan pertama | Ada |
+| F-PJ-05 | Urutan pilihan diacak tetap per siswa; kunci disimpan berdasarkan isi, dan huruf di teks feedback disesuaikan | Ada |
+| F-PJ-06 | Logbook digital luaran POS 1–5 milik kelompok, tampil lagi di POS 6 | Ada |
+| F-PJ-07 | POS 6: kartu bahan (gizi, harga, asal daerah, alergen), porsi, cara olah yang mengubah lemak, cek otomatis 10 kriteria dengan feedback, lembar spesifikasi, tombol sajikan yang aktif bila semua kriteria terpenuhi | Ada |
+| F-PJ-08 | Rubrik 6 aspek: 3 aspek dihitung otomatis (gizi, keterjangkauan, pangan lokal), semuanya bisa diisi/ditimpa guru di detail siswa | Ada |
+| F-PJ-09 | 5 pertanyaan refleksi individu dengan feedback otomatis sederhana (berbukti vs perlu diperbaiki) setelah menu disajikan | Ada |
+| F-PJ-10 | Server berwenang: skor dihitung ulang dari kunci, maksimal 2 percobaan, POS terkunci ditolak | Ada |
+
+Catatan keputusan: skor analisis PjBL (maks. 500) **terpisah** dari skor ekspedisi 420, sehingga rapor, peringkat, dan saldo Butik tidak berubah. Gerbang 70 poin berlaku untuk jalur PjBL, tidak mengunci wilayah pos di dunia 3D. Nilai gizi kartu bahan POS 6 adalah data simulasi yang disusun agar contoh menu acuan guru lolos semua kriteria (energi contoh dihitung 640 kkal, bukan 610, karena 610 di bawah ambang 615). Data luring/tamu tersimpan di perangkat dan tidak digabung otomatis ke server.
 
 ## 6. Kebutuhan non-fungsional
 

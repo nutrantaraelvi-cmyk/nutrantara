@@ -15,10 +15,12 @@ window.NutraNet = (() => {
   let me = null;
   let muted = false;
   let party = null; // { code, leaderId, max, members: [...], posts, log } — regu proyek (maks. 4)
+  let pjblState = null; // PjBL POS 1–6: { mine, group, members, team, summary } dari server
+  let wardrobe = null; // Butik Nusantara: { owned, wear, spent, balance } dari server
   let stopped = false;
   let chat = [];
   let leaderboard = [];
-  let settings = { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '' };
+  let settings = { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', shopOpen: true };
   let progressTimer = null;
   let pendingProgress = null;
 
@@ -148,6 +150,25 @@ window.NutraNet = (() => {
         players.delete(msg.id);
         emit('players', players);
         break;
+      case 'player-outfit': {
+        // Busana Butik Nusantara pemain lain berganti.
+        const p = players.get(msg.id);
+        if (p) p.wear = msg.wear;
+        emit('player-outfit', msg);
+        break;
+      }
+      case 'wardrobe':
+        wardrobe = { ...msg.wardrobe, balance: msg.balance };
+        if (me) me.wear = msg.wardrobe.wear;
+        emit('wardrobe', msg);
+        break;
+      case 'pjbl':
+        pjblState = msg;
+        emit('pjbl', msg);
+        break;
+      case 'pjbl-error':
+        emit('pjbl-error', msg);
+        break;
       case 'positions':
         msg.list.forEach(([id, x, y, seals, activePos, h, inWorld]) => {
           if (me && id === me.id) { me.seals = seals; return; }
@@ -260,6 +281,11 @@ window.NutraNet = (() => {
 
   function sendMove(x, y, h = 0) { if (joined) send({ type: 'move', x: Math.round(x), y: Math.round(y), h: Math.round(h * 10) }); }
   function sendChat(text) { return joined && send({ type: 'chat', text }); }
+  /** Butik Nusantara: action 'buy' | 'wear'; jawabannya datang sebagai event 'wardrobe'. */
+  function shop(action, item) { return joined && send({ type: 'shop', action, item }); }
+
+  /** PjBL: { action: 'pick' | 'lock' | 'reread' | 'logbook' | 'menu' | 'present' | 'reflect', … }; jawabannya event 'pjbl' / 'pjbl-error'. */
+  function pjbl(msg) { return joined && send({ type: 'pjbl', ...msg }); }
 
   function status() { return { canConnect, connected, joined, online: joined }; }
 
@@ -319,8 +345,10 @@ window.NutraNet = (() => {
   return {
     on, join, pushProgress, sendMove, sendChat, isPostOpen, status,
     api, serverStatus, register, login, resume, logout, getSession, sendZone, spawn, emote,
-    spawnNear, partyCreate, partyJoin, partyLeave, isTeammate, teamOp, teamVote,
+    spawnNear, partyCreate, partyJoin, partyLeave, isTeammate, teamOp, teamVote, shop, pjbl,
+    get pjblState() { return joined ? pjblState : null; },
     get party() { return party; },
+    get wardrobe() { return wardrobe; },
     get me() { return me; },
     get players() { return players; },
     get settings() { return settings; },

@@ -32,15 +32,17 @@ const MIN_REASON = 20;
 
 // ---------- Data bersama (sama dengan yang dipakai peramban) ----------
 
-function loadBrowserScript(file) {
+function loadBrowserScript(...files) {
   const sandbox = { window: {} };
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sandbox, { filename: file });
+  files.forEach((file) => vm.runInContext(fs.readFileSync(path.join(ROOT, file), 'utf8'), sandbox, { filename: file }));
   return sandbox.window;
 }
 
 const MISSIONS = loadBrowserScript('missions.js').NUTRANTARA_MISSIONS;
 const WORLD = loadBrowserScript('world-data.js').NUTRANTARA_WORLD;
+const SHOP = loadBrowserScript('shop-data.js').NUTRANTARA_SHOP;
+const PJBL = loadBrowserScript('pjbl-data.js', 'pjbl-core.js').NUTRANTARA_PJBL_CORE;
 const ALL_POSTS = MISSIONS.map((m) => m.id);
 
 // ---------- Penyimpanan ----------
@@ -49,7 +51,7 @@ function freshDb() {
   return {
     version: 1,
     createdAt: new Date().toISOString(),
-    settings: { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', classCode: '' },
+    settings: { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', classCode: '', shopOpen: true },
     players: {},
     teams: {},
     chat: []
@@ -351,7 +353,129 @@ const conns = new Map(); // ws -> { role, playerId, ip }
 const onlineIds = () => new Set([...conns.values()].filter((c) => c.role === 'player').map((c) => c.playerId));
 
 function publicPlayer(p) {
-  return { id: p.id, alias: p.alias, color: p.color, x: Math.round(p.x), y: Math.round(p.y), seals: p.seals, activePos: p.activePos || null, zone: p.zone || 'lobby' };
+  return { id: p.id, alias: p.alias, color: p.color, x: Math.round(p.x), y: Math.round(p.y), seals: p.seals, activePos: p.activePos || null, zone: p.zone || 'lobby', wear: wardrobeOf(p).wear };
+}
+
+// ---------- Butik Nusantara: lemari busana tiap akun (sejak 1.2) ----------
+// Disimpan di luar progres (player.wardrobe), jadi simpanan progres tidak berubah bentuk.
+// Saldo = skor yang dihitung server − poin yang sudah dibelanjakan; skor rapor & peringkat tetap utuh.
+
+/** Lemari yang sudah dinormalkan: hanya barang katalog, pakaian tiap slot selalu sah. */
+function wardrobeOf(p) {
+  const w = p.wardrobe && typeof p.wardrobe === 'object' ? p.wardrobe : {};
+  const owned = [...new Set((Array.isArray(w.owned) ? w.owned : []).filter((id) => { const it = SHOP.byId(id); return it && !it.bawaan; }))];
+  const wear = {};
+  SHOP.slots.forEach((s) => {
+    const id = w.wear && w.wear[s.id];
+    const it = SHOP.byId(id);
+    wear[s.id] = it && it.slot === s.id && (it.bawaan || owned.includes(id)) ? id : SHOP.defaults[s.id];
+  });
+  return { owned, wear, spent: Math.max(0, Math.floor(Number(w.spent)) || 0), log: Array.isArray(w.log) ? w.log.slice(-30) : [] };
+}
+const shopBalance = (p) => Math.max(0, (p.score || 0) - wardrobeOf(p).spent);
+
+function sendWardrobe(ws, p, extra = {}) {
+  const w = wardrobeOf(p);
+  send(ws, { type: 'wardrobe', wardrobe: { owned: w.owned, wear: w.wear, spent: w.spent }, balance: shopBalance(p), ...extra });
+}
+
+function handleShop(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  if (!p) return;
+  const w = wardrobeOf(p);
+  const fail = (message) => sendWardrobe(ws, p, { ok: false, message });
+  const item = SHOP.byId(String(msg.item || ''));
+  if (msg.action === 'buy') {
+    if (!db.settings.shopOpen) return fail('Toko sedang ditutup guru.');
+    if (!item || item.bawaan) return fail('Barang tidak dikenal.');
+    if (w.owned.includes(item.id)) return fail(`${item.name} sudah menjadi milikmu.`);
+    const balance = shopBalance(p);
+    if (balance < item.price) return fail(`Poinmu belum cukup: perlu ${item.price}, saldo ${balance}.`);
+    w.owned.push(item.id);
+    w.spent += item.price;
+    w.wear[item.slot] = item.id; // barang baru langsung dipakai
+    w.log.push({ at: now(), item: item.id, price: item.price });
+    p.wardrobe = w;
+  } else if (msg.action === 'wear') {
+    if (!item || (!item.bawaan && !w.owned.includes(item.id))) return fail('Barang itu belum kamu miliki.');
+    w.wear[item.slot] = item.id;
+    p.wardrobe = w;
+  } else return;
+  scheduleSave();
+  adminDirty = true;
+  sendWardrobe(ws, p, { ok: true, action: msg.action, item: item.id });
+  broadcast({ type: 'player-outfit', id: p.id, wear: w.wear }, (c) => c.role === 'player' && c.playerId !== p.id);
+}
+
+// ---------- PjBL POS 1–6 (sejak 1.3): soal analisis, logbook, prototype menu ----------
+// Disimpan di luar progres: player.pjbl = { picks, reflect, group } dan team.pjbl (bagian kelompok bila ada regu).
+// Siswa tanpa regu memakai player.pjbl.group. Skor PjBL terpisah dari skor 420 (rapor, peringkat, dan saldo Butik tidak berubah).
+
+function pjblMine(p) {
+  const raw = p.pjbl && typeof p.pjbl === 'object' ? p.pjbl : {};
+  const mine = PJBL.normMine(raw);
+  p.pjbl = { ...mine, group: raw.group };
+  return p.pjbl;
+}
+function pjblGroup(p) {
+  const team = teamOf(p);
+  if (team) { team.pjbl = PJBL.normGroup(team.pjbl); return team.pjbl; }
+  const mine = pjblMine(p);
+  mine.group = PJBL.normGroup(mine.group);
+  return mine.group;
+}
+
+/** Tampilan untuk satu siswa: pilihannya sendiri, data kelompok, dan status pilihan teman (isi pilihan teman dibuka setelah soal terkunci). */
+function pjblView(p) {
+  const mine = pjblMine(p);
+  const group = pjblGroup(p);
+  const team = teamOf(p);
+  const online = onlineIds();
+  const members = team ? team.members.filter((id) => db.players[id]).map((id) => {
+    const m = pjblMine(db.players[id]);
+    const picks = {};
+    Object.entries(m.picks).forEach(([qid, r]) => { picks[qid] = group.answers[qid] && group.answers[qid].done ? r : true; });
+    return { id, alias: db.players[id].alias, online: online.has(id), picks };
+  }) : [];
+  return { mine: { picks: mine.picks, reflect: mine.reflect }, group, members, team: team ? team.code : null, summary: PJBL.summary(group, mine) };
+}
+
+function sendPjbl(p, extra = {}) {
+  const view = pjblView(p);
+  socketsOf(p.id).forEach((ws) => send(ws, { type: 'pjbl', ...view, ...extra }));
+}
+function pjblChanged(p, extraSelf = {}) {
+  const team = teamOf(p);
+  sendPjbl(p, extraSelf);
+  if (team) team.members.filter((id) => id !== p.id && db.players[id]).forEach((id) => sendPjbl(db.players[id]));
+  adminDirty = true;
+  scheduleSave();
+}
+
+function handlePjbl(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  if (!p) return;
+  const team = teamOf(p);
+  const mine = pjblMine(p);
+  const group = pjblGroup(p);
+  const online = onlineIds();
+  // Anggota regu yang sedang daring wajib memilih jawabannya sendiri sebelum jawaban kelompok dikunci.
+  const waiting = (qid) => (team ? team.members.filter((id) => id !== p.id && online.has(id) && db.players[id] && !pjblMine(db.players[id]).picks[qid]).map((id) => db.players[id].alias) : []);
+  const res = PJBL.apply({ mine, group, actor: { id: p.id, alias: p.alias }, waiting, at: now() }, msg);
+  if (!res.ok) return send(ws, { type: 'pjbl-error', message: res.message, action: msg && msg.action });
+  if (team && res.changed === 'group') {
+    const q = PJBL.questions[msg.q];
+    const pos = q ? q.pos : Number(msg.pos) || 6;
+    const notes = { lock: () => `mengunci jawaban kelompok soal ${q.id.toUpperCase()} (${res.result.correct ? 'benar' : 'belum tepat'}, percobaan ${res.result.attempt})`, reread: () => `membaca ulang feedback soal ${q.id.toUpperCase()}`, logbook: () => `menulis logbook POS ${pos}`, menu: () => 'merevisi rancangan menu POS 6', present: () => `menyajikan menu “${group.presented.name}” kepada Kepala Kantin` };
+    if (notes[msg.action]) {
+      teamLog(team, p, pos, notes[msg.action]());
+      team.contrib = team.contrib || {};
+      const c = team.contrib[p.id] || (team.contrib[p.id] = {});
+      c[pos] = (c[pos] || 0) + 1;
+      teamChanged(team.code);
+    }
+  }
+  pjblChanged(p, { ok: true, action: msg.action, result: res.result || null });
 }
 
 function leaderboard() {
@@ -412,7 +536,9 @@ function adminPlayer(p, online) {
     createdAt: p.createdAt,
     finishedAt: p.finishedAt || null,
     party: teamOf(p) ? p.team : null,
-    posts: postSummary(p)
+    posts: postSummary(p),
+    pjbl: PJBL.summary(pjblGroup(p), pjblMine(p)),
+    shop: (() => { const w = wardrobeOf(p); return { owned: w.owned, spent: w.spent, balance: shopBalance(p), log: w.log.slice(-10) }; })()
   };
 }
 
@@ -483,6 +609,8 @@ function handleJoin(ws, conn, msg) {
     chat: db.chat.slice(-30),
     leaderboard: leaderboard()
   });
+  sendWardrobe(ws, player);
+  send(ws, { type: 'pjbl', ...pjblView(player) });
   broadcast({ type: 'player-join', player: publicPlayer(player) }, (c) => c.role === 'player' && c.playerId !== player.id);
   if (teamOf(player)) teamChanged(player.team, true); else { player.team = null; send(ws, { type: 'party', party: null }); }
   adminDirty = true;
@@ -747,9 +875,11 @@ function leaveTeam(playerId) {
       if (team.leaderId === playerId) team.leaderId = team.members[0];
       if (p) teamLog(team, p, 0, 'keluar dari regu');
       teamChanged(team.code, true);
+      team.members.forEach((id) => db.players[id] && sendPjbl(db.players[id]));
     }
   }
   sendNoTeam(playerId);
+  if (p) sendPjbl(p);
   adminDirty = true;
   scheduleSave();
 }
@@ -760,9 +890,11 @@ function handleParty(ws, conn, msg) {
   if (msg.action === 'create') {
     if (!teamOf(p)) {
       const code = newTeamCode();
-      db.teams[code] = { code, leaderId: p.id, members: [p.id], createdAt: now(), posts: extractShared(p.progress), log: [], contrib: {} };
+      // Data PjBL kelompok yang sudah dikerjakan sendiri ikut dibawa ke regu baru.
+      db.teams[code] = { code, leaderId: p.id, members: [p.id], createdAt: now(), posts: extractShared(p.progress), log: [], contrib: {}, pjbl: clone(pjblGroup(p)) };
       p.team = code;
       teamLog(db.teams[code], p, 0, 'membentuk regu');
+      sendPjbl(p);
     }
     return teamChanged(p.team, true);
   }
@@ -783,6 +915,7 @@ function handleParty(ws, conn, msg) {
     teamLog(team, p, 0, 'bergabung ke regu');
     refreshMemberScores(team);
     teamChanged(code, true);
+    team.members.forEach((id) => db.players[id] && sendPjbl(db.players[id]));
     socketsOf(p.id).forEach((s) => send(s, { type: 'notice', message: `Kamu bergabung dengan regu ${code}. Bagi peran, lalu kerjakan misi bersama!` }));
     return;
   }
@@ -960,6 +1093,7 @@ function handleAdmin(ws, msg) {
 
   switch (msg.action) {
     case 'set-paused': s.paused = Boolean(msg.value); settingsChanged(); return done(s.paused ? 'Permainan dijeda.' : 'Permainan dilanjutkan.');
+    case 'set-shop': s.shopOpen = Boolean(msg.value); settingsChanged(); return done(s.shopOpen ? 'Butik Nusantara dibuka. Siswa bisa menukar poin.' : 'Butik Nusantara ditutup. Siswa masih bisa memakai busana yang sudah dimiliki.');
     case 'set-chat': s.chatEnabled = Boolean(msg.value); settingsChanged(); return done(s.chatEnabled ? 'Obrolan dinyalakan.' : 'Obrolan dimatikan.');
     case 'set-movement': s.movementLocked = Boolean(msg.value); settingsChanged(); return done(s.movementLocked ? 'Gerak pemain dibekukan.' : 'Gerak pemain dibebaskan.');
     case 'set-post': {
@@ -1030,7 +1164,10 @@ function handleAdmin(ws, msg) {
     case 'reset':
       if (!needTarget()) return;
       target.progress = null; target.progressUpdatedAt = null; target.score = 0; target.seals = 0; target.finishedAt = null; target.flags = [];
-      socketsOf(target.id).forEach((sock) => send(sock, { type: 'reset', message: 'Guru mengatur ulang progresmu.' }));
+      target.wardrobe = null; // poin yang dipakai berbelanja ikut hilang, jadi lemari dikosongkan
+      target.pjbl = null; // pilihan & refleksi PjBL pribadi ikut diatur ulang (data kelompok milik regu tetap)
+      socketsOf(target.id).forEach((sock) => { send(sock, { type: 'reset', message: 'Guru mengatur ulang progresmu.' }); sendWardrobe(sock, target); send(sock, { type: 'pjbl', ...pjblView(target) }); });
+      broadcast({ type: 'player-outfit', id: target.id, wear: wardrobeOf(target).wear }, (c) => c.role === 'player' && c.playerId !== target.id);
       adminDirty = true; boardDirty = true; scheduleSave();
       return done(`Progres ${target.alias} diatur ulang.`);
     case 'delete':
@@ -1058,7 +1195,18 @@ function handleAdmin(ws, msg) {
     }
     case 'detail':
       if (!needTarget()) return;
-      return send(ws, { type: 'admin-detail', player: { ...adminPlayer(target, onlineIds()), progress: target.progress } });
+      return send(ws, { type: 'admin-detail', player: { ...adminPlayer(target, onlineIds()), progress: target.progress, pjblDetail: pjblView(target) } });
+    case 'pjbl-rubric': {
+      // Guru mengisi rubrik prototype POS 6 (skor 1–4 per aspek) untuk kelompok siswa ini.
+      if (!needTarget()) return;
+      const aspect = PJBL.data.pos6.rubric.find((r) => r.id === msg.aspect);
+      const value = Number(msg.value);
+      if (!aspect || !(value === 0 || (Number.isInteger(value) && value >= 1 && value <= 4))) return send(ws, { type: 'admin-error', message: 'Skor rubrik harus 1–4.' });
+      const group = pjblGroup(target);
+      if (value === 0) delete group.rubric[aspect.id]; else group.rubric[aspect.id] = value;
+      pjblChanged(target);
+      return done(`Rubrik “${aspect.name}” untuk ${teamOf(target) ? `regu ${target.team}` : target.alias} diatur ke ${value || 'otomatis'}.`);
+    }
     case 'team-dissolve': {
       const team = db.teams[String(msg.code || '')];
       if (!team) return send(ws, { type: 'admin-error', message: 'Regu tidak ditemukan.' });
@@ -1082,7 +1230,7 @@ const STATIC = {
   '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/team.js': 'team.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
   '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js', '/peta3d.js': 'peta3d.js',
   '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/lab.js': 'lab.js', '/absorb.js': 'absorb.js', '/causal.js': 'causal.js', '/claims.js': 'claims.js', '/archive.js': 'archive.js', '/theme.css': 'theme.css',
-  '/map-art.js': 'map-art.js', '/sky.js': 'sky.js', '/region.js': 'region.js', '/terrain.js': 'terrain.js', '/weather.js': 'weather.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
+  '/map-art.js': 'map-art.js', '/sky.js': 'sky.js', '/region.js': 'region.js', '/terrain.js': 'terrain.js', '/weather.js': 'weather.js', '/shop-data.js': 'shop-data.js', '/fashion.js': 'fashion.js', '/shop.js': 'shop.js', '/pjbl-data.js': 'pjbl-data.js', '/pjbl-core.js': 'pjbl-core.js', '/pjbl.js': 'pjbl.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
   '/splash.js': 'splash.js', '/assets/layar-muat.webp': 'assets/layar-muat.webp', '/assets/layar-muat-960.webp': 'assets/layar-muat-960.webp',
   '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };
@@ -1229,6 +1377,8 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'zone') return handleZone(conn, msg);
       if (msg.type === 'spawn') return handleSpawn(ws, conn, msg);
       if (msg.type === 'emote') return handleEmote(conn, msg);
+      if (msg.type === 'shop') return handleShop(ws, conn, msg);
+      if (msg.type === 'pjbl') return handlePjbl(ws, conn, msg);
       if (msg.type === 'party') return handleParty(ws, conn, msg);
       if (msg.type === 'team-op') return handleTeamOp(ws, conn, msg);
       if (msg.type === 'team-vote') return handleTeamVote(ws, conn, msg);

@@ -111,10 +111,12 @@ export function createExplorer(color = PALETTE.cyan) {
   // Syal tumpal
   const scarf = mesh(new THREE.TorusGeometry(0.22, 0.07, 6, 14), new THREE.MeshToonMaterial({ map: tumpalTexture(`#${accent.getHexString()}`, PALETTE.gold), gradientMap: toonGradient() }), 0, 1.02, 0);
   scarf.rotation.x = Math.PI / 2;
-  body.add(scarf);
   const tail = mesh(new THREE.BoxGeometry(0.1, 0.24, 0.04), scarf.material, 0.14, 0.9, -0.2);
   tail.rotation.z = -0.3;
-  body.add(tail);
+  // Slot busana (Butik Nusantara, fashion.js): isi bawaan bisa diganti barang lain.
+  const neckSlot = new THREE.Group();
+  neckSlot.add(scarf, tail);
+  body.add(neckSlot);
 
   // Kepala
   const head = new THREE.Group();
@@ -143,7 +145,9 @@ export function createExplorer(color = PALETTE.cyan) {
   hat.add(mesh(new THREE.ConeGeometry(0.72, 0.36, 18), toon(PALETTE.bamboo), 0, 0.12, 0));
   hat.add(mesh(new THREE.CylinderGeometry(0.4, 0.42, 0.07, 18), toon(PALETTE.leaf), 0, 0.02, 0));
   hat.add(mesh(new THREE.SphereGeometry(0.05, 6, 4), toon(PALETTE.gold), 0, 0.31, 0));
-  head.add(hat);
+  const hatSlot = new THREE.Group();
+  hatSlot.add(hat);
+  head.add(hatSlot);
   body.add(head);
 
   // Ransel rantang tiga susun
@@ -154,7 +158,9 @@ export function createExplorer(color = PALETTE.cyan) {
   pack.add(mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.02, 12), toon('#c9d3cf'), 0, 0.27, 0));
   const handle = mesh(new THREE.TorusGeometry(0.13, 0.02, 4, 12, Math.PI), toon('#c9d3cf'), 0, 0.28, 0);
   pack.add(handle);
-  body.add(pack);
+  const backSlot = new THREE.Group();
+  backSlot.add(pack);
+  body.add(backSlot);
 
   // Bayangan bulat (murah, selalu ada)
   const blob = new THREE.Mesh(new THREE.CircleGeometry(0.42, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }));
@@ -176,7 +182,8 @@ export function createExplorer(color = PALETTE.cyan) {
   let squash = 0;
   const EMOTE_TIME = { wave: 1.8, dance: 2.6, cheer: 1.6, think: 2.2 };
   root.userData = {
-    body, head, blob, scanner, accentMat, leaf,
+    body, head, blob, scanner, accentMat, leaf, vest,
+    slots: { kepala: hatSlot, leher: neckSlot, punggung: backSlot },
     /** state: { speed (0..1), airborne, height, pose: 'skydive' | 'glide' | null } */
     animate(dt, state = {}) {
       const speed = state.speed || 0;

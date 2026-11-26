@@ -853,6 +853,45 @@ body.in-world .world-screen.is-3d .w3-cam{bottom:104px}
 /* Pilihan aktif (KAMERA & GRAFIS) ditandai ✓, bukan hanya warna */
 .w3-gfx button[aria-pressed="true"]::before{content:"✓ "}
 
+/* ---------- Butik Nusantara: layar Toko (shop.js) ----------
+ * Status barang ditulis sebagai teks (DIPAKAI / MILIKMU / harga), bukan hanya warna. */
+.shop-wallet{display:grid;gap:2px;justify-items:end;text-align:right;padding:12px 16px;border-radius:16px;background:#fffdf8;border:2px solid rgba(245,183,43,.6);box-shadow:0 8px 22px rgba(120,70,20,.12)}
+.shop-wallet-label{font:700 11px var(--mono);letter-spacing:.12em;color:#8a6a3c}
+.shop-wallet b{font:800 30px/1 var(--display);color:#d88a07}
+.shop-wallet b small{font-size:14px;color:#8a6a3c}
+.shop-wallet-note{font-size:12px;color:#6b5a45}
+.shop-wallet em{max-width:260px;font-style:normal;font-size:12px;font-weight:700;color:var(--maroon)}
+.shop-layout{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:20px;align-items:start;margin-top:14px}
+.shop-preview{position:sticky;top:12px;display:grid;gap:8px}
+.shop-canvas-wrap{height:400px;border-radius:20px;overflow:hidden;background:radial-gradient(circle at 50% 30%,#fffef6 0,#d9f3ff 55%,#a9def5 100%);border:2px solid rgba(154,91,46,.25);box-shadow:inset 0 -30px 40px rgba(255,214,140,.25)}
+.shop-canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+.shop-canvas:active{cursor:grabbing}
+.shop-preview-fallback{margin:0;padding:14px;border-radius:14px;background:#fff6e3;border:1px dashed rgba(154,91,46,.4);font-size:14px}
+.shop-preview-note{margin:0;font-size:13px;line-height:1.5;color:#4a3a28}
+.shop-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.shop-tab{padding:8px 14px;border-radius:999px;border:2px solid rgba(154,91,46,.3);background:#fffaf0;font:700 14px var(--display);color:#3b2a1a;cursor:pointer}
+.shop-tab small{font:600 11px var(--mono);color:#8a6a3c}
+.shop-tab[aria-pressed="true"]{background:linear-gradient(180deg,#1fc3d3,#0f93a6);border-color:var(--gold);color:#fff}
+.shop-tab[aria-pressed="true"] small{color:#e9fbff}
+.shop-tab[aria-pressed="true"]::before{content:"✓ "}
+.shop-tab:focus-visible,.shop-card button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.shop-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.shop-card{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:14px;border-radius:16px;background:#fffdf8;border:2px solid rgba(154,91,46,.2);box-shadow:0 6px 16px rgba(120,70,20,.08)}
+.shop-card.owned{border-color:rgba(63,181,107,.45)}
+.shop-card.worn{border-color:#1fc3d3;box-shadow:0 0 0 3px rgba(31,195,211,.18),0 6px 16px rgba(120,70,20,.08)}
+.shop-card.trying{border-style:dashed;border-color:var(--gold)}
+.shop-swatch{width:64px;height:64px;border-radius:14px;background-size:48px 48px;border:2px solid rgba(0,0,0,.08)}
+.shop-card h3{margin:0;font-size:18px;line-height:1.15}
+.shop-origin{margin:2px 0 0;font:600 11px var(--mono);letter-spacing:.06em;color:#8a6a3c;text-transform:uppercase}
+.shop-desc{margin:6px 0;font-size:13px;line-height:1.4;color:#4a3a28}
+.shop-state{margin:0 0 8px;font:700 12px var(--mono);letter-spacing:.08em;color:#0f7f8d}
+.shop-card:not(.owned) .shop-state{color:#b5700a}
+.shop-actions{display:flex;flex-wrap:wrap;gap:6px}
+.shop-actions .button{padding:7px 12px;font-size:13px;min-height:0}
+.shop-actions .button[disabled]{opacity:.6;cursor:not-allowed}
+.shop-empty{padding:18px;border-radius:14px;background:#fff6e3}
+@media (max-width:900px){.shop-layout{grid-template-columns:1fr}.shop-preview{position:static}.shop-canvas-wrap{height:300px}.shop-wallet{justify-items:start;text-align:left}}
+
 /* ---------- Cuaca tiap pulau (weather.js) ----------
  * Chip HUD menulis cuaca sekarang & berikutnya sebagai teks (bukan hanya ikon/warna). */
 .w3-weather{max-width:min(46vw,360px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-color:rgba(31,195,211,.45)!important}
@@ -959,3 +998,64 @@ html.splash-open body>:not(.splash){visibility:hidden}
   .splash.is-playing .splash-bubble{animation:none;opacity:1}
   .splash.is-ready .splash-start,.splash.is-ready .splash-start::after{animation:none}
 }
+
+/* ---------- Proyek PjBL POS 1–6 (sejak 1.3) ---------- */
+.pjbl-score{display:flex;align-items:baseline;gap:6px;padding:8px 16px;border:2px solid var(--gold);border-radius:14px;background:#fffdf8;font-family:var(--display)}
+.pjbl-score b{font-size:32px;color:#0f93a6}
+.pjbl-tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:16px 0}
+.pjbl-tab{display:flex;flex-direction:column;gap:2px;padding:10px;text-align:left;border:2px solid rgba(154,91,46,.3);border-radius:12px;background:#fffdf8;cursor:pointer;font:inherit;color:inherit}
+.pjbl-tab span{font-size:13px;line-height:1.25}
+.pjbl-tab small{font-size:12px;opacity:.8}
+.pjbl-tab[aria-pressed="true"]{border-color:#0f93a6;box-shadow:0 0 0 3px rgba(31,195,211,.25)}
+.pjbl-tab[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+.pjbl-tab:focus-visible,.pjbl-card:focus-visible{outline:3px solid #0f93a6;outline-offset:2px}
+.pjbl-body{display:flex;flex-direction:column;gap:16px}
+.pjbl-step,.pjbl-stim,.pjbl-logbook,.pjbl-q,.pjbl-rubric,.pjbl-reflection,.pjbl-market,.pjbl-dish,.pjbl-carry{background:#fffdf8;border:1px solid rgba(154,91,46,.2);border-radius:14px;padding:14px 16px;box-shadow:0 6px 18px rgba(120,70,20,.08)}
+.pjbl-step h2{margin:4px 0}
+.pjbl-step h2 em{font-style:normal;font-size:.7em}
+.pjbl-narr{background:#e6f7ff;border-radius:10px;padding:8px 12px}
+.pjbl-stim{margin:0}
+.pjbl-stim figcaption{font-weight:700;margin-bottom:6px}
+.pjbl-table-wrap{overflow-x:auto}
+.pjbl-stim table,.pjbl-rubric table,.pjbl-plate{width:100%;border-collapse:collapse;font-size:14px}
+.pjbl-stim th,.pjbl-stim td,.pjbl-rubric th,.pjbl-rubric td,.pjbl-plate th,.pjbl-plate td{border-bottom:1px solid rgba(154,91,46,.18);padding:6px 8px;text-align:left;vertical-align:top}
+.pjbl-plate th small{display:block;font-weight:400;opacity:.75}
+.pjbl-note,.pjbl-howto,.pjbl-focus{margin:0;font-size:14px}
+.pjbl-status{padding:10px 14px;border-left:5px solid var(--gold);background:#fff4dc;border-radius:8px}
+.pjbl-questions,.pjbl-opts,.pjbl-checks,.pjbl-shelf ul,.pjbl-reflection ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.pjbl-q fieldset{border:0;margin:0;padding:0}
+.pjbl-q legend{font-weight:700;margin-bottom:8px;display:flex;gap:8px}
+.pjbl-qn{flex:none;display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#0f93a6;color:#fff;font-size:13px}
+.pjbl-q.done{opacity:.95;border-color:rgba(63,181,107,.45)}
+.pjbl-opt{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:2px solid rgba(154,91,46,.2);border-radius:10px;cursor:pointer}
+.pjbl-opt.picked{border-color:#0f93a6;background:#effbfd}
+.pjbl-mark{margin-left:auto;font-size:12px;font-weight:700;white-space:nowrap}
+.pjbl-mark.ok,.pjbl-checks .ok span{color:#1d7a43}
+.pjbl-mark.bad,.pjbl-checks .bad span{color:#b03a22}
+.pjbl-mark.key{color:#8a5a00}
+.pjbl-members{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin:8px 0 0}
+.pjbl-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px}
+.pjbl-fb{margin:10px 0 0;padding:10px 12px;border-radius:10px;font-size:14px}
+.pjbl-fb.ok{background:#e5f7ec;border-left:5px solid #3fb56b}
+.pjbl-fb.bad{background:#fdebe6;border-left:5px solid #e2553f}
+.pjbl-reread{margin-top:8px;font-size:14px}
+.pjbl-reread.done{color:#1d7a43}
+.pjbl-logbook textarea,.pjbl-reflection textarea,.pjbl-spec textarea{width:100%}
+.pjbl-flow{margin:0;padding-left:20px;display:grid;gap:4px}
+.pjbl-carry summary{cursor:pointer;font-weight:700}
+.pjbl-builder{display:grid;grid-template-columns:minmax(280px,1fr) minmax(360px,1.4fr);gap:16px;align-items:start}
+.pjbl-market{max-height:900px;overflow:auto}
+.pjbl-shelf h4{margin:12px 0 6px}
+.pjbl-card{width:100%;text-align:left;display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:2px dashed rgba(154,91,46,.35);border-radius:10px;background:#fff;cursor:pointer;font:inherit;color:inherit}
+.pjbl-card:hover{border-color:#0f93a6}
+.pjbl-card small{font-size:12px;opacity:.85}
+.pjbl-empty{padding:18px;text-align:center;border:2px dashed rgba(154,91,46,.3);border-radius:12px}
+.pjbl-checks li{display:flex;gap:10px;padding:8px 10px;border-radius:10px;background:#fff}
+.pjbl-checks li>span{font-size:20px;font-weight:800;line-height:1}
+.pjbl-checks small{display:block;opacity:.8}
+.pjbl-checks p{margin:2px 0 0;font-size:14px}
+.pjbl-spec{display:grid;grid-template-columns:180px 1fr;gap:8px 12px;align-items:start}
+.pjbl-spec p{margin:0}
+.pjbl-check{display:inline-flex;gap:6px;align-items:center;margin-right:12px}
+.pjbl-spec small{display:block;opacity:.8}
+@media (max-width:1100px){.pjbl-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}.pjbl-builder{grid-template-columns:1fr}.pjbl-spec{grid-template-columns:1fr}}

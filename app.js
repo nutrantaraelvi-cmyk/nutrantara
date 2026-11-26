@@ -7,6 +7,7 @@ import * as THREE from './vendor/three/three.module.min.js';
 import { createExplorer, createNara, toon, PALETTE } from './characters.js';
 import { SUN_DIR, createSkyDome, createCloudSea, cumulusTextures, createCumulus } from './sky.js';
 import { createPenjor, createKite, createStupa, createCorn, createTempe, kawungTexture } from './culture.js';
+import { applyOutfit } from './fashion.js';
 
 const net = window.NutraNet;
 const game = window.NutraGame;
@@ -166,6 +167,7 @@ function showAuth() {
 // ---------- Lobi ----------
 const lobby = (() => {
   let renderer; let scene; let camera; let hero; let nara; let ring; let clouds = []; let kites = []; let sea = null;
+  document.addEventListener('nutra:outfit', (e) => { if (hero) applyOutfit(hero, e.detail || {}); });
   let running = false;
   let yaw = 0.3;
   let drag = null;
@@ -260,6 +262,7 @@ const lobby = (() => {
       if (running) return;
       try { if (!renderer) build(); } catch { canvas.hidden = true; return; }
       if (user) hero.userData.setColor(user.color);
+      if (window.NutraShop) applyOutfit(hero, window.NutraShop.wear); // busana Butik Nusantara
       running = true;
       clock.getDelta();
       loop();

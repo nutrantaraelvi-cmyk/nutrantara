@@ -23,6 +23,53 @@ const loadBrowser = (file) => { const sb = { window: {} }; vm.runInNewContext(fs
 const MISSIONS = loadBrowser('missions.js').NUTRANTARA_MISSIONS;
 const TEAMDEF = loadBrowser('missions.js').NUTRANTARA_TEAM;
 const W = loadBrowser('world-data.js').NUTRANTARA_WORLD;
+const SHOP = loadBrowser('shop-data.js').NUTRANTARA_SHOP;
+const PJ = (() => { const sb = { window: {} }; vm.createContext(sb); ['pjbl-data.js', 'pjbl-core.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sb)); return sb.window.NUTRANTARA_PJBL_CORE; })();
+
+// ---------- PjBL POS 1–6: logika bersama (tanpa server) ----------
+(() => {
+  const P = PJ.data;
+  ok(P.pos.length === 5 && P.pos.every((p) => p.questions.length === 10), 'PjBL: 50 soal analisis POS 1–5');
+  ok(P.pos.map((p) => p.questions.map((q) => q.key.toUpperCase()).join('')).join(' ') === 'CADCADBCAD CADBCADBCA BDACBADCBD CABDACBDAC DBACDBACDB', 'PjBL: kunci jawaban sama dengan rekap dokumen');
+  const g = PJ.freshGroup();
+  const m = PJ.freshMine();
+  const ctx = { mine: m, group: g, actor: { id: 'x', alias: 'Uji' }, waiting: () => [] };
+  ok(!PJ.apply(ctx, { action: 'pick', q: 'p2q1', r: 'c' }).ok, 'PjBL: POS 2 terkunci sebelum POS 1 selesai');
+  ok(!PJ.apply(ctx, { action: 'lock', q: 'p1q1', r: 'c' }).ok, 'PjBL: kunci kelompok butuh pilihan individu dulu');
+  // 6 soal benar di percobaan 1 (60), 2 soal benar di percobaan 2 (10), 2 soal salah dua kali (0) → 70.
+  P.pos[0].questions.forEach((q, i) => {
+    const wrong = q.options.find((o) => o.id !== q.key).id;
+    const wrong2 = q.options.filter((o) => o.id !== q.key)[1].id;
+    const seq = i < 6 ? [q.key] : i < 8 ? [wrong, q.key] : [wrong, wrong2];
+    seq.forEach((r) => { PJ.apply(ctx, { action: 'pick', q: q.id, r }); PJ.apply(ctx, { action: 'lock', q: q.id, r }); });
+  });
+  const s1 = PJ.posScore(g, 1);
+  ok(s1.points === 70 && s1.complete && s1.passed && PJ.unlocked(g, 2), 'PjBL: skor 10/5/0, 70 poin membuka POS 2');
+  ok(!PJ.apply(ctx, { action: 'lock', q: 'p1q1', r: 'a' }).ok, 'PjBL: soal yang sudah terkunci tidak bisa dijawab ulang');
+  const g2 = PJ.normGroup(JSON.parse(JSON.stringify(g)));
+  const q10 = P.pos[0].questions[9];
+  g2.answers[q10.id] = PJ.grade(q10, [{ r: q10.options.find((o) => o.id !== q10.key).id }, { r: q10.options.filter((o) => o.id !== q10.key)[1].id }]);
+  const q1 = P.pos[0].questions[0];
+  g2.answers[q1.id] = PJ.grade(q1, [{ r: q1.options.find((o) => o.id !== q1.key).id }, { r: q1.key }]); // 60 + 5 → 65 poin
+  ok(PJ.posScore(g2, 1).points === 65 && !PJ.unlocked(g2, 2), 'PjBL: skor < 70 belum membuka POS 2');
+  const ctx2 = { mine: m, group: g2, actor: { id: 'x', alias: 'Uji' }, waiting: () => [] };
+  PJ.posScore(g2, 1).missed.forEach((id) => PJ.apply(ctx2, { action: 'reread', q: id }));
+  ok(PJ.unlocked(g2, 2), 'PjBL: membaca ulang feedback semua soal yang salah membuka POS 2');
+  const hacked = PJ.normGroup({ answers: { p1q1: { tries: [{ r: 'a' }, { r: 'b' }, { r: 'c' }], points: 10 } } });
+  ok(hacked.answers.p1q1.points === 0 && hacked.answers.p1q1.done, 'PjBL: percobaan ketiga dan klaim poin dari klien diabaikan');
+  const order = PJ.optionOrder('uji', 'p1q1');
+  ok(order.slice().sort().join('') === 'abcd' && PJ.optionOrder('uji', 'p1q1').join() === order.join(), 'PjBL: urutan pilihan diacak tetap per siswa');
+  ok(!/[{}]/.test(PJ.feedbackText(P.pos[0].questions[0].wrong, order)), 'PjBL: penanda huruf di feedback diganti huruf tampilan');
+  const ex = P.pos6.example;
+  const menu = PJ.normMenu({ items: ex.items, snack: ex.snack, allergens: ['ikan', 'kedelai'], licensed: true, name: 'Piring Nara Nusantara', reason: 'Menu tanpa minuman manis menurunkan gula yang di POS 1 mencapai 50 g, dan ada sayur serta buah.' });
+  ok(PJ.validateMenu(menu).allOk, 'PjBL: contoh prototype menu acuan guru lolos 10 kriteria');
+  const bad = PJ.normMenu({ items: [{ card: 'mi-instan' }, { card: 'ayam-tepung' }, { card: 'minuman-kemasan' }] });
+  const vb = PJ.validateMenu(bad);
+  ok(!vb.allOk && ['lengkap', 'gula', 'natrium', 'harga', 'lemak'].every((id) => !vb.checks.find((c) => c.id === id).ok), 'PjBL: menu kantin lama gagal kriteria gizi dan harga');
+  const fried = PJ.validateMenu(PJ.normMenu({ ...menu, items: menu.items.map((it) => (it.card === 'pepes-ikan' ? { ...it, method: 'goreng' } : it)) })).totals;
+  ok(fried.fat > PJ.validateMenu(menu).totals.fat, 'PjBL: cara olah goreng menambah lemak');
+  ok(PJ.reflectFeedback(0, 'Menu kami menurunkan gula dari 50 g menjadi 6 g per hari.') === 'good' && PJ.reflectFeedback(0, 'Menu kami sehat dan enak sekali rasanya.') === 'fix', 'PjBL: umpan balik refleksi membedakan jawaban berbukti');
+})();
 
 function client() {
   const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
@@ -88,7 +135,7 @@ async function adminProbe() {
     const play = await fetch(`http://localhost:${PORT}/play`).then((r) => r.text());
     ok(play.includes('world3d.js') && play.includes('app.js'), 'halaman game disajikan di /play');
     // Semua modul ES yang diimpor halaman (termasuk terrain.js & weather.js sejak 1.1) harus ada di whitelist STATIC.
-    const modules = new Set(); const queue = ['app.js', 'world3d.js', 'landing.js'];
+    const modules = new Set(); const queue = ['app.js', 'world3d.js', 'landing.js', 'shop.js'];
     while (queue.length) {
       const file = queue.shift();
       if (modules.has(file)) continue;
@@ -96,7 +143,7 @@ async function adminProbe() {
       for (const m of fs.readFileSync(path.join(__dirname, '..', file), 'utf8').matchAll(/from '\.\/([\w./-]+\.js)'/g)) if (!m[1].startsWith('vendor/')) queue.push(m[1]);
     }
     const served = await Promise.all([...modules].map(async (f) => [f, (await fetch(`http://localhost:${PORT}/${f}`)).ok]));
-    ok(served.every(([, s]) => s) && modules.has('terrain.js') && modules.has('weather.js'), `semua modul halaman disajikan server (${served.filter(([, s]) => !s).map(([f]) => f).join(', ') || `${served.length} modul`})`);
+    ok(served.every(([, s]) => s) && modules.has('terrain.js') && modules.has('weather.js') && modules.has('fashion.js') && (await fetch(`http://localhost:${PORT}/shop-data.js`)).ok, `semua modul halaman disajikan server (${served.filter(([, s]) => !s).map(([f]) => f).join(', ') || `${served.length} modul`})`);
     const three = await fetch(`http://localhost:${PORT}/vendor/three/three.module.min.js`);
     ok(three.ok && three.headers.get('cache-control').includes('max-age'), 'Three.js lokal disajikan dengan cache');
     ok((await fetch(`http://localhost:${PORT}/server.js`)).status === 404, 'berkas server tidak dapat diunduh');
@@ -188,6 +235,28 @@ async function adminProbe() {
     a.send({ type: 'team-vote', pos: 1, index: 1, response: key1 });
     b.send({ type: 'team-vote', pos: 1, index: 1, response: key1 });
     await a.wait((m) => m.type === 'party' && m.party && m.party.posts[1]?.challenges?.[1]?.complete);
+    // ---------- PjBL: jawab individu, lalu kunci kelompok ----------
+    a.send({ type: 'pjbl', action: 'pick', q: 'p1q1', r: 'a' });
+    await a.wait((m) => m.type === 'pjbl' && m.action === 'pick');
+    a.send({ type: 'pjbl', action: 'lock', q: 'p1q1', r: 'a' });
+    ok(/TimTempe/.test((await a.wait(type('pjbl-error'))).message), 'PjBL: kunci kelompok menunggu teman daring memilih sendiri');
+    b.send({ type: 'pjbl', action: 'pick', q: 'p1q1', r: 'c' });
+    const seen = await a.wait((m) => m.type === 'pjbl' && m.members.some((x) => x.alias === 'TimTempe' && x.picks.p1q1 === true));
+    ok(Boolean(seen), 'PjBL: anggota melihat teman sudah memilih (isinya masih tertutup)');
+    a.send({ type: 'pjbl', action: 'lock', q: 'p1q1', r: 'a' });
+    const wrong1 = await a.wait((m) => m.type === 'pjbl' && m.action === 'lock');
+    ok(wrong1.result && !wrong1.result.correct && !wrong1.result.done, 'PjBL: jawaban salah pertama memberi kesempatan kedua');
+    b.send({ type: 'pjbl', action: 'lock', q: 'p1q1', r: 'c' });
+    const right2 = await b.wait((m) => m.type === 'pjbl' && m.action === 'lock');
+    ok(right2.result && right2.result.correct && right2.result.points === 5 && right2.group.answers.p1q1.done, 'PjBL: benar di percobaan kedua = 5 poin');
+    const shownA = await a.wait((m) => m.type === 'pjbl' && m.group.answers.p1q1 && m.group.answers.p1q1.done);
+    ok(shownA.members.find((x) => x.alias === 'TimTempe').picks.p1q1 === 'c', 'PjBL: isi pilihan teman dibuka setelah soal terkunci');
+    a.send({ type: 'pjbl', action: 'pick', q: 'p2q1', r: 'c' });
+    ok(/belum terbuka/.test((await a.wait(type('pjbl-error'))).message), 'PjBL: POS 2 masih terkunci di server');
+    a.send({ type: 'pjbl', action: 'logbook', pos: 1, text: 'Bagaimana merancang menu kantin harian yang bergizi seimbang, terjangkau, dan disukai siswa?' });
+    ok(Boolean((await b.wait((m) => m.type === 'pjbl' && m.group.logbook[1])).group.logbook[1].by === 'Penjelajah07'), 'PjBL: logbook kelompok tersimpan untuk semua anggota');
+    ok((await adminProbe()).players.find((p) => p.alias === 'TimTempe').pjbl.total === 5, 'PjBL: guru melihat skor analisis kelompok');
+
     const reasonB = 'Energi kedua menu sama, tetapi protein dan serat menu B lebih tinggi.';
     const stB = fakeState();
     stB.posts[1].reason = reasonB;
@@ -283,6 +352,29 @@ async function adminProbe() {
     const sync = await b.wait(type('progress-sync'));
     ok(sync.progress.posts[2].sealed === false, 'segel tanpa menjawab semua tantangan dibatalkan server');
 
+    // ---------- Butik Nusantara (toko busana, sejak 1.2) ----------
+    const ids = SHOP.items.map((it) => it.id);
+    ok(new Set(ids).size === ids.length && SHOP.slots.every((s) => SHOP.items.filter((it) => it.slot === s.id && it.bawaan).length === 1) && SHOP.items.every((it) => SHOP.slots.some((s) => s.id === it.slot) && it.price >= 0 && it.name && it.origin), 'katalog butik: id unik, satu barang bawaan per slot, harga & asal lengkap');
+    // A punya 80 poin (Pos 1 benar semua + segel). Saldo = skor − dibelanjakan; skor tidak berkurang.
+    a.drain(type('wardrobe')); b.drain(type('player-outfit'));
+    a.send({ type: 'shop', action: 'buy', item: 'siger' });
+    const pricey = await a.wait(type('wardrobe'));
+    ok(pricey.ok === false && pricey.message.includes('belum cukup') && pricey.balance === 80, 'barang di atas saldo ditolak (saldo 80)');
+    a.send({ type: 'shop', action: 'buy', item: 'peci' });
+    const peci = await a.wait(type('wardrobe'));
+    ok(peci.ok && peci.wardrobe.owned.includes('peci') && peci.wardrobe.wear.kepala === 'peci' && peci.wardrobe.spent === 40 && peci.balance === 40, 'beli Peci (40 poin): langsung dipakai, saldo jadi 40');
+    ok((await b.wait(type('player-outfit'))).wear.kepala === 'peci', 'teman melihat busana baru');
+    a.send({ type: 'shop', action: 'buy', item: 'peci' });
+    ok((await a.wait(type('wardrobe'))).ok === false, 'barang yang sudah dimiliki tidak dibeli dua kali');
+    a.send({ type: 'shop', action: 'wear', item: 'kawung' });
+    ok((await a.wait(type('wardrobe'))).ok === false, 'busana yang belum dimiliki tidak bisa dipakai');
+    a.send({ type: 'shop', action: 'buy', item: 'tidak-ada' });
+    ok((await a.wait(type('wardrobe'))).ok === false, 'barang yang tidak ada di katalog ditolak');
+    a.send({ type: 'shop', action: 'wear', item: 'caping' });
+    ok((await a.wait(type('wardrobe'))).wardrobe.wear.kepala === 'caping', 'busana bawaan bisa dipakai lagi');
+    const shopper = (await adminProbe()).players.find((p) => p.alias === 'Penjelajah07');
+    ok(shopper.score === 80 && shopper.shop.spent === 40 && shopper.shop.balance === 40 && shopper.shop.owned.includes('peci'), 'skor tetap 80; guru melihat 40 poin dibelanjakan');
+
     // ---------- Admin ----------
     const adm = client(); await adm.open();
     adm.send({ type: 'admin-auth', pin: '000000' });
@@ -307,6 +399,16 @@ async function adminProbe() {
     adm.send({ type: 'admin', action: 'set-paused', value: false });
     await a.wait((m) => m.type === 'settings' && !m.settings.paused);
 
+    adm.send({ type: 'admin', action: 'set-shop', value: false });
+    await a.wait((m) => m.type === 'settings' && m.settings.shopOpen === false);
+    a.send({ type: 'shop', action: 'buy', item: 'selendang' });
+    ok((await a.wait(type('wardrobe'))).message.includes('ditutup'), 'toko yang ditutup guru menolak pembelian');
+    adm.send({ type: 'admin', action: 'set-shop', value: true });
+    await a.wait((m) => m.type === 'settings' && m.settings.shopOpen === true);
+    a.send({ type: 'shop', action: 'buy', item: 'selendang' });
+    const selendang = await a.wait(type('wardrobe'));
+    ok(selendang.ok && selendang.balance === 0, 'toko dibuka lagi: Selendang (40) terbeli, saldo habis');
+
     adm.send({ type: 'admin', action: 'announce', text: 'Kumpul di Pos 3' });
     ok((await b.wait(type('announce'))).text === 'Kumpul di Pos 3', 'pengumuman diterima pemain');
 
@@ -321,8 +423,11 @@ async function adminProbe() {
     b.send({ type: 'chat', text: 'tes' });
     ok((await b.wait(type('notice'))).message.includes('dibisukan'), 'pemain yang dibisukan tidak bisa mengobrol');
 
+    a.drain(type('wardrobe'));
     adm.send({ type: 'admin', action: 'reset', playerId: pa.id });
     ok(Boolean(await a.wait(type('reset'))), 'atur ulang progres sampai ke pemain');
+    const emptied = await a.wait(type('wardrobe'));
+    ok(emptied.wardrobe.owned.length === 0 && emptied.wardrobe.spent === 0 && emptied.wardrobe.wear.leher === 'syal-tumpal', 'atur ulang progres ikut mengosongkan lemari');
 
     adm.send({ type: 'admin', action: 'kick', playerId: pb.id });
     await b.wait(type('kicked'));
@@ -347,6 +452,8 @@ async function adminProbe() {
     const c = client(); await c.open();
     c.send({ type: 'join', session: relog.token });
     ok(Boolean(await c.wait(type('welcome'))), 'bergabung lagi setelah atur ulang kata sandi');
+    ok(Boolean((await c.wait(type('wardrobe'))).wardrobe.wear), 'lemari busana dikirim saat bergabung');
+    ok(Boolean((await c.wait(type('pjbl'))).summary), 'data PjBL dikirim saat bergabung');
 
     [a, b, c, adm].forEach((x) => x.ws.close());
   } catch (err) {

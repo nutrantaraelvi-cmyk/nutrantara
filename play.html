@@ -12,13 +12,18 @@
     <link rel="stylesheet" href="theme.css" />
     <script src="missions.js" defer></script>
     <script src="world-data.js" defer></script>
+    <script src="shop-data.js" defer></script>
+    <script src="pjbl-data.js" defer></script>
+    <script src="pjbl-core.js" defer></script>
     <script src="net.js" defer></script>
     <script src="team.js" defer></script>
     <script src="game.js" defer></script>
+    <script src="pjbl.js" defer></script>
     <script src="world.js" defer></script>
     <script src="map-art.js" defer></script>
     <script type="module" src="world3d.js"></script>
     <script type="module" src="app.js"></script>
+    <script type="module" src="shop.js"></script>
   </head>
   <body class="app" data-phase="boot">
     <div class="phase phase-auth" id="phase-auth" hidden>
@@ -113,8 +118,10 @@
       <nav class="lobby-actions" aria-label="Menu lobi">
         <button type="button" class="lobby-btn" data-go="passport">Paspor</button>
         <button type="button" class="lobby-play" id="lobby-play"><span>MAIN</span><small>Pilih map &amp; terjun</small></button>
+        <button type="button" class="lobby-btn" data-go="pjbl">PjBL</button>
         <button type="button" class="lobby-btn" data-go="report">Rapor</button>
         <button type="button" class="lobby-btn" data-go="leaderboard">Peringkat</button>
+        <button type="button" class="lobby-btn" data-go="shop">Butik</button>
       </nav>
     </div>
 
@@ -128,9 +135,11 @@
           <button class="nav-link nav-lobby" type="button" id="nav-lobby">⌂ Lobi</button>
           <button class="nav-link active" data-screen="world">Dunia</button>
           <button class="nav-link" data-screen="map">Peta</button>
+          <button class="nav-link" data-screen="pjbl">Proyek PjBL</button>
           <button class="nav-link" data-screen="passport">Paspor</button>
           <button class="nav-link" data-screen="report">Rapor</button>
           <button class="nav-link" data-screen="leaderboard">Peringkat</button>
+          <button class="nav-link" data-screen="shop">Toko</button>
         </nav>
         <div class="player-chip" id="player-chip" hidden><span class="online-dot"></span><span id="player-name"></span><span class="chip-score" id="player-score"></span></div>
       </header>
@@ -282,6 +291,31 @@
           <p class="panel-subtitle">Hanya ekspedisi yang selesai di peramban ini yang tercatat. Saat skor seri, catatan yang masuk lebih dahulu berada di atas.</p>
           <div id="leaderboard-list"></div>
           <button class="back-button passport-back" data-screen="map">← <span>Kembali ke peta</span></button>
+        </section>
+
+        <section class="screen pjbl-screen" id="screen-pjbl" hidden aria-labelledby="pjbl-title">
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> PROJECT BASED LEARNING · POS 1–6</div><h1 id="pjbl-title">Proyek <em>menu sehat kantin.</em></h1></div><div class="pjbl-score" id="pjbl-score" aria-live="polite"></div></div>
+          <p class="panel-subtitle">Temani Nara menjalani enam langkah PjBL. POS 1–5 berisi 10 soal analisis yang dijawab individu lalu dikunci bersama kelompok; di POS 6 kelompok merancang <b>prototype menu sehat harian kantin sekolah</b>. Skor analisis terpisah dari skor rapor ekspedisi. <span id="pjbl-mode"></span></p>
+          <nav class="pjbl-tabs" id="pjbl-tabs" aria-label="Pilih POS"></nav>
+          <div class="pjbl-body" id="pjbl-body"></div>
+          <button class="back-button passport-back" data-screen="world">← <span>Kembali ke dunia</span></button>
+        </section>
+
+        <section class="screen shop-screen" id="screen-shop" hidden aria-labelledby="shop-title">
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> BUTIK NUSANTARA</div><h1 id="shop-title">Toko <em>busana.</em></h1></div><div class="shop-wallet" id="shop-wallet" aria-live="polite"></div></div>
+          <p class="panel-subtitle">Tukar poin hasil belajarmu dengan busana khas daerah di Nusantara. Belanja <b>tidak mengurangi</b> skor rapor dan papan peringkat. Busanamu terlihat oleh teman sekelas di dunia 3D. Kiosnya ada di Alun-alun Nusantara.</p>
+          <div class="shop-layout">
+            <div class="shop-preview">
+              <div class="shop-canvas-wrap" id="shop-canvas-wrap"></div>
+              <p class="shop-preview-fallback" id="shop-preview-fallback" hidden>Pratinjau 3D tidak tersedia di mode 2D. Busana tetap bisa dibeli dan dipakai.</p>
+              <p class="shop-preview-note" id="shop-preview-note" aria-live="polite"></p>
+            </div>
+            <div class="shop-catalog">
+              <div class="shop-tabs" id="shop-tabs" role="group" aria-label="Jenis busana"></div>
+              <div class="shop-items" id="shop-items"></div>
+            </div>
+          </div>
+          <button class="back-button passport-back" data-screen="world">← <span>Kembali ke dunia</span></button>
         </section>
       </main>
       <footer class="site-footer"><span>© NUTRANTARA <b>·</b> MATERI UJI KELAS</span><span>VERSI PROTOTIPE <span id="app-version"></span> <b>·</b> MULTIPEMAIN KELAS</span></footer>
