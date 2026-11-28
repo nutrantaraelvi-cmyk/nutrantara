@@ -20,7 +20,7 @@ for f in *.js test/*.js; do node --check "$f"; done   # syntax check (what CI ru
 
 There is no build step, bundler, or linter. `npm test` is the only test: one script with sequential `ok(cond, label)` assertions. To test a single behaviour, add or edit assertions there. There is no per-test runner.
 
-Env vars: `PORT`, `NUTRANTARA_ADMIN_PIN` (random each start if unset; **required** when `NODE_ENV=production`, otherwise the server exits), `NUTRANTARA_MAX_PLAYERS` (60), `NUTRANTARA_DATA_DIR` (`data/`), `TRUST_PROXY=1` (use X-Forwarded-For for rate limiting). CI (`.github/workflows/blank.yml`) runs the syntax check, `npm test`, and a Docker build plus a `/health` check. For deployment (Docker, Render), see `docs/DEPLOY.md`.
+Env vars: `PORT`, `NUTRANTARA_ADMIN_PIN` (random each start if unset; **required** when `NODE_ENV=production`, otherwise the server exits), `NUTRANTARA_MAX_PLAYERS` (60), `NUTRANTARA_DATA_DIR` (`data/`), `TRUST_PROXY=1` (use X-Forwarded-For for rate limiting). CI (`.github/workflows/blank.yml`) runs the syntax check, `npm test`, and a Docker build plus a `/health` check. For deployment (Docker, Render), see `docs/DEPLOY.md`. Architecture docs (system, code, app/game frameworks, engine, level, design, lobby, loading, RBAC, CI/CD) live in `docs/arsitektur/` (index: `README.md`; older in-depth studies in `docs/arsitektur/kajian/`).
 
 ## Architecture
 

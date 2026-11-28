@@ -1,6 +1,6 @@
 # Arsitektur CI/CD NUTRANTARA
 
-*Disusun 23 November 2026 dari konfigurasi nyata: `.github/workflows/blank.yml`, `Dockerfile`, `.dockerignore`, `render.yaml`, `package.json`, `package-lock.json`, `test/smoke.js`, `server.js` (penyimpanan, cadangan, `/health`, penanganan SIGTERM), `docs/DEPLOY.md`, `docs/ARSITEKTUR_SERVER.md`, dan `docs/ARSITEKTUR_DATABASE.md`.*
+*Disusun 23 November 2026 dari konfigurasi nyata: `.github/workflows/blank.yml`, `Dockerfile`, `.dockerignore`, `render.yaml`, `package.json`, `package-lock.json`, `test/smoke.js`, `server.js` (penyimpanan, cadangan, `/health`, penanganan SIGTERM), `docs/DEPLOY.md`, `docs/arsitektur/kajian/ARSITEKTUR_SERVER.md`, dan `docs/arsitektur/kajian/ARSITEKTUR_DATABASE.md`.*
 
 Semua contoh workflow dan konfigurasi di dokumen ini adalah **usulan**. Belum ada yang diterapkan ke repo. Terapkan bertahap lewat pull request sesuai urutan di bagian 10.
 
@@ -300,7 +300,7 @@ Aturan:
 
 ### 7.2 Cadangan data dan kompatibilitas rilis
 
-Cadangan sendiri sudah dirancang di `docs/ARSITEKTUR_DATABASE.md` bagian 7. Tugas CI/CD hanya menjaga agar rilis tidak merusaknya:
+Cadangan sendiri sudah dirancang di `docs/arsitektur/kajian/ARSITEKTUR_DATABASE.md` bagian 7. Tugas CI/CD hanya menjaga agar rilis tidak merusaknya:
 
 1. **Setiap deploy = satu cadangan.** Sudah terjadi lewat SIGTERM → `backupDb()`. Jangan ubah `shutdown()` tanpa uji yang memastikan ini tetap terjadi.
 2. **Aturan kompatibilitas dua arah.** Rilis N harus bisa membaca data rilis N−1 (diuji fixture). Rilis N sebaiknya tidak menulis bentuk data yang membuat rilis N−1 gagal membaca. Bila perubahan bentuk tidak bisa dihindari, naikkan `db.version`, buat versi lama menolak dengan pesan jelas (bukan menimpa), dan catat di catatan rilis bahwa rollback kode perlu pemulihan cadangan.

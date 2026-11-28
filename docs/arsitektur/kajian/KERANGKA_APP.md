@@ -1,6 +1,6 @@
 # Kerangka Aplikasi NUTRANTARA
 
-*Disusun 23 November 2026 dari kode nyata di `D:\nutrantara` (versi paket 0.9.0, fitur regu 1.0, `APP_VERSION` 1.0 di `game.js`). Sumber yang dibaca: `server.js`, `net.js`, `app.js`, `game.js`, `team.js`, `quest.js`, `world3d.js`, `world-data.js`, `missions.js`, modul pos (`lab.js`, `absorb.js`, `causal.js`, `claims.js`, `archive.js`), `region.js`, `landing.js`, `splash.js`, `admin.js`, ketiga berkas HTML, `Dockerfile`, `render.yaml`, `test/smoke.js`, `CLAUDE.md`, `MEMORY.md`, dan `docs/ARSITEKTUR_SERVER.md` / `docs/ARSITEKTUR_DATABASE.md`.*
+*Disusun 23 November 2026 dari kode nyata di `D:\nutrantara` (versi paket 0.9.0, fitur regu 1.0, `APP_VERSION` 1.0 di `game.js`). Sumber yang dibaca: `server.js`, `net.js`, `app.js`, `game.js`, `team.js`, `quest.js`, `world3d.js`, `world-data.js`, `missions.js`, modul pos (`lab.js`, `absorb.js`, `causal.js`, `claims.js`, `archive.js`), `region.js`, `landing.js`, `splash.js`, `admin.js`, ketiga berkas HTML, `Dockerfile`, `render.yaml`, `test/smoke.js`, `CLAUDE.md`, `MEMORY.md`, dan `docs/arsitektur/kajian/ARSITEKTUR_SERVER.md` / `docs/arsitektur/kajian/ARSITEKTUR_DATABASE.md`.*
 
 Dokumen ini menjelaskan **kerangka** aplikasi: lapisan, susunan folder, alur startup, state, konfigurasi, log, penanganan error, dan cara menambah pos baru. Rincian server (fase integritas, jaringan, multi-kelas) ada di `ARSITEKTUR_SERVER.md`; skema data ada di `ARSITEKTUR_DATABASE.md`. Dokumen ini tidak mengulanginya.
 

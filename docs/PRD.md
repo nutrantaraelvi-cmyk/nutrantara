@@ -1,6 +1,6 @@
 # PRD NUTRANTARA — Misi Pangan Nusantara
 
-*Product Requirements Document. Disusun 23 November 2026 dari keadaan nyata repositori: `Desain_Game_NUTRANTARA.docx.md`, `Paket_Persiapan_Pengembangan_NUTRANTARA.docx.md`, `KONSEP_VERTICAL_SLICE_POS_1_NUTRANTARA.md`, `README.md`, `MEMORY.md`, `CLAUDE.md`, `docs/ARSITEKTUR_SERVER.md`, `docs/ARSITEKTUR_DATABASE.md`, `docs/DEPLOY.md`, `docs/KARAKTER.md`, serta pemeriksaan singkat `server.js` dan `missions.js`.*
+*Product Requirements Document. Disusun 23 November 2026 dari keadaan nyata repositori: `Desain_Game_NUTRANTARA.docx.md`, `Paket_Persiapan_Pengembangan_NUTRANTARA.docx.md`, `KONSEP_VERTICAL_SLICE_POS_1_NUTRANTARA.md`, `README.md`, `MEMORY.md`, `CLAUDE.md`, `docs/arsitektur/kajian/ARSITEKTUR_SERVER.md`, `docs/arsitektur/kajian/ARSITEKTUR_DATABASE.md`, `docs/DEPLOY.md`, `docs/KARAKTER.md`, serta pemeriksaan singkat `server.js` dan `missions.js`.*
 
 | Butir | Isi |
 | :-- | :-- |
@@ -160,7 +160,7 @@ PRD ini mengacu pada keadaan 1.0. Bila dokumen desain dan keputusan di `MEMORY.m
 
 ### 4.3 Versi berikutnya (1.1, "rilis uji kelas")
 
-Fokus: kesiapan uji kelas dan penelitian, bukan fitur baru. Urutan mengikuti `docs/ARSITEKTUR_SERVER.md` dan `docs/ARSITEKTUR_DATABASE.md`.
+Fokus: kesiapan uji kelas dan penelitian, bukan fitur baru. Urutan mengikuti `docs/arsitektur/kajian/ARSITEKTUR_SERVER.md` dan `docs/arsitektur/kajian/ARSITEKTUR_DATABASE.md`.
 
 | Prioritas | Pekerjaan | Alasan |
 | :-- | :-- | :-- |

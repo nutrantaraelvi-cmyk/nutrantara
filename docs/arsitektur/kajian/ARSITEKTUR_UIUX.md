@@ -2,7 +2,7 @@
 
 Dokumen ini memetakan antarmuka NUTRANTARA yang **benar-benar ada di kode** (per 23 November 2026, versi 1.0 dengan regu PjBL, mode kamera, dan layar muat beranda), lalu menetapkan arah perbaikannya. Rekomendasi ditulis tegas: setiap butir punya prioritas, alasan berbasis temuan, dan file yang perlu diubah.
 
-Dokumen pendamping: `docs/ARSITEKTUR_SERVER.md` (protokol dan server) dan `docs/ARSITEKTUR_DATABASE.md` (data). Dokumen ini hanya membahas lapisan tampilan dan interaksi.
+Dokumen pendamping: `docs/arsitektur/kajian/ARSITEKTUR_SERVER.md` (protokol dan server) dan `docs/arsitektur/kajian/ARSITEKTUR_DATABASE.md` (data). Dokumen ini hanya membahas lapisan tampilan dan interaksi.
 
 ---
 

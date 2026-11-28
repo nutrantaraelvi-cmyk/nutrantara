@@ -1,6 +1,6 @@
 # Matriks RBAC NUTRANTARA
 
-Dokumen ini memetakan siapa boleh melakukan apa di server kelas NUTRANTARA (`server.js`), aturan kepemilikan data, celah izin di kode sekarang, dan usulan penerapannya. Dasar pembacaan: `server.js` (±1.330 baris), `team.js`, `missions.js` (`NUTRANTARA_TEAM`), `admin.js`, `net.js`, `app.js`, `docs/ARSITEKTUR_SERVER.md`, dan `docs/ARSITEKTUR_DATABASE.md`. Dokumen ini tidak mengubah kode.
+Dokumen ini memetakan siapa boleh melakukan apa di server kelas NUTRANTARA (`server.js`), aturan kepemilikan data, celah izin di kode sekarang, dan usulan penerapannya. Dasar pembacaan: `server.js` (±1.330 baris), `team.js`, `missions.js` (`NUTRANTARA_TEAM`), `admin.js`, `net.js`, `app.js`, `docs/arsitektur/kajian/ARSITEKTUR_SERVER.md`, dan `docs/arsitektur/kajian/ARSITEKTUR_DATABASE.md`. Dokumen ini tidak mengubah kode.
 
 Nomor baris merujuk ke `server.js` saat dokumen ini ditulis (23 November 2026).
 

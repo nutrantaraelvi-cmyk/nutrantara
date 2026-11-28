@@ -1,6 +1,6 @@
 # Arsitektur Kode NUTRANTARA
 
-*Disusun 23 November 2026 dari kode nyata di `D:\nutrantara` (paket 0.9.0, fitur regu 1.0): semua berkas `*.js` di akar, `play.html`, `index.html`, `admin.html`, `test/smoke.js`, `.github/workflows/blank.yml`, `Dockerfile`, `CLAUDE.md`, serta `docs/ARSITEKTUR_SERVER.md` dan `docs/ARSITEKTUR_DATABASE.md`. Kode hanya dibaca, tidak dijalankan. Nomor baris mengacu ke versi saat itu.*
+*Disusun 23 November 2026 dari kode nyata di `D:\nutrantara` (paket 0.9.0, fitur regu 1.0): semua berkas `*.js` di akar, `play.html`, `index.html`, `admin.html`, `test/smoke.js`, `.github/workflows/blank.yml`, `Dockerfile`, `CLAUDE.md`, serta `docs/arsitektur/kajian/ARSITEKTUR_SERVER.md` dan `docs/arsitektur/kajian/ARSITEKTUR_DATABASE.md`. Kode hanya dibaca, tidak dijalankan. Nomor baris mengacu ke versi saat itu.*
 
 Dokumen ini melengkapi dua dokumen arsitektur yang sudah ada. `ARSITEKTUR_SERVER.md` membahas *apa* yang dikerjakan server (integritas nilai, ketahanan data, jaringan). `ARSITEKTUR_DATABASE.md` membahas *di mana* data disimpan. Dokumen ini membahas *bagaimana kode disusun*: modul, batas antarfile, aturan bersama, penanganan error, dan pengujian.
 
