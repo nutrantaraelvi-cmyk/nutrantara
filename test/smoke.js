@@ -71,6 +71,18 @@ const PJ = (() => { const sb = { window: {} }; vm.createContext(sb); ['pjbl-data
   ok(PJ.reflectFeedback(0, 'Menu kami menurunkan gula dari 50 g menjadi 6 g per hari.') === 'good' && PJ.reflectFeedback(0, 'Menu kami sehat dan enak sekali rasanya.') === 'fix', 'PjBL: umpan balik refleksi membedakan jawaban berbukti');
 })();
 
+// ---------- Excel mini untuk Rekap Jawaban guru (1.7) ----------
+(() => {
+  const sb = { window: {}, TextEncoder };
+  vm.createContext(sb);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'xlsx.js'), 'utf8'), sb);
+  const XL = sb.window.NutraXlsx;
+  const book = Buffer.from(XL.build([{ name: 'Uji: [1]', cols: [{ h: 'Siswa' }, { h: 'Isi', wrap: true }], rows: [['Ana', '=1+1 <b>'], ['Budi', 30]] }]));
+  const text = book.toString('utf8');
+  ok(XL.crc32(Buffer.from('123456789')) === 0xcbf43926 && book.readUInt32LE(0) === 0x04034b50 && book.readUInt32LE(book.length - 22) === 0x06054b50 && book.readUInt16LE(book.length - 12) === 6, 'Excel: berkas ZIP sah (CRC-32, 6 bagian SpreadsheetML)');
+  ok(text.includes('t="inlineStr" s="2"><is><t xml:space="preserve">=1+1 &lt;b&gt;</t>') && !text.includes('<f>') && text.includes('<v>30</v>') && text.includes('name="Uji   1"') && text.includes('<autoFilter ref="A1:B3"/>'), 'Excel: teks siswa tetap teks (bukan rumus), angka tetap angka, nama lembar aman, filter otomatis');
+})();
+
 function client() {
   const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
   const inbox = [];
@@ -144,6 +156,17 @@ async function adminProbe() {
     }
     const served = await Promise.all([...modules].map(async (f) => [f, (await fetch(`http://localhost:${PORT}/${f}`)).ok]));
     ok(served.every(([, s]) => s) && modules.has('terrain.js') && modules.has('weather.js') && modules.has('fashion.js') && (await fetch(`http://localhost:${PORT}/shop-data.js`)).ok, `semua modul halaman disajikan server (${served.filter(([, s]) => !s).map(([f]) => f).join(', ') || `${served.length} modul`})`);
+    // Semua skrip biasa di play.html (termasuk music-data.js & music.js sejak 1.7) juga harus ada di STATIC.
+    const classic = [...play.matchAll(/<script src="([\w.-]+\.js)" defer>/g)].map((m) => m[1]);
+    const classicOk = await Promise.all(classic.map(async (f) => (await fetch(`http://localhost:${PORT}/${f}`)).ok));
+    ok(classic.includes('music.js') && classicOk.every(Boolean), `semua skrip biasa halaman game disajikan (${classic.length})`);
+    // Musik latar: tiap lagu punya 4 birama A/B × 8 ketukan, akor per birama, nada sah untuk tangga nadanya.
+    const MU = loadBrowser('music-data.js').NUTRANTARA_MUSIC;
+    const badSong = Object.entries(MU.THEMES).filter(([, t]) => {
+      const five = MU.SCALES[t.scale].cents.length === 5;
+      return ['A', 'B'].some((L) => { const bars = t[L].split('|').map((x) => x.trim().split(/\s+/)); return bars.length !== MU.BARS || bars.some((b) => b.length !== 8 || b.some((k) => !/^([1-7]['',]*|-|\.)$/.test(k) || (five && /^[47]/.test(k)))) || t.chords[L].length !== MU.BARS; });
+    }).map(([id]) => id);
+    ok(badSong.length === 0 && W.islands.every((i) => MU.THEMES[`pulau-${i.id}`]) && ['menu', 'lobi', 'peta', 'butik', 'arsip', 'pjbl', 'bos'].every((id) => MU.THEMES[id]), `musik: lagu tiap pulau & fitur lengkap dan sah (${badSong.join(', ') || Object.keys(MU.THEMES).length + ' lagu'})`);
     const three = await fetch(`http://localhost:${PORT}/vendor/three/three.module.min.js`);
     ok(three.ok && three.headers.get('cache-control').includes('max-age'), 'Three.js lokal disajikan dengan cache');
     ok((await fetch(`http://localhost:${PORT}/server.js`)).status === 404, 'berkas server tidak dapat diunduh');
@@ -280,6 +303,134 @@ async function adminProbe() {
     a.send({ type: 'spawn', island: 2 });
     ok((await a.wait(type('spawned'))).island === 2, 'segel Pos 1 membuka Pulau Pos 2');
 
+    // Pesan salah bentuk dari konsol siswa tidak boleh mematikan server kelas.
+    [{ posts: 5 }, { posts: [] }, 'x', null].forEach((state) => a.send({ type: 'progress', state }));
+    b.send({ type: 'progress', state: { posts: { 1: 5, 2: { challenges: [null, 5] } } } });
+    a.send({ type: 'team-op', pos: 1, ops: 5 });
+    a.send({ type: 'team-vote', pos: {}, index: 'x', response: null });
+    a.send({ type: 'shop', action: 'buy', item: { id: 1 } });
+    a.send({ type: 'pjbl', action: 'pick', q: { a: 1 }, r: [] });
+    a.send({ type: 'move', x: 'a', y: null, h: {} });
+    await sleep(400);
+    ok(server.exitCode === null && (await fetch(`http://localhost:${PORT}/health`)).ok, 'pesan salah bentuk tidak mematikan server');
+    a.send({ type: 'spawn', island: 2 });
+    ok((await a.wait(type('spawned'))).island === 2, 'progres sah tetap utuh setelah pesan salah bentuk');
+    const huge = fakeState();
+    huge.posts[1].junk = 'x'.repeat(120 * 1024);
+    a.send({ type: 'progress', state: huge });
+    ok(/terlalu besar/.test((await a.wait(type('notice'))).message), 'progres di atas 96 KB ditolak dengan pemberitahuan');
+
+    // ---------- RPG (1.5): XP, level, lencana ----------
+    const RPG = loadBrowser('rpg-data.js').NUTRANTARA_RPG;
+    const fresh = RPG.compute(RPG.factsFrom(null));
+    ok(fresh.level === 1 && fresh.xp === 0 && !fresh.badges.length, 'RPG: penjelajah baru level 1 tanpa lencana');
+    const allPosts = Object.fromEntries([1, 2, 3, 4, 5].map((id) => [id, { sealed: true, challenges: [{ complete: true, correct: true }, { complete: true, correct: true }] }]));
+    allPosts[6] = { sealed: true, activity: { presented: true } };
+    const tamat = RPG.compute(RPG.factsFrom({ posts: allPosts }, { shards: 48, islands: 6 }));
+    ok(tamat.xp === 1338 && tamat.level === 7 && ['tamat', 'sempurna', 'panggung', 'keping', 'pulau'].every((id) => tamat.badges.includes(id)), 'RPG: ekspedisi tamat + jelajah penuh memberi level tinggi dan lencananya');
+    ok(RPG.compute(RPG.factsFrom({ posts: allPosts }, { shards: 999 })).facts.shards === RPG.SHARD_GOAL, 'RPG: jumlah kepingan dibatasi jumlah yang ada di dunia');
+    a.drain(type('rpg'));
+    a.send({ type: 'explore', shards: [0, 1, 2, 2, 'x', -1, 999], islands: [7, 99, 0] });
+    const rv = await a.wait((m) => m.type === 'rpg' && m.rpg.facts.shards === 3);
+    const part = (id) => (rv.rpg.parts.find((x) => x.id === id) || {}).xp;
+    ok(rv.rpg.facts.islands === 1 && part('shards') === 3 * RPG.XP.shard && part('islands') === RPG.XP.island && part('seal') === RPG.XP.seal, 'RPG: kepingan & pulau dari klien divalidasi server lalu menambah XP');
+
+    // ---------- Event kelas: Bos Mitos Gizi ----------
+    const BOSSQ = loadBrowser('boss-data.js').NUTRANTARA_BOSS;
+    const keyOf = (id) => BOSSQ.questions.find((q) => q.id === id).answer;
+    const wrongOf = (id) => (keyOf(id) === 'mitos' ? 'fakta' : 'mitos');
+    ok(BOSSQ.questions.length >= 30 && BOSSQ.questions.every((q) => ['mitos', 'fakta'].includes(q.answer) && q.explain), 'Bos: bank soal lengkap dengan kunci & penjelasan');
+    ok((await fetch(`http://localhost:${PORT}/boss-data.js`)).status === 404, 'Bos: bank soal (kunci) tidak disajikan ke peramban');
+    a.send({ type: 'boss', action: 'next' });
+    ok(/Tidak ada event/.test((await a.wait(type('boss-error'))).message), 'Bos: tanpa event, tidak ada soal');
+    a.send({ type: 'boss-start' });
+    const ad = client(); await ad.open();
+    ad.send({ type: 'admin-auth', pin: PIN });
+    await ad.wait(type('admin-state'));
+    ad.send({ type: 'admin', action: 'boss-start', hp: 25, minutes: 5 });
+    const started = await b.wait((m) => m.type === 'boss' && m.boss.state === 'active');
+    ok(started.boss.maxHp === 25 && started.boss.hp === 25 && !('questions' in started.boss), 'Bos: guru memulai event, semua siswa menerima status bos');
+    const askA = async () => { a.drain(type('boss-q')); a.send({ type: 'boss', action: 'next' }); return (await a.wait(type('boss-q'))).q; };
+    const q1 = await askA();
+    ok(q1.text && !('answer' in q1) && !('explain' in q1), 'Bos: soal dikirim tanpa kunci jawaban');
+    a.drain(type('boss-error'));
+    a.send({ type: 'boss', action: 'answer', id: q1.id, a: keyOf(q1.id) });
+    ok(/Baca dulu/.test((await a.wait(type('boss-error'))).message), 'Bos: jawaban kilat (< 1,2 detik) ditolak');
+    await sleep(1300);
+    a.send({ type: 'boss', action: 'answer', id: q1.id, a: keyOf(q1.id) });
+    const r1 = await a.wait(type('boss-result'));
+    ok(r1.correct && r1.dmg === 10 && r1.explain, 'Bos: jawaban tepat memberi 10 kerusakan dan penjelasan');
+    a.send({ type: 'boss', action: 'answer', id: q1.id, a: keyOf(q1.id) });
+    ok(/sudah dijawab/.test((await a.wait(type('boss-error'))).message), 'Bos: satu soal tidak bisa dijawab dua kali');
+    b.drain(type('boss-q'));
+    b.send({ type: 'boss', action: 'next' });
+    const qb = (await b.wait(type('boss-q'))).q;
+    await sleep(1300);
+    b.send({ type: 'boss', action: 'answer', id: qb.id, a: wrongOf(qb.id) });
+    const rb = await b.wait(type('boss-result'));
+    ok(!rb.correct && rb.dmg === 0 && rb.answer === keyOf(qb.id), 'Bos: jawaban keliru tanpa kerusakan, kunci & penjelasan ditampilkan');
+    ok((await b.wait((m) => m.type === 'boss' && m.boss.hp === 18)).boss.players === 2, 'Bos: mitos yang dipercaya memulihkan 3 HP bos');
+    for (let i = 0; i < 2; i += 1) {
+      const q = await askA();
+      await sleep(1300);
+      a.send({ type: 'boss', action: 'answer', id: q.id, a: keyOf(q.id) });
+      await a.wait(type('boss-result'));
+    }
+    const won = await b.wait((m) => m.type === 'boss' && m.boss.state === 'won');
+    ok(won.boss.final === 'Penjelajah07' && won.boss.hp === 0, 'Bos kalah; pukulan pamungkas tercatat');
+    const rpgWin = await a.wait((m) => m.type === 'rpg' && m.rpg.badges.includes('bos'));
+    ok(rpgWin.rpg.badges.includes('pamungkas') && rpgWin.rpg.facts.bossHits === 3, 'Bos: peserta mendapat lencana dan XP event');
+    ok((await b.wait((m) => m.type === 'rpg' && m.rpg.badges.includes('bos'))).rpg.facts.bossHits === 0, 'Bos: peserta yang belum tepat tetap ikut menang');
+    ad.send({ type: 'admin', action: 'boss-stop' });
+    ok(/Tidak ada event/.test((await ad.wait(type('admin-error'))).message), 'Bos: event yang sudah selesai tidak bisa dihentikan lagi');
+    ad.ws.close();
+
+    // ---------- Kampung (1.6): tas bahan, Dapur Lapangan, quest warga ----------
+    const KS = (() => { const sb = { window: {} }; vm.createContext(sb); ['kampung-data.js', 'kampung-core.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sb)); return sb.window; })();
+    const KD = KS.NUTRANTARA_KAMPUNG; const KC = KS.NUTRANTARA_KAMPUNG_CORE;
+    const allIds = new Set([...Object.keys(KD.ITEMS), ...Object.keys(KD.RECIPES)]);
+    const gatherable = new Set(Object.values(KD.NODES).flat());
+    const obtainable = new Set([...KD.START_RECIPES, ...KD.QUESTS.flatMap((q) => q.recipes || [])]);
+    ok(Object.keys(KD.RECIPES).every((id) => obtainable.has(id)) && Object.keys(KD.ITEMS).every((id) => gatherable.has(id)) && KD.QUESTS.every((q) => KD.NPCS[q.npc] && Object.keys(q.needs || {}).every((id) => allIds.has(id))), 'Kampung: semua resep bisa didapat, semua bahan bisa dipetik, rujukan quest sah');
+    const ks = KC.fresh();
+    let t0 = 1e9;
+    ok(/Dekati/.test(KC.apply(ks, { action: 'gather', node: '1:0' }, { island: 2, now: t0 }).message), 'Kampung: memetik dari pulau lain ditolak');
+    ok(KC.apply(ks, { action: 'gather', node: '1:0' }, { island: 1, now: t0 }).ok && ks.items.jagung === 1, 'Kampung: memetik di pulau yang sama menambah bahan ke tas');
+    ok(/Pelan/.test(KC.apply(ks, { action: 'gather', node: '1:1' }, { island: 1, now: t0 + 500 }).message), 'Kampung: ada jeda antarpetik');
+    ok(/belum tumbuh/.test(KC.apply(ks, { action: 'gather', node: '1:0' }, { island: 1, now: t0 += 5000 }).message), 'Kampung: titik yang sama tumbuh lagi setelah jeda');
+    KC.apply(ks, { action: 'gather', node: '1:1' }, { island: 1, now: t0 += 2000 });
+    ok(/Bahan kurang/.test(KC.apply(ks, { action: 'cook', recipe: 'sayur-bening' }, { now: t0 }).message), 'Kampung: memasak dengan bahan kurang ditolak');
+    KC.apply(ks, { action: 'gather', node: '1:6' }, { island: 1, now: t0 += 2000 });
+    ok(/belum kamu pelajari/.test(KC.apply(ks, { action: 'cook', recipe: 'papeda' }, { now: t0 }).message), 'Kampung: resep terkunci tidak bisa dimasak');
+    const cooked = KC.apply(ks, { action: 'cook', recipe: 'sayur-bening' }, { now: t0 });
+    ok(cooked.ok && cooked.result.first && ks.dishes['sayur-bening'] === 1 && !ks.items.kelor && !ks.items.jagung, 'Kampung: memasak memakai bahan dan mengisi rantang');
+    ok(/Selesaikan dulu/.test(KC.apply(ks, { action: 'accept', quest: 'darto-sayur' }, { now: t0 }).message), 'Kampung: quest lanjutan terkunci sebelum quest sebelumnya tuntas');
+    KC.apply(ks, { action: 'accept', quest: 'darto-kuis' }, { now: t0 });
+    ok(KC.apply(ks, { action: 'answer', quest: 'darto-kuis', choice: 'a' }, { now: t0 }).result.correct === false && KC.status(ks, KC.QUEST['darto-kuis']) === 'active', 'Kampung: jawaban kuis keliru boleh dicoba lagi');
+    ok(KC.apply(ks, { action: 'answer', quest: 'darto-kuis', choice: 'b' }, { now: t0 }).result.state === 'done', 'Kampung: jawaban kuis tepat menuntaskan quest');
+    KC.apply(ks, { action: 'accept', quest: 'darto-sayur' }, { now: t0 });
+    const turned = KC.apply(ks, { action: 'turnin', quest: 'darto-sayur' }, { now: t0 });
+    ok(turned.ok && ks.recipes.includes('tinutuan') && !ks.dishes['sayur-bening'], 'Kampung: menyerahkan hidangan menuntaskan quest dan membuka resep');
+    ok(KC.facts(ks).questXp === 90 && KC.facts(ks).cooked === 1, 'Kampung: XP quest dihitung dari quest yang tuntas');
+    const forgedBag = KC.norm({ items: { jagung: 999, racun: 5 }, quests: { palsu: { state: 'done' } }, recipes: ['papeda', 'racun'], cool: { 'x:y': 1 } });
+    ok(forgedBag.items.jagung === KD.ITEM_MAX && !forgedBag.items.racun && !forgedBag.quests.palsu && forgedBag.recipes.includes('papeda') && !forgedBag.recipes.includes('racun') && !Object.keys(forgedBag.cool).length, 'Kampung: data tas dinormalkan (id asing dibuang, jumlah dibatasi)');
+    // Lewat server: pulau ditentukan dari posisi server, bukan dari klien.
+    a.drain((m) => m.type === 'kampung' || m.type === 'kampung-error');
+    a.send({ type: 'zone', zone: 'lobby' });
+    a.send({ type: 'kampung', action: 'gather', node: '2:0' });
+    ok(/Dekati/.test((await a.wait(type('kampung-error'))).message), 'Kampung (server): memetik dari lobi ditolak');
+    a.send({ type: 'spawn', island: 2 });
+    await a.wait(type('spawned'));
+    a.send({ type: 'kampung', action: 'gather', node: '2:0' });
+    const kg = await a.wait((m) => m.type === 'kampung' && m.action === 'gather');
+    ok(kg.result.item === KD.NODES[2][0] && kg.state.items[KD.NODES[2][0]] === 1, 'Kampung (server): memetik di pulau tempat pemain berada');
+    a.send({ type: 'kampung', action: 'accept', quest: 'laras-kuis' });
+    await a.wait((m) => m.type === 'kampung' && m.action === 'accept');
+    a.drain(type('rpg'));
+    a.send({ type: 'kampung', action: 'answer', quest: 'laras-kuis', choice: 'b' });
+    ok((await a.wait((m) => m.type === 'kampung' && m.action === 'answer')).result.state === 'done', 'Kampung (server): kuis warga dinilai server');
+    ok(((await a.wait((m) => m.type === 'rpg' && m.rpg.facts.questsDone === 1)).rpg.parts.find((x) => x.id === 'quests') || {}).xp === 30, 'Kampung (server): quest tuntas menambah XP');
+
     // Tiap skenario penilaian dimulai dari progres kosong (guru mengatur ulang), karena jawaban
     // yang sudah tersimpan di server terkunci dan tidak bisa diganti lewat progres baru.
     const resetB = async () => {
@@ -399,6 +550,11 @@ async function adminProbe() {
     adm.send({ type: 'admin', action: 'set-paused', value: false });
     await a.wait((m) => m.type === 'settings' && !m.settings.paused);
 
+    adm.send({ type: 'admin', action: 'set-music', value: false });
+    ok((await a.wait((m) => m.type === 'settings' && m.settings.musicOn === false)).settings.musicOn === false, 'guru membisukan musik semua siswa');
+    adm.send({ type: 'admin', action: 'set-music', value: true });
+    await a.wait((m) => m.type === 'settings' && m.settings.musicOn === true);
+
     adm.send({ type: 'admin', action: 'set-shop', value: false });
     await a.wait((m) => m.type === 'settings' && m.settings.shopOpen === false);
     a.send({ type: 'shop', action: 'buy', item: 'selendang' });
@@ -422,6 +578,28 @@ async function adminProbe() {
     await sleep(1600);
     b.send({ type: 'chat', text: 'tes' });
     ok((await b.wait(type('notice'))).message.includes('dibisukan'), 'pemain yang dibisukan tidak bisa mengobrol');
+
+    // ---------- Rekap Jawaban Siswa untuk guru (1.7) ----------
+    const rkFiles = await Promise.all(['admin-rekap.js', 'xlsx.js', 'rekap-core.js'].map((f) => fetch(`http://localhost:${PORT}/${f}`).then((r) => r.status)));
+    ok(rkFiles[0] === 200 && rkFiles[1] === 200 && rkFiles[2] === 404 && (await fetch(`http://localhost:${PORT}/admin`).then((r) => r.text())).includes('admin-rekap.js'), 'Rekap: skrip panel guru disajikan, penyusun rekap hanya ada di server');
+    adm.send({ type: 'admin', action: 'rekap' });
+    const rk = (await adm.wait(type('admin-rekap'))).rekap;
+    const sA = rk.siswa.find((s) => s.siswa === 'Penjelajah07');
+    ok(rk.siswa.length === 2 && rk.meta.maksEkspedisi === 420 && sA.skor === 80 && sA.nilai === 19 && sA.predikat === 'D' && sA.segel === 1 && sA.pos1 === 2 && sA.ekspBenar === 2, 'Rekap: ringkasan nilai per siswa sama dengan skor server');
+    const jA = rk.jawaban.filter((j) => j.siswa === 'Penjelajah07' && j.bagian === 'Ekspedisi');
+    ok(jA.length === 2 && jA.every((j) => j.pos === 1 && j.soal && j.hasil === 'Benar' && j.poin === 30 && j.jawaban && j.jawaban === j.kunci && /^Kasus \d+\/100/.test(j.keterangan)), 'Rekap: jawaban Ekspedisi lengkap dengan soal & kunci kasus siswa, hasil, dan poin');
+    const pjA = rk.jawaban.find((j) => j.siswa === 'Penjelajah07' && j.butir === 'P1Q1');
+    ok(pjA && pjA.hasil === 'Salah' && pjA.jawaban.startsWith('A.') && pjA.kunci.startsWith('C.') && pjA.poin === null, 'Rekap: pilihan pribadi PjBL dinilai dengan kunci (huruf sesuai dokumen PjBL)');
+    const anP = rk.analisis.find((x) => x.butir === 'P1Q1');
+    const anE = rk.analisis.find((x) => x.butir === 'E1.1');
+    ok(anP.dijawab === 1 && anP.benar === 0 && anP.sebaran.find((o) => o.pilihan.startsWith('A.')).n === 1 && anP.keliru.startsWith('A.') && anE.dijawab === 2 && anE.persen === 100 && anE.tingkat === 'Mudah' && anE.dayaBeda === null, 'Rekap: analisis butir menghitung % benar, tingkat kesukaran, dan sebaran pilihan');
+    const bosAn = rk.analisis.filter((x) => x.bagian === 'Bos Mitos Gizi');
+    ok(bosAn.length === BOSSQ.questions.length && bosAn.reduce((n, x) => n + x.dijawab, 0) === 4 && bosAn.reduce((n, x) => n + x.benar, 0) === 3 && sA.bosBenar === 3 && sA.bosDijawab === 3, 'Rekap: jawaban Bos Mitos Gizi tercatat per soal (3 tepat dari 4) dan per siswa');
+    ok(rk.jawaban.some((j) => j.siswa === 'Penjelajah07' && j.butir === 'K-laras-kuis' && j.hasil === 'Benar'), 'Rekap: kuis warga Kampung tercatat');
+    ok(rk.tulisan.some((t) => t.siswa === 'TimTempe' && t.jenis === 'Alasan Paspor' && t.pos === 1 && t.isi.includes('protein')), 'Rekap: alasan Paspor masuk lembar Tulisan Siswa');
+    adm.send({ type: 'admin', action: 'detail', playerId: pa.id });
+    const det = (await adm.wait(type('admin-detail'))).player;
+    ok(det.rekap && det.rekap.siswa.length === 1 && det.rekap.jawaban.length === rk.jawaban.filter((j) => j.sid === pa.id).length, 'Rekap: dialog Detail memuat jawaban siswa itu saja');
 
     a.drain(type('wardrobe'));
     adm.send({ type: 'admin', action: 'reset', playerId: pa.id });

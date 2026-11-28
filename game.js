@@ -21,7 +21,7 @@
     { key: 'fiber', label: 'Serat', unit: 'g' }
   ];
   const NODE_CLASSES = ['node-one', 'node-two', 'node-three', 'node-four', 'node-five', 'node-six'];
-  const screens = ['world', 'map', 'mission', 'kitchen', 'passport', 'report', 'leaderboard', 'shop', 'pjbl'];
+  const screens = ['world', 'map', 'mission', 'kitchen', 'passport', 'report', 'leaderboard', 'shop', 'pjbl', 'prestasi'];
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -625,6 +625,7 @@
     if (reason.length < MIN_REASON) { showToast(`Tulis alasanmu minimal ${MIN_REASON} karakter sebelum menyegel pos.`); $('#reason').focus(); return; }
     p.reason = reason;
     p.sealed = true;
+    if (window.NutraMusic) window.NutraMusic.sting('segel');
     p.sealedAt = new Date().toISOString();
     saveState();
     selectedPos = null;
@@ -939,6 +940,7 @@
       return;
     }
     p.sealed = true;
+    if (window.NutraMusic) window.NutraMusic.sting('segel');
     p.sealedAt = new Date().toISOString();
     saveState();
     recordLeaderboard();
@@ -1346,6 +1348,7 @@
     if (text.length < MIN_REASON) return { ok: false, message: `Tulis alasanmu minimal ${MIN_REASON} karakter (sekarang ${text.length}).` };
     p.reason = text.slice(0, 500);
     p.sealed = true;
+    if (window.NutraMusic) window.NutraMusic.sting('segel');
     p.sealedAt = new Date().toISOString();
     saveState();
     recordLeaderboard();

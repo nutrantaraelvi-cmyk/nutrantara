@@ -15,6 +15,8 @@
     <script src="pjbl-data.js" defer></script>
     <script src="pjbl-core.js" defer></script>
     <script src="admin.js" defer></script>
+    <script src="xlsx.js" defer></script>
+    <script src="admin-rekap.js" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -48,10 +50,24 @@
               <button type="button" class="button" id="btn-move"></button>
               <button type="button" class="button" id="btn-chat"></button>
               <button type="button" class="button" id="btn-shop"></button>
+              <button type="button" class="button" id="btn-rpg"></button>
+              <button type="button" class="button" id="btn-music"></button>
               <button type="button" class="button button-secondary" id="btn-gather">Kumpulkan semua di Nara</button>
-              <button type="button" class="button button-secondary" id="btn-export-json">Ekspor JSON ↓</button>
-              <button type="button" class="button button-secondary" id="btn-export-csv">Ekspor CSV ↓</button>
+              <a class="button button-primary" href="#rekap">📊 Rekap &amp; unduh jawaban siswa</a>
+              <button type="button" class="button button-secondary" id="btn-export-json" title="Salinan lengkap data kelas untuk arsip atau pemulihan, bukan untuk dibaca">Cadangan lengkap (JSON) ↓</button>
             </div>
+          </section>
+
+          <section class="admin-section boss-admin" aria-labelledby="boss-title">
+            <div class="panel-heading"><span id="boss-title">EVENT KELAS · BOS MITOS GIZI</span><span class="panel-id">KOOPERATIF</span></div>
+            <p class="field-hint">Semua siswa daring menjawab “Mitos atau Fakta?” tentang sistem pencernaan dan klaim pangan untuk mengalahkan Raksasa Hoaks Gizi bersama. Jawaban tepat mengurangi HP bos; jawaban keliru memulihkan 3 HP. Peserta mendapat XP, dan bila bos kalah, lencana Pemburu Hoaks. Skor rapor tidak berubah.</p>
+            <div class="admin-controls">
+              <label class="field-label" for="boss-minutes">Durasi</label><select id="boss-minutes" class="text-input"><option value="5">5 menit</option><option value="8" selected>8 menit</option><option value="12">12 menit</option></select>
+              <label class="field-label" for="boss-level">Tingkat</label><select id="boss-level" class="text-input"><option value="ringan">Ringan (50 HP/siswa)</option><option value="sedang" selected>Sedang (80 HP/siswa)</option><option value="berat">Berat (120 HP/siswa)</option></select>
+              <button type="button" class="button button-primary" id="btn-boss-start">⚔ Mulai event</button>
+              <button type="button" class="button button-secondary" id="btn-boss-stop">Hentikan</button>
+            </div>
+            <div class="boss-admin-status" id="boss-admin-status" role="status" aria-live="polite"></div>
           </section>
 
           <div class="admin-grid">
@@ -86,6 +102,35 @@
             </table></div>
           </section>
 
+          <section class="admin-section rekap" id="rekap" aria-labelledby="rekap-title">
+            <div class="panel-heading"><span id="rekap-title">REKAP JAWABAN SISWA</span><span class="panel-id" id="rk-time">BELUM DIMUAT</span></div>
+            <p class="field-hint">Semua jawaban yang tersimpan di server kelas: pilihan siswa, kunci, benar/salah, poin, tulisan, dan analisis butir soal. <b>Excel</b> berisi semua data dalam beberapa lembar (termasuk matriks 1/0 per butir); <b>CSV</b> dan <b>Cetak</b> mengikuti tampilan dan filter yang sedang dipilih. Data tidak berubah otomatis: tekan Muat ulang untuk jawaban terbaru.</p>
+            <div class="admin-controls rk-actions">
+              <button type="button" class="button button-primary" id="rk-load">⟳ Muat rekap</button>
+              <button type="button" class="button button-secondary" id="rk-xlsx" disabled>⬇ Unduh Excel (.xlsx) · semua data</button>
+              <button type="button" class="button button-secondary" id="rk-csv" disabled>⬇ CSV tampilan ini</button>
+              <button type="button" class="button button-secondary" id="rk-print" disabled>🖨 Cetak tampilan ini</button>
+            </div>
+            <div class="rk-views" role="group" aria-label="Pilih tampilan rekap">
+              <button type="button" class="rk-view" data-rk-view="nilai" aria-pressed="true">Ringkasan nilai</button>
+              <button type="button" class="rk-view" data-rk-view="jawaban" aria-pressed="false">Jawaban per soal</button>
+              <button type="button" class="rk-view" data-rk-view="analisis" aria-pressed="false">Analisis butir soal</button>
+              <button type="button" class="rk-view" data-rk-view="tulisan" aria-pressed="false">Tulisan siswa</button>
+            </div>
+            <div class="rk-filters">
+              <label id="rk-w-bagian">Bagian <select id="rk-f-bagian" class="text-input"></select></label>
+              <label id="rk-w-pos">Pos <select id="rk-f-pos" class="text-input"></select></label>
+              <label id="rk-w-regu">Regu <select id="rk-f-regu" class="text-input"></select></label>
+              <label id="rk-w-siswa">Siswa <select id="rk-f-siswa" class="text-input"></select></label>
+              <label id="rk-w-hasil">Hasil <select id="rk-f-hasil" class="text-input"></select></label>
+              <label id="rk-w-urut">Urutkan <select id="rk-f-urut" class="text-input"></select></label>
+            </div>
+            <p class="field-hint" id="rk-hint"></p>
+            <p class="rk-count" id="rk-count" role="status" aria-live="polite"></p>
+            <div class="table-scroll rk-scroll"><table class="admin-table rk-table" id="rk-table"></table></div>
+            <button type="button" class="button button-secondary admin-small" id="rk-more" hidden></button>
+          </section>
+
           <section class="admin-section" aria-labelledby="teams-title">
             <div class="panel-heading"><span id="teams-title">REGU PROYEK</span><span class="panel-id">KEMAJUAN BERSAMA &amp; KONTRIBUSI ANGGOTA</span></div>
             <p class="field-hint">Siswa membentuk regu sendiri (maks. 4). Jawaban Papan Laporan dikunci regu lewat voting; alasan dan refleksi di Paspor tetap ditulis masing-masing. Angka "aksi" adalah jumlah kontribusi tercatat (bukti, misi, usulan jawaban).</p>
@@ -105,5 +150,6 @@
       <div id="detail-body"></div>
     </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div id="rekap-print" class="rekap-print"></div>
   </body>
 </html>

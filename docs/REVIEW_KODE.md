@@ -111,7 +111,29 @@ Hanya penghapusan kode mati yang pasti tidak terpakai, dan perilaku game tidak b
 
 Tidak ada commit atau push. Tidak ada skrip lain dari folder yang dijalankan.
 
-## Urutan perbaikan yang disarankan
+## Pembaruan 27 November 2026
+
+Temuan K1, T1, T2, S1–S4, R1, R3, R5, dan R6 ternyata masih ada di versi 1.4. Semuanya kini diperbaiki. K1 dibuktikan dulu dengan uji asap baru (server mati dengan `TypeError: Cannot create property '1' on number '5'`), lalu uji yang sama lulus setelah perbaikan. Selain itu, rekaman gameplay penuh Pos 1–6 di peramban hanya memunculkan satu peringatan Three.js dan tidak ada exception.
+
+| Temuan | Perbaikan |
+|---|---|
+| K1 | `handleProgress` menolak `state`/`posts` yang bukan objek, membuang pos primitif, dan menormalkan elemen `challenges`. `overlayTeam` tidak lagi menulis ke pos primitif. |
+| T2 | Isi penangan pesan WebSocket dipindah ke `routeMessage` dan dibungkus `try/catch`. Galat hanya menggagalkan pesan itu dan dicatat di log. |
+| T1 | `clientIp` memakai entri paling kanan `X-Forwarded-For` (yang ditulis proksi), bukan entri kiri yang ditulis klien. |
+| S1 | Progres di atas 96 KB ditolak dengan pemberitahuan (progres tamat Pos 1–6 ±11 KB). `classroom.json` ditulis tanpa indentasi (±separuh ukuran). |
+| S2 | Sel CSV yang diawali `=`, `+`, `-`, `@`, tab, atau CR diawali `'`, dan `\r` ikut dikutip. |
+| S3 | Detail dan ekspor CSV di panel guru tahan elemen `challenges` yang `null`. |
+| S4 | Batas 400 KB data regu dicek sesudah operasi diterapkan. Bila terlampaui, data regu dikembalikan. |
+| R1, R6 | `teleport` ke `all` melewati pemain yang sudah dihapus, dan koordinat `0` dihormati. |
+| R3 | Catatan `failedLogins` dan `authAttempts` yang kedaluwarsa dibuang tiap 30 detik. |
+| R5 | Kata sandi di atas 72 karakter mendapat pesan "maksimal 72 karakter". |
+| Lain | `quest.js`: opsi `flatShading` dihapus dari material toon (peringatan Three.js satu-satunya selama gameplay penuh). |
+
+Uji asap baru: 7 jenis pesan salah bentuk tidak mematikan server, progres sah tetap utuh sesudahnya, dan progres di atas 96 KB ditolak. `npm test`: semua uji lulus.
+
+Belum dikerjakan (tetap seperti catatan di atas): R2 (kecepatan gerak per pesan), R4 (`same()` peka urutan kunci), R7 (kunci jawaban terkirim ke klien), duplikasi `esc`, dan akhir baris CRLF di tiga berkas.
+
+## Urutan perbaikan yang disarankan (23 November; butir 1–4 selesai 27 November 2026)
 
 1. K1 + T2: validasi bentuk `progress` dan pengaman `try/catch` di penangan WebSocket, ditambah uji asap untuk pesan salah bentuk.
 2. T1: ambil IP dari entri paling kanan `X-Forwarded-For`, lalu perpanjang PIN produksi.

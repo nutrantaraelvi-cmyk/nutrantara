@@ -409,7 +409,7 @@
 
   function placeAt(x, y) { self.x = x; self.y = y; target = null; saveSelf(); }
 
-  window.NutraWorld2D = { start, stop, placeAt, get running() { return running; } };
+  window.NutraWorld2D = { start, stop, placeAt, get running() { return running; }, get island() { return W.islandAt(self.x, self.y); } };
 
   document.addEventListener('nutra:screen', (e) => { if (e.detail === 'world') start(); else stop(); });
 

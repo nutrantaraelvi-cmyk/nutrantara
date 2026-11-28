@@ -15,6 +15,8 @@ import { buildRegion } from './region.js';
 import { createTerrain } from './terrain.js';
 import { createWeather, forecast, WEATHER, seasonOf } from './weather.js';
 import { applyOutfit, clothMaterial } from './fashion.js';
+import { createBoss } from './boss3d.js';
+import { createKampung } from './kampung3d.js';
 import { SUN_DIR, createSkyDome, createCloudSea, cumulusTextures, createCumulus } from './sky.js';
 import { createCandiBentar, createMeru, createPenjor, createKite, createPinisi, createStupa, createRumahGadang, createGunungan, createGong, createOndelOndel, createCorn, createTempe, createPapaya, kawungTexture } from './culture.js';
 
@@ -936,10 +938,17 @@ async function prepare(onProgress = () => {}) {
     },
     () => { terrain = createTerrain({ scene, gfx, anisotropy: gfx === 'high' ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 1 }); terrain.visible = false; },
     // Satu langkah per wilayah pos: grid medan blok + isinya (agar layar muat tetap bergerak).
-    ...W.islands.filter((i) => W.isPost(i.id)).map((isl) => () => buildRegion({ scene, W, frame, toX, toZ, items: quests.items, platforms, shardSpots: wildShards, animated, gfx, terrain }, isl.id)),
+    ...W.islands.filter((i) => W.isPost(i.id)).map((isl) => () => buildRegion({ scene, W, frame, toX, toZ, items: quests.items, platforms, shardSpots: wildShards, animated, gfx, terrain, spots: regionSpots }, isl.id)),
     () => buildDecor(),
     () => buildSeasonDecor(),
     () => buildBoutique(),
+    // Kampung (1.6): warga, Dapur Lapangan, dan titik bahan; dibangun setelah medan & desa pusat siap.
+    () => {
+      const f0 = frame(0);
+      const avoid = [...quests.items.map((i) => ({ x: i.x, z: i.z })), { x: toX(W.nara.x), z: toZ(W.nara.y) }, { x: f0.x + BOSS_AT.x, z: f0.z + BOSS_AT.z }];
+      if (boutique) avoid.push({ x: boutique.x, z: boutique.z });
+      kampung = createKampung({ scene, W, frame, groundAt, spots: regionSpots, avoid });
+    },
     () => buildShards(),
     () => {
       nara = createNara();
@@ -1408,6 +1417,7 @@ function interact() {
   keys.clear();
   if (nearby.kind === 'nara') { naraTalk(); return; }
   if (nearby.kind === 'shop') { game.goTo('shop'); return; }
+  if (nearby.kind === 'kampung') { kampung.activate(nearby.target); return; }
   quests.activate(nearby.item);
 }
 
@@ -1469,7 +1479,10 @@ const overview = { yaw: 0.6, dist: 78, focus: new THREE.Vector3(), target: new T
 
 const discoverKey = () => `nutrantara-pulau-v1:${(game.state.alias || '').toLocaleLowerCase('id')}`;
 function discovered() { try { return JSON.parse(localStorage.getItem(discoverKey())) || []; } catch { return []; } }
-function saveDiscovered(list) { try { localStorage.setItem(discoverKey(), JSON.stringify(list)); } catch { /* abaikan */ } }
+function saveDiscovered(list) {
+  try { localStorage.setItem(discoverKey(), JSON.stringify(list)); } catch { /* abaikan */ }
+  document.dispatchEvent(new CustomEvent('nutra:explore'));
+}
 
 function islandStatus(id) {
   if (id === 0) return { key: 'open', text: 'TERBUKA · TITIK KUMPUL' };
@@ -1692,7 +1705,8 @@ function updatePlay(dt) {
   const moving = Math.hypot(mx, mz) > 0.05;
   const allowed = allowedSet();
   if (moving) {
-    const sp = SPEED * (keys.has('run') || gpad.run ? SPRINT : 1) * (self.grounded && inWater(self.x, self.z) ? SWIM_SPEED : 1);
+    const buff = window.NutraKampung ? window.NutraKampung.speedBuff() : 1; // mencicipi hidangan Dapur Lapangan
+    const sp = SPEED * buff * (keys.has('run') || gpad.run ? SPRINT : 1) * (self.grounded && inWater(self.x, self.z) ? SWIM_SPEED : 1);
     const c = W.clamp(toPx(self.x + mx * sp * dt), toPy(self.z + mz * sp * dt), allowed);
     let nx = toX(c.x); let nz = toZ(c.y);
     // Medan blok: undakan setinggi ≤ 1 blok di atas kaki bisa dimasuki (saat melompat: sampai 2 blok);
@@ -1945,17 +1959,23 @@ function loadShards() {
   shards.forEach((s) => { s.taken = taken.includes(s.id); s.obj.visible = !s.taken; });
   updateShardHud();
 }
-function saveShards() { try { localStorage.setItem(shardKey(), JSON.stringify(shards.filter((s) => s.taken).map((s) => s.id))); } catch { /* abaikan */ } }
+function saveShards() {
+  try { localStorage.setItem(shardKey(), JSON.stringify(shards.filter((s) => s.taken).map((s) => s.id))); } catch { /* abaikan */ }
+  document.dispatchEvent(new CustomEvent('nutra:explore'));
+}
 function updateShardHud() { document.getElementById('w3-shards').textContent = String(shards.filter((s) => s.taken).length); }
 
 function updateNearby() {
   let found = null;
   const it = quests.nearest(self.x, self.z, self.h - groundAt(self.x, self.z));
+  const kt = !it && kampung ? kampung.nearest(self.x, self.z) : null;
   if (it) found = { kind: 'item', item: it, key: `${it.kind}${it.pos}${it.row ?? ''}` };
+  else if (kt) found = { kind: 'kampung', target: kt, key: `kp${kt.id}` };
   else if (boutique && Math.hypot(boutique.x - self.x, boutique.z - self.z) < 5.2) found = { kind: 'shop', key: 'shop' }; // kios selebar 5,2 m
   else if (Math.hypot(nara.position.x - self.x, nara.position.z - self.z) < 2.2) found = { kind: 'nara', key: 'nara' };
   const prev = nearby === undefined ? 'init' : nearby ? nearby.key : 'none';
   nearby = found;
+  if (found && found.kind === 'kampung') { const h = kampung.hint(found.target); promptEl.textContent = h.text; actionBtn.textContent = h.button; actionBtn.hidden = false; return; }
   if (found && found.kind === 'item') { promptEl.textContent = quests.hint(found.item); actionBtn.textContent = { terminal: 'Pindai', board: 'Buka papan', altar: 'Altar segel', station: 'Buka misi', ingredient: 'Ambil bahan', stage: 'Presentasi' }[found.item.kind] || 'Buka dapur'; actionBtn.hidden = false; return; }
   if ((found ? found.key : 'none') === prev) return;
   if (!found) { promptEl.textContent = 'Jelajahi pulau. Ikuti panah emas ke tujuan berikutnya, dekati objek bercahaya, lalu tekan E.'; actionBtn.hidden = true; return; }
@@ -2049,6 +2069,36 @@ function updateOverview(dt) {
   if (sun.castShadow) { sun.target.position.copy(overview.focus); sun.position.copy(SUN_DIR).multiplyScalar(50).add(overview.focus); }
 }
 
+// ---------- Event kelas: Bos Mitos Gizi (sejak 1.5) ----------
+// Raksasa muncul di sisi utara Alun-alun selama event; status (HP, menang/kalah) selalu dari server.
+const BOSS_AT = { x: -1, z: -12 };
+const regionSpots = {}; // diisi region.js: desa pusat & kampung budaya tiap wilayah pos
+let kampung = null;
+let bossModel = null;
+let bossHp = null;
+function updateBoss(dt) {
+  const st = window.NutraRPG ? window.NutraRPG.boss : null;
+  const show = Boolean(st && st.state && st.state !== 'idle');
+  if (!bossModel) {
+    if (!show) return;
+    bossModel = createBoss();
+    const f = frame(0);
+    bossModel.group.position.set(f.x + BOSS_AT.x, 0, f.z + BOSS_AT.z);
+    scene.add(bossModel.group);
+  }
+  bossModel.group.visible = show;
+  if (!show) { bossHp = null; return; }
+  const at = bossModel.group.position;
+  if (bossHp !== null && st.hp < bossHp && Math.hypot(self.x - at.x, self.z - at.z) < 120) {
+    bossModel.hit();
+    fx.sparkle({ x: at.x, y: 3.4, z: at.z + 1.5 }, '#ffd17c');
+    fx.ring({ x: at.x, y: 0.1, z: at.z }, { color: '#c58cf0', from: 1, to: 5, life: 0.5 });
+  }
+  if (st.state === 'won' && bossHp !== 0) fx.confetti({ x: at.x, y: 4, z: at.z });
+  bossHp = st.hp;
+  bossModel.update(dt, st, self);
+}
+
 function updateOthers(dt) {
   if (!net) return;
   const seen = new Set();
@@ -2080,7 +2130,7 @@ function updateOthers(dt) {
     const oFloor = groundAt(o.x, o.z);
     o.obj.userData.animate(dt, { speed: o.speed, airborne: o.h - oFloor > 0.05, height: o.h - oFloor });
     const mate = net.isTeammate(id);
-    const text = `${mate ? '🤝 ' : ''}${p.alias}${p.seals ? `  ✦${p.seals}` : ''}`;
+    const text = `${mate ? '🤝 ' : ''}${lvTag(p.lv)}${p.alias}${p.seals ? `  ✦${p.seals}` : ''}`;
     if (text !== o.labelText) {
       if (o.label) o.obj.remove(o.label);
       o.label = createLabel(text, mate ? { size: 24, color: '#78f4bd' } : { size: 24 });
@@ -2113,9 +2163,11 @@ function updateWeatherHud() {
   el.title = `${w.season}: ${w.seasonDesc}. Iklim: ${w.climate}. Sekarang ${w.now}; ${w.minutes} menit lagi berganti ${w.next}. Cuaca hanya mengubah suasana.`;
 }
 
+const lvTag = (lv) => (lv && window.NutraRPG && window.NutraRPG.visible ? `Lv ${lv} · ` : '');
 let selfLabelText = '';
 function updateSelfLabel() {
-  const text = `${game.state.alias || 'Kamu'}  ✦${game.sealCount()}`;
+  const rpg = window.NutraRPG && window.NutraRPG.view;
+  const text = `${lvTag(rpg && rpg.level)}${game.state.alias || 'Kamu'}  ✦${game.sealCount()}`;
   if (text === selfLabelText) return;
   if (self.label) self.obj.remove(self.label);
   self.label = createLabel(text, { color: PALETTE.gold, size: 24 });
@@ -2227,6 +2279,8 @@ function frameLoop() {
     camera.updateProjectionMatrix();
   }
   updateOthers(dt);
+  updateBoss(dt);
+  if (kampung) kampung.update(dt, self);
   animateWorld(dt);
   if (horizon) horizon.position.set(camera.position.x, 0, camera.position.z);
   resize();
@@ -2316,7 +2370,7 @@ window.NutraWorld3D = {
   },
   leave() { stop(); mode = 'off'; landed = false; hideOverview(); visited.clear(); },
   /** Untuk uji otomatis (QA): akses posisi pemain & interaksi. */
-  debug: { get self() { return self; }, get nearby() { return nearby; }, ground: (x, z) => groundAt(x, z), surface: (x, z) => (terrain ? terrain.surface(x, z) : null), get weather() { return weatherText(weatherIsland); }, get chunks() { return terrain ? terrain.pickables.length : 0; }, get waterMeshes() { return terrain ? terrain.group.children.filter((m) => m.material && m.material.transparent).length : 0; }, setCam: (yaw, pitch) => { camCtl.reset = false; releaseLock(false); cam.yaw = yaw; cam.pitch = pitch; }, get cam() { return { mode: camMode, yaw: cam.yaw, pitch: cam.pitch, zoom: cam.dist, fov: camera ? camera.fov : null, lock: camCtl.lock ? camCtl.lock.kind : null, pan: camCtl.pan.length(), freeLook: camCtl.freeLook }; }, interact: () => interact(), get items() { return quests ? quests.items.map(({ kind, pos, row, x, z }) => ({ kind, pos, row, x, z })) : []; } },
+  debug: { get self() { return self; }, get nearby() { return nearby; }, ground: (x, z) => groundAt(x, z), surface: (x, z) => (terrain ? terrain.surface(x, z) : null), get weather() { return weatherText(weatherIsland); }, get chunks() { return terrain ? terrain.pickables.length : 0; }, get waterMeshes() { return terrain ? terrain.group.children.filter((m) => m.material && m.material.transparent).length : 0; }, setCam: (yaw, pitch) => { camCtl.reset = false; releaseLock(false); cam.yaw = yaw; cam.pitch = pitch; }, get cam() { return { mode: camMode, yaw: cam.yaw, pitch: cam.pitch, zoom: cam.dist, fov: camera ? camera.fov : null, lock: camCtl.lock ? camCtl.lock.kind : null, pan: camCtl.pan.length(), freeLook: camCtl.freeLook }; }, interact: () => interact(), get items() { return quests ? quests.items.map(({ kind, pos, row, x, z }) => ({ kind, pos, row, x, z })) : []; }, get kampung() { return kampung ? kampung.targets.map(({ kind, id, item, x, z }) => ({ kind, id, item, x, z })) : []; } },
   stop
 };
 

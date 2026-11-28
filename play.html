@@ -13,14 +13,23 @@
     <script src="missions.js" defer></script>
     <script src="world-data.js" defer></script>
     <script src="shop-data.js" defer></script>
+    <script src="rpg-data.js" defer></script>
+    <script src="kampung-data.js" defer></script>
+    <script src="kampung-core.js" defer></script>
     <script src="pjbl-data.js" defer></script>
     <script src="pjbl-core.js" defer></script>
     <script src="net.js" defer></script>
     <script src="team.js" defer></script>
     <script src="game.js" defer></script>
     <script src="pjbl.js" defer></script>
+    <script src="rpg.js" defer></script>
+    <script src="kampung.js" defer></script>
     <script src="world.js" defer></script>
     <script src="map-art.js" defer></script>
+    <script src="island-data.js" defer></script>
+    <script src="islands.js" defer></script>
+    <script src="music-data.js" defer></script>
+    <script src="music.js" defer></script>
     <script type="module" src="world3d.js"></script>
     <script type="module" src="app.js"></script>
     <script type="module" src="shop.js"></script>
@@ -119,6 +128,7 @@
         <button type="button" class="lobby-btn" data-go="passport">Paspor</button>
         <button type="button" class="lobby-play" id="lobby-play"><span>MAIN</span><small>Pilih map &amp; terjun</small></button>
         <button type="button" class="lobby-btn" data-go="pjbl">PjBL</button>
+        <button type="button" class="lobby-btn" data-go="prestasi">Prestasi</button>
         <button type="button" class="lobby-btn" data-go="report">Rapor</button>
         <button type="button" class="lobby-btn" data-go="leaderboard">Peringkat</button>
         <button type="button" class="lobby-btn" data-go="shop">Butik</button>
@@ -137,6 +147,7 @@
           <button class="nav-link" data-screen="map">Peta</button>
           <button class="nav-link" data-screen="pjbl">Proyek PjBL</button>
           <button class="nav-link" data-screen="passport">Paspor</button>
+          <button class="nav-link" data-screen="prestasi">Prestasi</button>
           <button class="nav-link" data-screen="report">Rapor</button>
           <button class="nav-link" data-screen="leaderboard">Peringkat</button>
           <button class="nav-link" data-screen="shop">Toko</button>
@@ -298,6 +309,13 @@
           <p class="panel-subtitle">Temani Nara menjalani enam langkah PjBL. POS 1–5 berisi 10 soal analisis yang dijawab individu lalu dikunci bersama kelompok; di POS 6 kelompok merancang <b>prototype menu sehat harian kantin sekolah</b>. Skor analisis terpisah dari skor rapor ekspedisi. <span id="pjbl-mode"></span></p>
           <nav class="pjbl-tabs" id="pjbl-tabs" aria-label="Pilih POS"></nav>
           <div class="pjbl-body" id="pjbl-body"></div>
+          <button class="back-button passport-back" data-screen="world">← <span>Kembali ke dunia</span></button>
+        </section>
+
+        <section class="screen prestasi-screen" id="screen-prestasi" hidden aria-labelledby="prestasi-title">
+          <div class="section-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> LEVEL · GELAR · LENCANA</div><h1 id="prestasi-title">Prestasi <em>penjelajah.</em></h1></div></div>
+          <p class="panel-subtitle">XP datang dari kegiatan belajarmu: menjawab Papan Laporan, menyegel pos, bintang mini-game, kepingan arsip, pulau jelajah, PjBL, dan event kelas Bos Mitos Gizi. Skor rapor (maks. 420) tidak berubah.</p>
+          <div id="prestasi-body"></div>
           <button class="back-button passport-back" data-screen="world">← <span>Kembali ke dunia</span></button>
         </section>
 

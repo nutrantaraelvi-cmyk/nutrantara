@@ -364,7 +364,7 @@ export function createQuests(ctx) {
       g.add(parts.screen);
     } else if (st.kind === 'geode') { // batu klaim di atas landasan + palu; terbelah memperlihatkan kristal asumsi saat tuntas
       add(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.05, 0.7, 8), toon('#6b6e7a')), 0, 0.35, 0, g);
-      const rock = toon('#7d6f8f', { flatShading: true, unique: true });
+      const rock = toon('#7d6f8f', { unique: true });
       parts.geodeTop = new THREE.Group();
       parts.geodeTop.add(new THREE.Mesh(new THREE.SphereGeometry(0.75, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), rock));
       add(parts.geodeTop, 0, 1.45, 0, g);

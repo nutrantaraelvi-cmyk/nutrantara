@@ -43,6 +43,13 @@ const MISSIONS = loadBrowserScript('missions.js').NUTRANTARA_MISSIONS;
 const WORLD = loadBrowserScript('world-data.js').NUTRANTARA_WORLD;
 const SHOP = loadBrowserScript('shop-data.js').NUTRANTARA_SHOP;
 const PJBL = loadBrowserScript('pjbl-data.js', 'pjbl-core.js').NUTRANTARA_PJBL_CORE;
+const RPG = loadBrowserScript('rpg-data.js').NUTRANTARA_RPG;
+const KAMPUNG_WIN = loadBrowserScript('kampung-data.js', 'kampung-core.js');
+const KAMPUNG = KAMPUNG_WIN.NUTRANTARA_KAMPUNG_CORE;
+// Bank soal Bos Mitos Gizi hanya dibaca server (tidak ada di STATIC), jadi kuncinya tidak sampai ke peramban.
+const BOSS = loadBrowserScript('boss-data.js').NUTRANTARA_BOSS;
+// Rekap Jawaban untuk guru (sejak 1.7): disusun di server, dikirim ke panel guru lewat `admin-rekap`.
+const REKAP = loadBrowserScript('rekap-core.js').NUTRANTARA_REKAP;
 const ALL_POSTS = MISSIONS.map((m) => m.id);
 
 // ---------- Penyimpanan ----------
@@ -51,10 +58,11 @@ function freshDb() {
   return {
     version: 1,
     createdAt: new Date().toISOString(),
-    settings: { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', classCode: '', shopOpen: true },
+    settings: { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', classCode: '', shopOpen: true, rpgVisible: true, musicOn: true },
     players: {},
     teams: {},
-    chat: []
+    chat: [],
+    bossStats: {} // { idSoal: { mitos, fakta } }: jumlah jawaban event bos per soal, untuk analisis butir guru
   };
 }
 
@@ -131,7 +139,7 @@ function flushDb() {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const tmp = `${DATA_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(db)); // tanpa indentasi: berkas ±separuh ukuran dan lebih cepat ditulis
     fs.renameSync(tmp, DATA_FILE);
     storageOk = true;
   } catch (err) {
@@ -353,7 +361,7 @@ const conns = new Map(); // ws -> { role, playerId, ip }
 const onlineIds = () => new Set([...conns.values()].filter((c) => c.role === 'player').map((c) => c.playerId));
 
 function publicPlayer(p) {
-  return { id: p.id, alias: p.alias, color: p.color, x: Math.round(p.x), y: Math.round(p.y), seals: p.seals, activePos: p.activePos || null, zone: p.zone || 'lobby', wear: wardrobeOf(p).wear };
+  return { id: p.id, alias: p.alias, color: p.color, x: Math.round(p.x), y: Math.round(p.y), seals: p.seals, activePos: p.activePos || null, zone: p.zone || 'lobby', wear: wardrobeOf(p).wear, lv: p.level || 1 };
 }
 
 // ---------- Butik Nusantara: lemari busana tiap akun (sejak 1.2) ----------
@@ -404,6 +412,7 @@ function handleShop(ws, conn, msg) {
   scheduleSave();
   adminDirty = true;
   sendWardrobe(ws, p, { ok: true, action: msg.action, item: item.id });
+  if (msg.action === 'buy') refreshRpg(p);
   broadcast({ type: 'player-outfit', id: p.id, wear: w.wear }, (c) => c.role === 'player' && c.playerId !== p.id);
 }
 
@@ -447,7 +456,8 @@ function sendPjbl(p, extra = {}) {
 function pjblChanged(p, extraSelf = {}) {
   const team = teamOf(p);
   sendPjbl(p, extraSelf);
-  if (team) team.members.filter((id) => id !== p.id && db.players[id]).forEach((id) => sendPjbl(db.players[id]));
+  refreshRpg(p);
+  if (team) team.members.filter((id) => id !== p.id && db.players[id]).forEach((id) => { sendPjbl(db.players[id]); refreshRpg(db.players[id]); });
   adminDirty = true;
   scheduleSave();
 }
@@ -476,6 +486,184 @@ function handlePjbl(ws, conn, msg) {
     }
   }
   pjblChanged(p, { ok: true, action: msg.action, result: res.result || null });
+}
+
+// ---------- RPG: level, XP, dan lencana (sejak 1.5) ----------
+// XP tidak disimpan sebagai angka dari klien: selalu dihitung ulang dari progres tervalidasi, jelajah, Butik, PjBL,
+// regu, dan statistik event bos (RPG.factsFrom → RPG.compute). p.xp/p.level hanya salinan untuk panel guru & label.
+
+const WILD_IDS = WORLD.islands.filter((i) => i.kind === 'wild').map((i) => i.id);
+const intList = (list, ok, max) => [...new Set((Array.isArray(list) ? list : []).filter((v) => Number.isInteger(v) && ok(v)))].slice(0, max);
+
+/** Kepingan arsip & pulau jelajah yang ditemukan (dilaporkan klien; hanya id yang mungkin ada yang diterima). */
+function exploreOf(p) {
+  const e = p && p.explore && typeof p.explore === 'object' ? p.explore : {};
+  return { shards: intList(e.shards, (v) => v >= 0 && v < 200, 200), islands: intList(e.islands, (v) => WILD_IDS.includes(v), WILD_IDS.length) };
+}
+function rpgStatsOf(p) {
+  const r = p.rpg && typeof p.rpg === 'object' ? p.rpg : {};
+  const n = (v) => Math.max(0, Math.floor(Number(v)) || 0);
+  return { bossHits: n(r.bossHits), bossAnswers: n(r.bossAnswers), bossWins: n(r.bossWins), bossFinals: n(r.bossFinals), bossJoined: n(r.bossJoined) };
+}
+function rpgView(p) {
+  const e = exploreOf(p);
+  const team = teamOf(p);
+  return RPG.compute(RPG.factsFrom(p.progress, {
+    shards: e.shards.length, islands: e.islands.length, owned: wardrobeOf(p).owned.length,
+    pjbl: PJBL.summary(pjblGroup(p), pjblMine(p)).total, team: team ? team.members.length : 0, ...rpgStatsOf(p),
+    ...KAMPUNG.facts(kampungOf(p))
+  }));
+}
+/** Hitung ulang XP/level pemain; kirim 'rpg' bila ada yang berubah (atau bila force). */
+function refreshRpg(p, force = false) {
+  if (!p) return null;
+  const v = rpgView(p);
+  const changed = v.xp !== p.xp || v.level !== p.level || v.badges.length !== (p.badgeCount || 0);
+  if (v.level !== p.level) positionsDirty = true; // level tampil di label nama pemain lain
+  p.xp = v.xp; p.level = v.level; p.badgeCount = v.badges.length;
+  if (changed || force) { socketsOf(p.id).forEach((ws) => send(ws, { type: 'rpg', rpg: v })); adminDirty = true; }
+  return v;
+}
+
+function handleExplore(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  if (!p) return;
+  const cur = exploreOf(p);
+  const add = exploreOf({ explore: { shards: msg.shards, islands: msg.islands } });
+  const next = { shards: [...new Set([...cur.shards, ...add.shards])].slice(0, 200), islands: [...new Set([...cur.islands, ...add.islands])] };
+  if (next.shards.length === cur.shards.length && next.islands.length === cur.islands.length) return;
+  p.explore = next;
+  scheduleSave();
+  refreshRpg(p);
+}
+
+// ---------- Kampung (sejak 1.6): tas bahan, Dapur Lapangan, quest warga ----------
+// Logika ada di kampung-core.js (sama dengan mode luring). Server memberi konteks dari datanya sendiri:
+// pulau tempat pemain berada (dari posisi server), pulau jelajah yang sudah ditemukan, dan jam server.
+
+function kampungOf(p) {
+  p.kampung = KAMPUNG.norm(p.kampung);
+  return p.kampung;
+}
+function sendKampung(ws, p, extra = {}) {
+  send(ws, { type: 'kampung', state: kampungOf(p), now: Date.now(), ...extra });
+}
+function handleKampung(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  if (!p) return;
+  if (db.settings.paused) return send(ws, { type: 'kampung-error', message: 'Permainan sedang dijeda guru.', action: msg.action });
+  const st = kampungOf(p);
+  const island = p.zone === 'world' ? WORLD.islandAt(p.x, p.y) : null;
+  const res = KAMPUNG.apply(st, msg, { now: Date.now(), island, explored: exploreOf(p).islands });
+  if (!res.ok) return send(ws, { type: 'kampung-error', message: res.message, action: msg.action });
+  scheduleSave();
+  adminDirty = true;
+  socketsOf(p.id).forEach((sock) => sendKampung(sock, p, sock === ws ? { action: msg.action, result: res.result } : {}));
+  refreshRpg(p);
+}
+
+// ---------- Event kelas: Bos Mitos Gizi (sejak 1.5) ----------
+// Guru memulai event; semua siswa daring menjawab "Mitos atau Fakta?" untuk mengurangi HP bos bersama.
+// Status event hanya di memori (server dinyalakan ulang = event berakhir tanpa hadiah); hadiahnya di player.rpg.
+
+const BOSS_LEVELS = { ringan: 50, sedang: 80, berat: 120 }; // HP per siswa daring
+const BOSS_MIN_GAP = 1200; // ms minimal antara soal diberikan dan dijawab (mencegah klik beruntun)
+let boss = null;
+const bossAsk = new Map(); // playerId -> { q, at, asked: [id], streak }
+let bossDirty = false;
+
+function bossPublic() {
+  if (!boss) return { state: 'idle' };
+  const top = [...boss.dmg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, dmg]) => ({ alias: db.players[id] ? db.players[id].alias : '—', dmg }));
+  return {
+    state: boss.state, id: BOSS.boss.id, name: BOSS.boss.name, intro: BOSS.boss.intro, taunts: BOSS.boss.taunts,
+    hp: boss.hp, maxHp: boss.maxHp, startedAt: boss.startedAt, endsAt: boss.endsAt, endedAt: boss.endedAt || null,
+    players: boss.part.size, answers: boss.answers, top, last: boss.last, final: boss.finalAlias || null
+  };
+}
+
+function startBoss(opts = {}) {
+  const level = Object.prototype.hasOwnProperty.call(BOSS_LEVELS, opts.level) ? opts.level : 'sedang';
+  const hp = Number.isInteger(opts.hp) && opts.hp >= 10 ? Math.min(100000, opts.hp) : Math.max(150, onlineIds().size * BOSS_LEVELS[level]);
+  const minutes = Math.min(20, Math.max(2, Number(opts.minutes) || 8));
+  boss = { state: 'active', level, hp, maxHp: hp, startedAt: Date.now(), endsAt: Date.now() + minutes * 60000, endedAt: null, dmg: new Map(), part: new Set(), answers: 0, last: null, finalId: null, finalAlias: null };
+  bossAsk.clear();
+  bossDirty = true;
+}
+
+/** state: 'won' (HP habis), 'lost' (waktu habis), 'stopped' (dihentikan guru, tanpa catatan hadiah). */
+function endBoss(state) {
+  if (!boss || boss.state !== 'active') return;
+  boss.state = state;
+  boss.endedAt = Date.now();
+  if (state !== 'stopped') {
+    boss.part.forEach((id) => {
+      const p = db.players[id];
+      if (!p) return;
+      const r = rpgStatsOf(p);
+      r.bossJoined += 1;
+      if (state === 'won') r.bossWins += 1;
+      if (state === 'won' && id === boss.finalId) r.bossFinals += 1;
+      p.rpg = r;
+      refreshRpg(p);
+    });
+    scheduleSave();
+  }
+  adminDirty = true;
+  bossDirty = true;
+}
+
+function handleBoss(ws, conn, msg) {
+  const p = db.players[conn.playerId];
+  if (!p) return undefined;
+  if (!boss || boss.state !== 'active') return send(ws, { type: 'boss-error', message: 'Tidak ada event Bos Mitos Gizi yang sedang berlangsung.' });
+  if (db.settings.paused) return send(ws, { type: 'boss-error', message: 'Permainan sedang dijeda guru.' });
+  const st = bossAsk.get(p.id) || { q: null, at: 0, asked: [], streak: 0 };
+  bossAsk.set(p.id, st);
+  const ask = (q) => send(ws, { type: 'boss-q', q: { id: q.id, text: q.text }, streak: st.streak });
+  if (msg.action === 'next') {
+    // Soal yang belum dijawab dikirim ulang (mis. panel ditutup lalu dibuka), bukan diganti soal lain.
+    if (st.q) return ask(BOSS.questions.find((x) => x.id === st.q));
+    let pool = BOSS.questions.filter((q) => !st.asked.includes(q.id));
+    if (!pool.length) { st.asked = []; pool = BOSS.questions.slice(); }
+    const q = pool[crypto.randomInt(pool.length)];
+    st.q = q.id; st.at = Date.now(); st.asked.push(q.id);
+    return ask(q);
+  }
+  if (msg.action !== 'answer') return undefined;
+  if (!st.q || msg.id !== st.q) return send(ws, { type: 'boss-error', message: 'Soal ini sudah dijawab. Ambil soal berikutnya.' });
+  if (msg.a !== 'mitos' && msg.a !== 'fakta') return undefined;
+  if (Date.now() - st.at < BOSS_MIN_GAP) return send(ws, { type: 'boss-error', message: 'Baca dulu soalnya baik-baik.' });
+  const q = BOSS.questions.find((x) => x.id === st.q);
+  st.q = null;
+  const correct = msg.a === q.answer;
+  // Catatan untuk Rekap Jawaban guru: jumlah jawaban per soal (analisis butir) dan per siswa (benar/dijawab).
+  if (!isObj(db.bossStats)) db.bossStats = {};
+  const tally = db.bossStats[q.id] = isObj(db.bossStats[q.id]) ? db.bossStats[q.id] : { mitos: 0, fakta: 0 };
+  tally[msg.a] = (Number(tally[msg.a]) || 0) + 1;
+  const r = rpgStatsOf(p);
+  r.bossAnswers += 1;
+  let dmg = 0;
+  if (correct) {
+    st.streak += 1;
+    dmg = 10 + Math.min(10, (st.streak - 1) * 2); // combo: +2 per jawaban benar beruntun, maks. 20
+    boss.hp = Math.max(0, boss.hp - dmg);
+    r.bossHits += 1;
+  } else {
+    st.streak = 0;
+    boss.hp = Math.min(boss.maxHp, boss.hp + 3); // mitos yang dipercaya membuat bos sedikit pulih
+  }
+  p.rpg = r;
+  boss.part.add(p.id);
+  boss.dmg.set(p.id, (boss.dmg.get(p.id) || 0) + dmg);
+  boss.answers += 1;
+  boss.last = { alias: p.alias, dmg, correct, at: Date.now() };
+  send(ws, { type: 'boss-result', id: q.id, correct, answer: q.answer, explain: q.explain, dmg, streak: st.streak });
+  if (correct) refreshRpg(p);
+  scheduleSave();
+  if (boss.hp <= 0) { boss.finalId = p.id; boss.finalAlias = p.alias; endBoss('won'); }
+  bossDirty = true;
+  return undefined;
 }
 
 function leaderboard() {
@@ -538,7 +726,9 @@ function adminPlayer(p, online) {
     party: teamOf(p) ? p.team : null,
     posts: postSummary(p),
     pjbl: PJBL.summary(pjblGroup(p), pjblMine(p)),
-    shop: (() => { const w = wardrobeOf(p); return { owned: w.owned, spent: w.spent, balance: shopBalance(p), log: w.log.slice(-10) }; })()
+    shop: (() => { const w = wardrobeOf(p); return { owned: w.owned, spent: w.spent, balance: shopBalance(p), log: w.log.slice(-10) }; })(),
+    xp: p.xp || 0,
+    kampung: (() => { const f = KAMPUNG.facts(KAMPUNG.norm(p.kampung)); return { quests: f.questsDone, cooked: f.cooked, gathered: f.gathered }; })()
   };
 }
 
@@ -551,8 +741,32 @@ function adminSnapshot() {
     teams: Object.values(db.teams).map(adminTeam),
     missions: MISSIONS.map((m) => ({ id: m.id, title: `${m.title} ${m.titleEm}`, type: m.type })),
     world: { width: WORLD.width, height: WORLD.height },
+    boss: bossPublic(),
     serverTime: now()
   };
+}
+
+// ---------- Rekap Jawaban Siswa untuk guru (sejak 1.7) ----------
+// Progres dibaca dari salinan yang ditimpa data regu lalu divalidasi ulang, jadi benar/poin selalu dari kunci server.
+
+function rekapPlayer(p, online) {
+  const team = teamOf(p);
+  const progress = p.progress ? overlayTeam(clone(p.progress), team) : null;
+  if (progress) validateProgress(progress);
+  return {
+    id: p.id, alias: p.alias, team: team ? team.code : '', online: online.has(p.id), lastSeen: p.lastSeen, createdAt: p.createdAt, finishedAt: p.finishedAt || null,
+    score: p.score || 0, seals: p.seals || 0, level: p.level || 1, xp: p.xp || 0, flags: p.flags || [], progress,
+    sharedPosts: team ? Object.keys(team.posts).filter((id) => Array.isArray(team.posts[id].challenges) || missionOf(id)?.type === 'project').map(Number) : [],
+    pjblMine: pjblMine(p), pjblGroup: pjblGroup(p), kampung: kampungOf(p), rpg: rpgStatsOf(p)
+  };
+}
+
+function buildRekap(list = Object.values(db.players)) {
+  const online = onlineIds();
+  return REKAP.build(
+    { at: now(), classCode: db.settings.classCode || '', players: list.map((p) => rekapPlayer(p, online)), bossStats: isObj(db.bossStats) ? db.bossStats : {} },
+    { missions: MISSIONS, pjbl: PJBL, kampung: KAMPUNG_WIN.NUTRANTARA_KAMPUNG, boss: BOSS.questions, defsFor: (m, post) => challengesFor(m, { ...post }, []), points: awardForAttempt(1), seal: SEAL_POINTS }
+  );
 }
 
 // ---------- Kirim pesan ----------
@@ -611,6 +825,9 @@ function handleJoin(ws, conn, msg) {
   });
   sendWardrobe(ws, player);
   send(ws, { type: 'pjbl', ...pjblView(player) });
+  sendKampung(ws, player);
+  refreshRpg(player, true);
+  send(ws, { type: 'boss', boss: bossPublic() });
   broadcast({ type: 'player-join', player: publicPlayer(player) }, (c) => c.role === 'player' && c.playerId !== player.id);
   if (teamOf(player)) teamChanged(player.team, true); else { player.team = null; send(ws, { type: 'party', party: null }); }
   adminDirty = true;
@@ -701,6 +918,9 @@ const OP_KEYS = { analysis: ['variant', 'evidence', 'activity', 'started'], proj
 const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const missionOf = (id) => MISSIONS.find((m) => m.id === Number(id));
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+const MAX_PROGRESS = 96 * 1024;
+const TEAM_LIMIT = 400000; // byte JSON data bersama satu regu
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const teamOf = (p) => (p && p.team && db.teams[p.team]) || null;
 const sameTeam = (a, b) => Boolean(a && b && a.team && a.team === b.team && db.teams[a.team]);
@@ -789,7 +1009,7 @@ function overlayTeam(progress, team) {
   Object.entries(team.posts).forEach(([pid, t]) => {
     const m = missionOf(pid);
     if (!m) return;
-    const dst = progress.posts[pid] || (progress.posts[pid] = {});
+    const dst = isObj(progress.posts[pid]) ? progress.posts[pid] : (progress.posts[pid] = {});
     SHARED_KEYS[m.type].forEach((k) => { if (t[k] !== undefined) dst[k] = clone(t[k]); });
   });
   return progress;
@@ -857,6 +1077,7 @@ function teamChanged(code, immediate) {
     if (!team) return;
     const view = teamView(team);
     team.members.forEach((id) => socketsOf(id).forEach((ws) => send(ws, { type: 'party', party: view })));
+    team.members.forEach((id) => refreshRpg(db.players[id])); // ukuran regu memengaruhi lencana Rekan Regu
   };
   if (immediate) { clearTimeout(teamTimers.get(code)); return fire(); }
   if (!teamTimers.has(code)) teamTimers.set(code, setTimeout(fire, 150));
@@ -879,7 +1100,7 @@ function leaveTeam(playerId) {
     }
   }
   sendNoTeam(playerId);
-  if (p) sendPjbl(p);
+  if (p) { sendPjbl(p); refreshRpg(p); }
   adminDirty = true;
   scheduleSave();
 }
@@ -963,9 +1184,13 @@ function handleTeamOp(ws, conn, msg) {
   const p = db.players[conn.playerId];
   const team = teamOf(p);
   if (!team || !Array.isArray(msg.ops)) return;
-  if (JSON.stringify(team.posts).length > 400000) return send(ws, { type: 'notice', message: 'Data regu sudah terlalu besar. Hubungi guru.' });
+  const tooBig = () => send(ws, { type: 'notice', message: 'Data regu sudah terlalu besar. Hubungi guru.' });
+  const before = JSON.stringify(team.posts);
+  if (before.length > TEAM_LIMIT) return tooBig();
   const changed = applyTeamOps(team, msg.ops);
   if (!changed) return;
+  // Batas dicek sesudah operasi diterapkan; bila terlampaui, data regu dikembalikan ke keadaan sebelumnya.
+  if (JSON.stringify(team.posts).length > TEAM_LIMIT) { team.posts = JSON.parse(before); return tooBig(); }
   const pos = Number(msg.pos) || Number(msg.ops[0] && msg.ops[0].p && msg.ops[0].p[0]) || 0;
   team.contrib = team.contrib || {};
   const mine = team.contrib[p.id] || (team.contrib[p.id] = {});
@@ -1014,8 +1239,13 @@ function handleTeamVote(ws, conn, msg) {
 
 function handleProgress(ws, conn, msg) {
   const p = db.players[conn.playerId];
-  if (!p || !msg.state || typeof msg.state !== 'object' || !msg.state.posts) return;
+  // Progres yang bentuknya salah (mis. dikirim dari konsol) ditolak; pos yang bukan objek dianggap belum ada.
+  if (!p || !isObj(msg.state) || !isObj(msg.state.posts)) return;
   const state = msg.state;
+  // Progres siswa yang menamatkan keenam pos ±11 KB; batas ini mencegah berkas data kelas membengkak.
+  if (JSON.stringify(state).length > MAX_PROGRESS) return send(ws, { type: 'notice', message: 'Progres terlalu besar untuk disimpan. Muat ulang halaman, lalu coba lagi.' });
+  Object.keys(state.posts).forEach((k) => { if (!isObj(state.posts[k])) delete state.posts[k]; });
+  Object.values(state.posts).forEach((post) => { if (Array.isArray(post.challenges)) post.challenges = post.challenges.map((c) => (isObj(c) ? c : {})); });
   state.alias = p.alias;
   const lock = lockAnswers(p.progress, state, teamOf(p));
   overlayTeam(state, teamOf(p));
@@ -1027,6 +1257,7 @@ function handleProgress(ws, conn, msg) {
   p.activePos = ALL_POSTS.includes(Number(state.activePos)) ? Number(state.activePos) : p.activePos;
   if (score !== p.score || seals !== p.seals) boardDirty = true;
   p.score = score;
+  refreshRpg(p);
   p.seals = seals;
   if (seals === MISSIONS.length && !p.finishedAt) p.finishedAt = now();
   // Alasan Paspor baru (pos baru disegel) dikirim ke anggota regu untuk telaah sejawat di Ruang Arsip.
@@ -1071,6 +1302,7 @@ function handleAdminAuth(ws, conn, msg) {
   if (rec.until > Date.now()) return send(ws, { type: 'admin-error', message: 'Terlalu banyak percobaan. Coba lagi dalam 30 detik.' });
   if (typeof msg.pin !== 'string' || !safeEqual(msg.pin, ADMIN_PIN)) {
     rec.count += 1;
+    rec.at = Date.now();
     if (rec.count >= 5) { rec.until = Date.now() + 30000; rec.count = 0; }
     failedLogins.set(conn.ip, rec);
     return send(ws, { type: 'admin-error', message: 'PIN salah.' });
@@ -1093,6 +1325,17 @@ function handleAdmin(ws, msg) {
 
   switch (msg.action) {
     case 'set-paused': s.paused = Boolean(msg.value); settingsChanged(); return done(s.paused ? 'Permainan dijeda.' : 'Permainan dilanjutkan.');
+    case 'set-music': s.musicOn = Boolean(msg.value); settingsChanged(); return done(s.musicOn ? 'Musik latar siswa dinyalakan.' : 'Musik latar dan efek bunyi semua siswa dibisukan.');
+    case 'set-rpg': s.rpgVisible = Boolean(msg.value); settingsChanged(); return done(s.rpgVisible ? 'Level dan lencana ditampilkan.' : 'Level dan lencana disembunyikan dari siswa.');
+    case 'boss-start':
+      if (boss && boss.state === 'active') return send(ws, { type: 'admin-error', message: 'Event bos masih berlangsung.' });
+      startBoss({ minutes: msg.minutes, level: msg.level, hp: msg.hp });
+      adminDirty = true;
+      return done(`Event ${BOSS.boss.name} dimulai: ${boss.maxHp} HP, ${Math.round((boss.endsAt - boss.startedAt) / 60000)} menit.`);
+    case 'boss-stop':
+      if (!boss || boss.state !== 'active') return send(ws, { type: 'admin-error', message: 'Tidak ada event bos yang berlangsung.' });
+      endBoss('stopped');
+      return done('Event bos dihentikan tanpa hadiah.');
     case 'set-shop': s.shopOpen = Boolean(msg.value); settingsChanged(); return done(s.shopOpen ? 'Butik Nusantara dibuka. Siswa bisa menukar poin.' : 'Butik Nusantara ditutup. Siswa masih bisa memakai busana yang sudah dimiliki.');
     case 'set-chat': s.chatEnabled = Boolean(msg.value); settingsChanged(); return done(s.chatEnabled ? 'Obrolan dinyalakan.' : 'Obrolan dimatikan.');
     case 'set-movement': s.movementLocked = Boolean(msg.value); settingsChanged(); return done(s.movementLocked ? 'Gerak pemain dibekukan.' : 'Gerak pemain dibebaskan.');
@@ -1118,8 +1361,9 @@ function handleAdmin(ws, msg) {
       return done(s.announcement ? 'Pengumuman dikirim.' : 'Pengumuman dihapus.');
     }
     case 'teleport': {
-      const point = WORLD.clamp(Number(msg.x) || WORLD.spawn.x, Number(msg.y) || WORLD.spawn.y);
-      const list = msg.playerId === 'all' ? [...onlineIds()].map((id) => db.players[id]) : target ? [target] : [];
+      const num = (v, d) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : d);
+      const point = WORLD.clamp(num(msg.x, WORLD.spawn.x), num(msg.y, WORLD.spawn.y));
+      const list = msg.playerId === 'all' ? [...onlineIds()].map((id) => db.players[id]).filter(Boolean) : target ? [target] : [];
       list.forEach((p, i) => {
         const offset = list.length > 1 ? { x: Math.cos(i * 2.4) * (12 + i * 3), y: Math.sin(i * 2.4) * (12 + i * 3) } : { x: 0, y: 0 };
         const c = WORLD.clamp(point.x + offset.x, point.y + offset.y);
@@ -1166,8 +1410,12 @@ function handleAdmin(ws, msg) {
       target.progress = null; target.progressUpdatedAt = null; target.score = 0; target.seals = 0; target.finishedAt = null; target.flags = [];
       target.wardrobe = null; // poin yang dipakai berbelanja ikut hilang, jadi lemari dikosongkan
       target.pjbl = null; // pilihan & refleksi PjBL pribadi ikut diatur ulang (data kelompok milik regu tetap)
+      target.rpg = null; // statistik event bos (XP); kepingan & pulau jelajah milik perangkat tetap
+      target.kampung = null; // tas bahan, resep, dan quest warga
       socketsOf(target.id).forEach((sock) => { send(sock, { type: 'reset', message: 'Guru mengatur ulang progresmu.' }); sendWardrobe(sock, target); send(sock, { type: 'pjbl', ...pjblView(target) }); });
       broadcast({ type: 'player-outfit', id: target.id, wear: wardrobeOf(target).wear }, (c) => c.role === 'player' && c.playerId !== target.id);
+      socketsOf(target.id).forEach((sock) => sendKampung(sock, target));
+      refreshRpg(target, true);
       adminDirty = true; boardDirty = true; scheduleSave();
       return done(`Progres ${target.alias} diatur ulang.`);
     case 'delete':
@@ -1195,7 +1443,7 @@ function handleAdmin(ws, msg) {
     }
     case 'detail':
       if (!needTarget()) return;
-      return send(ws, { type: 'admin-detail', player: { ...adminPlayer(target, onlineIds()), progress: target.progress, pjblDetail: pjblView(target) } });
+      return send(ws, { type: 'admin-detail', player: { ...adminPlayer(target, onlineIds()), progress: target.progress, pjblDetail: pjblView(target), rekap: buildRekap([target]) } });
     case 'pjbl-rubric': {
       // Guru mengisi rubrik prototype POS 6 (skor 1–4 per aspek) untuk kelompok siswa ini.
       if (!needTarget()) return;
@@ -1215,6 +1463,9 @@ function handleAdmin(ws, msg) {
       adminDirty = true; scheduleSave();
       return done(`Regu ${team.code} dibubarkan. Progres anggota tetap tersimpan.`);
     }
+    case 'rekap':
+      // Rekap Jawaban Siswa: ringkasan nilai, jawaban per soal + kunci, tulisan, dan analisis butir soal.
+      return send(ws, { type: 'admin-rekap', rekap: buildRekap() });
     case 'export':
       return send(ws, { type: 'admin-export', data: { exportedAt: now(), game: 'NUTRANTARA', settings: db.settings, players: Object.values(db.players).map(({ tokenHash, aliasKey, passHash, sessions, ...rest }) => rest), teams: Object.values(db.teams), chat: db.chat } });
     default:
@@ -1227,10 +1478,10 @@ function handleAdmin(ws, msg) {
 const STATIC = {
   '/': 'index.html', '/index.html': 'index.html', '/play': 'play.html', '/play.html': 'play.html', '/admin': 'admin.html', '/admin.html': 'admin.html',
   '/styles.css': 'styles.css', '/admin.css': 'admin.css', '/landing.css': 'landing.css',
-  '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/team.js': 'team.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js',
+  '/missions.js': 'missions.js', '/world-data.js': 'world-data.js', '/net.js': 'net.js', '/team.js': 'team.js', '/game.js': 'game.js', '/world.js': 'world.js', '/admin.js': 'admin.js', '/admin-rekap.js': 'admin-rekap.js', '/xlsx.js': 'xlsx.js',
   '/characters.js': 'characters.js', '/world3d.js': 'world3d.js', '/landing.js': 'landing.js', '/peta3d.js': 'peta3d.js',
   '/app.js': 'app.js', '/app.css': 'app.css', '/quest.js': 'quest.js', '/fx.js': 'fx.js', '/culture.js': 'culture.js', '/lab.js': 'lab.js', '/absorb.js': 'absorb.js', '/causal.js': 'causal.js', '/claims.js': 'claims.js', '/archive.js': 'archive.js', '/theme.css': 'theme.css',
-  '/map-art.js': 'map-art.js', '/sky.js': 'sky.js', '/region.js': 'region.js', '/terrain.js': 'terrain.js', '/weather.js': 'weather.js', '/shop-data.js': 'shop-data.js', '/fashion.js': 'fashion.js', '/shop.js': 'shop.js', '/pjbl-data.js': 'pjbl-data.js', '/pjbl-core.js': 'pjbl-core.js', '/pjbl.js': 'pjbl.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
+  '/map-art.js': 'map-art.js', '/island-data.js': 'island-data.js', '/islands.js': 'islands.js', '/sky.js': 'sky.js', '/region.js': 'region.js', '/terrain.js': 'terrain.js', '/weather.js': 'weather.js', '/shop-data.js': 'shop-data.js', '/fashion.js': 'fashion.js', '/shop.js': 'shop.js', '/pjbl-data.js': 'pjbl-data.js', '/pjbl-core.js': 'pjbl-core.js', '/pjbl.js': 'pjbl.js', '/rpg-data.js': 'rpg-data.js', '/rpg.js': 'rpg.js', '/boss3d.js': 'boss3d.js', '/kampung-data.js': 'kampung-data.js', '/kampung-core.js': 'kampung-core.js', '/kampung.js': 'kampung.js', '/kampung3d.js': 'kampung3d.js', '/music-data.js': 'music-data.js', '/music.js': 'music.js', '/assets/peta-nusantara.webp': 'assets/peta-nusantara.webp', '/assets/peta-nusantara-960.webp': 'assets/peta-nusantara-960.webp',
   '/splash.js': 'splash.js', '/assets/layar-muat.webp': 'assets/layar-muat.webp', '/assets/layar-muat-960.webp': 'assets/layar-muat-960.webp',
   '/vendor/three/three.module.min.js': 'vendor/three/three.module.min.js'
 };
@@ -1253,8 +1504,11 @@ function authLimited(ip) {
   return rec.count > 12;
 }
 
+// Di balik satu proksi tepercaya (Render), IP asli ditambahkan proksi di ujung KANAN X-Forwarded-For.
+// Entri di kiri ditulis klien sendiri, jadi tidak boleh dipakai untuk pembatas laju.
 function clientIp(req) {
-  return TRUST_PROXY && req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.socket.remoteAddress;
+  const xff = TRUST_PROXY ? String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean) : [];
+  return xff.length ? xff[xff.length - 1] : req.socket.remoteAddress;
 }
 
 function json(res, status, body) {
@@ -1303,7 +1557,7 @@ async function handleApi(req, res, url) {
 
   if (route === '/api/register') {
     if (!USERNAME_RE.test(username)) return json(res, 400, { error: 'Nama pengguna 3–20 karakter: huruf, angka, titik, garis bawah, atau tanda hubung. Jangan pakai nama lengkap.' });
-    if (password.length < 6 || password.length > 72) return json(res, 400, { error: 'Kata sandi minimal 6 karakter.' });
+    if (password.length < 6 || password.length > 72) return json(res, 400, { error: password.length > 72 ? 'Kata sandi maksimal 72 karakter.' : 'Kata sandi minimal 6 karakter.' });
     if (db.settings.classCode && String(body.classCode || '').trim().toLocaleLowerCase('id') !== db.settings.classCode.toLocaleLowerCase('id')) return json(res, 403, { error: 'Kode kelas salah. Tanyakan kepada guru.' });
     if (Object.values(db.players).some((p) => p.aliasKey === key)) return json(res, 409, { error: 'Nama pengguna sudah dipakai. Pilih nama lain.' });
     if (Object.keys(db.players).length >= MAX_PLAYERS) return json(res, 403, { error: 'Kelas sudah penuh. Hubungi guru.' });
@@ -1354,6 +1608,34 @@ const server = http.createServer((req, res) => {
 
 // ---------- WebSocket ----------
 
+/** Meneruskan pesan WebSocket ke penangannya sesuai peran koneksi. */
+function routeMessage(ws, conn, msg) {
+  if (msg.type === 'join') return handleJoin(ws, conn, msg);
+  if (msg.type === 'admin-auth') return handleAdminAuth(ws, conn, msg);
+  if (conn.role === 'player') {
+    if (msg.type === 'move') return handleMove(conn, msg);
+    if (msg.type === 'progress') return handleProgress(ws, conn, msg);
+    if (msg.type === 'chat') return handleChat(ws, conn, msg);
+    if (msg.type === 'zone') return handleZone(conn, msg);
+    if (msg.type === 'spawn') return handleSpawn(ws, conn, msg);
+    if (msg.type === 'emote') return handleEmote(conn, msg);
+    if (msg.type === 'shop') return handleShop(ws, conn, msg);
+    if (msg.type === 'pjbl') return handlePjbl(ws, conn, msg);
+    if (msg.type === 'party') return handleParty(ws, conn, msg);
+    if (msg.type === 'team-op') return handleTeamOp(ws, conn, msg);
+    if (msg.type === 'team-vote') return handleTeamVote(ws, conn, msg);
+    if (msg.type === 'explore') return handleExplore(ws, conn, msg);
+    if (msg.type === 'boss') return handleBoss(ws, conn, msg);
+    if (msg.type === 'kampung') return handleKampung(ws, conn, msg);
+    if (msg.type === 'ping') return send(ws, { type: 'pong' });
+  }
+  if (conn.role === 'admin') {
+    if (msg.type === 'admin') return handleAdmin(ws, msg);
+    if (msg.type === 'admin-refresh') return send(ws, adminSnapshot());
+  }
+  return undefined;
+}
+
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 });
 
 wss.on('connection', (ws, req) => {
@@ -1367,27 +1649,8 @@ wss.on('connection', (ws, req) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || typeof msg.type !== 'string') return;
-
-    if (msg.type === 'join') return handleJoin(ws, conn, msg);
-    if (msg.type === 'admin-auth') return handleAdminAuth(ws, conn, msg);
-    if (conn.role === 'player') {
-      if (msg.type === 'move') return handleMove(conn, msg);
-      if (msg.type === 'progress') return handleProgress(ws, conn, msg);
-      if (msg.type === 'chat') return handleChat(ws, conn, msg);
-      if (msg.type === 'zone') return handleZone(conn, msg);
-      if (msg.type === 'spawn') return handleSpawn(ws, conn, msg);
-      if (msg.type === 'emote') return handleEmote(conn, msg);
-      if (msg.type === 'shop') return handleShop(ws, conn, msg);
-      if (msg.type === 'pjbl') return handlePjbl(ws, conn, msg);
-      if (msg.type === 'party') return handleParty(ws, conn, msg);
-      if (msg.type === 'team-op') return handleTeamOp(ws, conn, msg);
-      if (msg.type === 'team-vote') return handleTeamVote(ws, conn, msg);
-      if (msg.type === 'ping') return send(ws, { type: 'pong' });
-    }
-    if (conn.role === 'admin') {
-      if (msg.type === 'admin') return handleAdmin(ws, msg);
-      if (msg.type === 'admin-refresh') return send(ws, adminSnapshot());
-    }
+    // Galat di satu penangan hanya menggagalkan pesan itu, tidak mematikan server untuk seluruh kelas.
+    try { routeMessage(ws, conn, msg); } catch (err) { console.error(`[ws] galat saat memproses "${msg.type}":`, err && err.stack ? err.stack : err); }
   });
 
   ws.on('close', () => {
@@ -1419,7 +1682,7 @@ setInterval(() => {
   if (!positionsDirty && !full) return;
   positionsDirty = false;
   const online = [...onlineIds()].map((id) => db.players[id]).filter(Boolean);
-  const entry = (p) => [p.id, Math.round(p.x), Math.round(p.y), p.seals, p.activePos || 0, p.h || 0, p.zone === 'world' ? 1 : 0];
+  const entry = (p) => [p.id, Math.round(p.x), Math.round(p.y), p.seals, p.activePos || 0, p.h || 0, p.zone === 'world' ? 1 : 0, p.level || 1];
   const list = online.map(entry);
   toAdmins({ type: 'positions', list });
   if (full) { farDirty = false; return toPlayers({ type: 'positions', list }); }
@@ -1433,6 +1696,13 @@ setInterval(() => {
   }
 }, 100);
 
+// Event bos: waktu habis, bersihkan hasil setelah 20 detik, dan siarkan status paling banyak 4×/detik.
+setInterval(() => {
+  if (boss && boss.state === 'active' && Date.now() >= boss.endsAt) endBoss('lost');
+  if (boss && boss.state !== 'active' && Date.now() - boss.endedAt > 20000) { boss = null; bossAsk.clear(); bossDirty = true; }
+  if (bossDirty) { bossDirty = false; broadcast({ type: 'boss', boss: bossPublic() }, (c) => c.role === 'player' || c.role === 'admin'); }
+}, 250);
+
 setInterval(() => {
   if (boardDirty) { boardDirty = false; toPlayers({ type: 'leaderboard', leaderboard: leaderboard() }); adminDirty = true; }
   if (adminDirty) { adminDirty = false; toAdmins(adminSnapshot()); }
@@ -1444,6 +1714,10 @@ setInterval(() => {
     c.alive = false;
     ws.ping();
   }
+  // Catatan pembatas laju yang sudah kedaluwarsa dibuang agar memori tidak terus bertambah per IP.
+  const t = Date.now();
+  for (const [ip, r] of failedLogins) if (r.until < t && t - (r.at || 0) > 10 * 60000) failedLogins.delete(ip);
+  for (const [ip, r] of authAttempts) if (r.reset < t) authAttempts.delete(ip);
 }, 30000);
 
 function lanAddresses() {

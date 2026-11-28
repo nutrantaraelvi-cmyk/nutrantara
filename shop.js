@@ -273,6 +273,8 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && confirmi
 /** Dipakai world3d.js & app.js untuk busana penjelajah sendiri. */
 window.NutraShop = {
   get wear() { return { ...wardrobe().wear }; },
+  /** Jumlah busana Butik yang dimiliki (untuk XP & lencana RPG). */
+  get owned() { return wardrobe().owned.length; },
   get balance() { return balance(); },
   announce: announceOutfit
 };

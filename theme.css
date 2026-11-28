@@ -1059,3 +1059,296 @@ html.splash-open body>:not(.splash){visibility:hidden}
 .pjbl-check{display:inline-flex;gap:6px;align-items:center;margin-right:12px}
 .pjbl-spec small{display:block;opacity:.8}
 @media (max-width:1100px){.pjbl-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}.pjbl-builder{grid-template-columns:1fr}.pjbl-spec{grid-template-columns:1fr}}
+
+/* ============================================================
+   RPG 1.5 — level & XP, lencana, layar Prestasi, event Bos Mitos Gizi
+   ============================================================ */
+.rpg-chip{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:inherit;pointer-events:auto}
+.rpg-chip b{font-family:var(--display);color:#7a3f1c}
+.rpg-chip small{font-size:11px;letter-spacing:.02em;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rpg-mini{display:inline-block;width:46px;height:7px;border-radius:9px;background:rgba(154,91,46,.18);overflow:hidden}
+.rpg-mini i,.rpg-bar i,.boss-hp i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#1fc3d3,var(--gold));transition:width .6s cubic-bezier(.2,.9,.3,1)}
+.rpg-lobby{margin:10px 0 4px;padding:10px 12px;border-radius:14px;background:linear-gradient(135deg,#fff7e6,#fdebc8);border:2px solid rgba(245,183,43,.55)}
+.rpg-lobby-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.rpg-lobby-head b{font:800 20px var(--display);color:#7a3f1c}
+.rpg-lobby-head span{font-weight:700;color:#3b2a1a}
+.rpg-lobby-head em{margin-left:auto;font-style:normal;font-size:12px;color:#8a5a14}
+.rpg-lobby small{display:block;margin-top:4px;font-size:12px;color:#6b5540}
+.rpg-bar{height:10px;margin-top:6px;border-radius:10px;background:rgba(154,91,46,.16);overflow:hidden}
+.rpg-bar.big{height:14px}
+/* Layar Prestasi */
+.rpg-hero{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;margin:14px 0;padding:20px;border-radius:20px;background:linear-gradient(135deg,#fffaf0,#fdebc8);border:3px solid var(--gold);box-shadow:0 10px 30px rgba(120,70,20,.12)}
+.rpg-ring{--p:0;width:120px;height:120px;border-radius:50%;display:grid;place-content:center;text-align:center;background:radial-gradient(closest-side,#fffaf0 78%,transparent 80%),conic-gradient(#1fc3d3 calc(var(--p)*1%),rgba(154,91,46,.18) 0)}
+.rpg-ring b{font:800 42px/1 var(--display);color:#7a3f1c}
+.rpg-ring span{font-size:11px;letter-spacing:.2em;color:#8a5a14}
+.rpg-hero-text h2{margin:2px 0 6px;font-size:30px;color:#3b2a1a}
+.rpg-hero-text p{margin:8px 0 0;color:#5a4632}
+.rpg-hero-stats{display:grid;grid-template-columns:repeat(2,minmax(88px,1fr));gap:8px}
+.rpg-hero-stats div{padding:8px 10px;border-radius:12px;background:#fff;border:1px solid rgba(154,91,46,.25);text-align:center}
+.rpg-hero-stats b{display:block;font:800 20px var(--display);color:#0f93a6}
+.rpg-hero-stats span{font-size:11px;color:#6b5540}
+.rpg-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.rpg-card{margin:14px 0;padding:16px 18px;border-radius:16px;background:#fffdf8;border:2px solid rgba(154,91,46,.22)}
+.rpg-card h3{margin:0 0 10px;font-size:20px;color:#3b2a1a}
+.rpg-table{width:100%;border-collapse:collapse}
+.rpg-table th,.rpg-table td{padding:6px 4px;border-bottom:1px dashed rgba(154,91,46,.25);text-align:left;font-weight:600}
+.rpg-table td{text-align:right;color:#0f93a6;white-space:nowrap}
+.rpg-ladder{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.rpg-ladder li{display:grid;grid-template-columns:52px 1fr auto;gap:8px;align-items:center;padding:6px 10px;border-radius:10px;background:#f6efe2;color:#7d6a55}
+.rpg-ladder li.on{background:linear-gradient(90deg,#fdebc8,#fff7e6);color:#3b2a1a;border:1px solid rgba(245,183,43,.6)}
+.rpg-ladder span{font-size:12px;font-weight:700}
+.rpg-ladder em{font-style:normal;font-weight:800}
+.rpg-badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.rpg-badge{display:grid;gap:3px;padding:12px;border-radius:14px;border:2px dashed rgba(154,91,46,.3);background:#f6efe2;color:#7d6a55}
+.rpg-badge.on{border:2px solid var(--gold);background:linear-gradient(160deg,#fffaf0,#fdebc8);color:#3b2a1a;box-shadow:0 6px 14px rgba(245,183,43,.2)}
+.rpg-badge .ico{font-size:28px;line-height:1}
+.rpg-badge.off .ico{filter:grayscale(1);opacity:.6}
+.rpg-badge b{font:700 15px var(--display)}
+.rpg-badge small{font-size:12px;line-height:1.35}
+.rpg-badge em{font-style:normal;font-size:11px;font-weight:800;letter-spacing:.04em}
+.rpg-badge.on em{color:#0f7a4a}
+/* Notifikasi XP, lencana, naik level */
+#rpg-layer{position:fixed;inset:0;pointer-events:none;z-index:60}
+.rpg-xp-pop{position:absolute;top:84px;right:22px;padding:6px 14px;border-radius:999px;background:linear-gradient(90deg,#1fc3d3,#0f93a6);color:#fff;font:800 18px var(--display);border:2px solid var(--gold);opacity:0;transform:translateY(8px)}
+.rpg-xp-pop.on{animation:rpgXp 2.2s ease forwards}
+@keyframes rpgXp{0%{opacity:0;transform:translateY(10px) scale(.9)}12%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
+.rpg-toasts{position:absolute;right:18px;top:124px;display:grid;gap:8px;width:min(330px,90vw)}
+.rpg-toast{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:14px;background:#fffaf0;border:2px solid var(--gold);box-shadow:0 10px 26px rgba(120,70,20,.22);animation:rpgIn .4s cubic-bezier(.2,.9,.3,1.2)}
+.rpg-toast .ico{font-size:28px}
+.rpg-toast b{display:block;font:700 15px var(--display);color:#3b2a1a}
+.rpg-toast small{color:#6b5540}
+.rpg-toast.out{opacity:0;transform:translateX(30px);transition:.4s}
+@keyframes rpgIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+.rpg-levelup{position:absolute;inset:0;display:grid;place-items:center}
+.rpg-levelup[hidden]{display:none}
+.rpg-levelup-card{display:grid;justify-items:center;padding:22px 48px;border-radius:24px;background:radial-gradient(circle at 50% 30%,#127274,#06262c);border:4px solid var(--gold);box-shadow:0 0 0 6px rgba(31,195,211,.3),0 20px 60px rgba(0,0,0,.35)}
+.rpg-levelup.on .rpg-levelup-card{animation:rpgPop 3.4s ease forwards}
+.rpg-levelup-card .kicker{color:#ffd166;font-weight:800;letter-spacing:.3em;font-size:14px}
+.rpg-levelup-card b{font:800 64px/1 var(--display);color:#fff4dc;-webkit-text-stroke:2px #7a3f1c;paint-order:stroke fill;text-shadow:0 4px 0 #7a3f1c}
+.rpg-levelup-card .title{color:#d9fbf6;font:700 20px var(--display)}
+@keyframes rpgPop{0%{opacity:0;transform:scale(.6)}10%{opacity:1;transform:scale(1.06)}16%{transform:scale(1)}85%{opacity:1}100%{opacity:0;transform:scale(.96)}}
+.rpg-spark{position:absolute;left:50%;top:50%;width:10px;height:10px;border-radius:50%;background:var(--gold);animation:rpgSpark 1s ease-out forwards}
+@keyframes rpgSpark{from{transform:rotate(var(--a)) translateX(0);opacity:1}to{transform:rotate(var(--a)) translateX(var(--d));opacity:0}}
+/* Bos Mitos Gizi */
+#boss-layer{position:fixed;inset:0;pointer-events:none;z-index:55}
+.boss-bar{position:absolute;top:70px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;width:min(640px,94vw);padding:8px 10px 8px 12px;border-radius:16px;background:linear-gradient(135deg,rgba(44,31,77,.96),rgba(76,52,140,.94));border:2px solid var(--gold);box-shadow:0 12px 30px rgba(20,10,40,.35);pointer-events:auto;color:#f3ecff}
+.boss-bar[hidden],.boss-panel[hidden]{display:none}
+.boss-bar.won{background:linear-gradient(135deg,rgba(9,52,58,.96),rgba(12,110,100,.94))}
+.boss-face{position:relative;flex:none;width:44px;height:40px;border-radius:50% 50% 45% 45%;background:#7c5fd6;border:2px solid #c9b8ff}
+.boss-face i{position:absolute;top:9px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:inset 3px 1px 0 #1d1433}
+.boss-face i:first-child{left:7px}.boss-face i:nth-child(2){right:7px}
+.boss-face b{position:absolute;left:50%;bottom:5px;width:14px;height:8px;margin-left:-7px;border-radius:0 0 8px 8px;background:#f5b72b}
+.boss-info{flex:1;min-width:0}
+.boss-name{display:block;font:800 16px var(--display);color:#ffd166}
+.boss-hp{position:relative;height:16px;margin:3px 0;border-radius:9px;background:rgba(255,255,255,.18);overflow:hidden}
+.boss-hp i{background:linear-gradient(90deg,#e2553f,#ff9f43)}
+.boss-hp span{position:absolute;inset:0;display:grid;place-items:center;font:800 11px var(--display);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.boss-info small{display:block;font-size:12px;color:#dcd2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.boss-go{flex:none;pointer-events:auto}
+.boss-panel{position:absolute;top:140px;left:50%;transform:translateX(-50%);width:min(560px,94vw);max-height:calc(100vh - 160px);overflow:auto;padding:20px;border-radius:18px;background:linear-gradient(160deg,#fff7e6,#fffaf0);border:3px solid #7c5fd6;box-shadow:0 0 0 4px rgba(124,95,214,.25),0 24px 60px rgba(20,10,40,.35);pointer-events:auto}
+.boss-panel h2{margin:4px 0;color:#3b2a1a}
+.boss-taunt{margin:0 0 10px;color:#6a4fc4;font-style:italic;font-weight:600}
+.boss-statement{margin:8px 0 14px;padding:14px;border-radius:14px;background:#fff;border:2px solid rgba(124,95,214,.35);font:700 19px/1.4 var(--display);color:#2c1f4d}
+.boss-answers{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.boss-answer{padding:16px 10px;border-radius:14px;font:800 22px var(--display);letter-spacing:.06em;cursor:pointer;border:3px solid transparent;transition:transform .1s}
+.boss-answer.mitos{background:#f3ecff;color:#4c348c;border-color:#7c5fd6}
+.boss-answer.fakta{background:#e6fbf6;color:#0b6f7d;border-color:#1fc3d3}
+.boss-answer:not([disabled]):hover{transform:translateY(-2px)}
+.boss-answer[disabled]{opacity:.55;cursor:wait}
+.boss-hint{margin:10px 0 0;color:#6b5540;font-size:14px}
+.boss-result{display:grid;gap:6px;padding:14px;border-radius:14px;margin-bottom:12px}
+.boss-result.ok{background:#e6fbf0;border:2px solid #2fa36b}
+.boss-result.no{background:#fff0ec;border:2px solid #e2553f}
+.boss-result b{font:800 18px var(--display)}
+.boss-result em{font-style:normal;font-weight:800;color:#c2410c}
+.boss-end{display:grid;gap:6px;padding:14px;border-radius:14px;background:#f6efe2;border:2px solid rgba(154,91,46,.3)}
+.boss-end.won{background:#e6fbf0;border-color:#2fa36b}
+.boss-top ol{margin:6px 0 0;padding-left:22px}
+.boss-top li{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+.boss-top li span{color:#6b5540;font-size:13px}
+.boss-admin-status{margin-top:10px;font-size:14px}
+.boss-admin .admin-controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.boss-admin .admin-controls .field-label{margin:0}
+.boss-admin select.text-input{width:auto;min-width:150px}
+body.in-world .boss-bar{top:104px}
+body.in-world .boss-panel{top:178px;max-height:calc(100vh - 196px)}
+@media (prefers-reduced-motion: reduce){.rpg-xp-pop.on,.rpg-levelup.on .rpg-levelup-card,.rpg-toast{animation:none!important}.rpg-xp-pop.on{opacity:1;transform:none}.rpg-spark{display:none}}
+@media (max-width: 900px){.rpg-hero{grid-template-columns:1fr;justify-items:center;text-align:center}.rpg-cols{grid-template-columns:1fr}.boss-bar{top:62px}}
+
+/* ============================================================
+   Kampung 1.6 — dialog warga, Dapur Lapangan, tas penjelajah
+   ============================================================ */
+.kp-chip{pointer-events:auto;cursor:pointer;font:inherit;display:inline-flex;align-items:center;gap:6px}
+.kp-chip b{font-family:var(--display);color:#7a3f1c}
+.kp-chip small{font-size:11px}
+#kp-layer{position:fixed;inset:0;pointer-events:none;z-index:56}
+.kp-panel{position:absolute;top:120px;left:50%;transform:translateX(-50%);width:min(560px,94vw);max-height:calc(100vh - 140px);overflow:auto;padding:20px;border-radius:18px;background:linear-gradient(160deg,#fff7e6,#fffaf0);border:3px solid var(--gold);box-shadow:0 0 0 4px rgba(31,195,211,.22),0 24px 60px rgba(120,70,20,.28);pointer-events:auto}
+.kp-panel.wide{width:min(760px,96vw)}
+.kp-panel[hidden]{display:none}
+.kp-panel h2{margin:4px 0 6px;color:#3b2a1a}
+.kp-npc-head{display:flex;gap:12px;align-items:center}
+.kp-npc-head small{color:#6b5540}
+.kp-face{flex:none;display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:var(--c);color:#fff;font:800 24px var(--display);border:3px solid #fff4dc;box-shadow:0 0 0 2px rgba(122,63,28,.35)}
+.kp-say{margin:12px 0;padding:12px 14px;border-radius:14px;background:#fff;border:2px solid rgba(154,91,46,.25);font-weight:600;color:#3b2a1a;position:relative}
+.kp-quest{padding:14px;border-radius:14px;background:#fdf3dc;border:2px dashed rgba(245,183,43,.7)}
+.kp-quest.done{border-style:solid;border-color:#2fa36b;background:#e6fbf0}
+.kp-quest h3{margin:2px 0 6px;font-size:20px;color:#3b2a1a}
+.kp-quest p{margin:6px 0}
+.kp-reward{font-size:13px;color:#8a5a14;font-weight:700}
+.kp-tip{font-size:14px;color:#6b5540}
+.kp-needs{list-style:none;margin:8px 0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.kp-needs li{padding:4px 10px;border-radius:999px;background:#fff;border:2px solid rgba(154,91,46,.25);font-size:13px}
+.kp-needs li.ok{border-color:#2fa36b;background:#e6fbf0}
+.kp-needs li.no{border-color:#e2553f;background:#fff0ec}
+.kp-needs em{font-style:normal;font-weight:800;font-size:11px}
+.kp-options{display:grid;gap:8px;margin:8px 0}
+.kp-option{display:flex;gap:10px;align-items:center;text-align:left;padding:10px 12px;border-radius:12px;border:2px solid rgba(31,195,211,.5);background:#fff;font:600 15px inherit;cursor:pointer}
+.kp-option:hover{background:#e6fbf6}
+.kp-option .mark{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#0f93a6;color:#fff;font-weight:800}
+.kp-note{margin:10px 0;padding:10px 12px;border-radius:12px;display:grid;gap:4px}
+.kp-note.ok{background:#e6fbf0;border:2px solid #2fa36b}
+.kp-note.warn{background:#fff0ec;border:2px solid #e2553f}
+.kp-note em{font-style:normal;font-weight:800;color:#0f7a4a}
+.kp-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.kp-recipes{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:10px 0}
+.kp-recipe{padding:12px;border-radius:14px;background:#fff;border:2px solid rgba(154,91,46,.22);display:grid;gap:6px;align-content:start}
+.kp-recipe header{display:flex;gap:8px;align-items:center}
+.kp-recipe header small{display:block;color:#6b5540;font-size:12px}
+.kp-dish{font-size:28px}
+.kp-locked{list-style:none;margin:6px 0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.kp-locked li{padding:4px 10px;border-radius:999px;background:#f6efe2;color:#7d6a55;font-size:13px}
+.kp-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.kp-tab{padding:6px 12px;border-radius:999px;border:2px solid rgba(154,91,46,.3);background:#fff;font:700 14px inherit;cursor:pointer}
+.kp-tab.on{background:#0f93a6;color:#fff;border-color:var(--gold)}
+.kp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.kp-cell{display:grid;gap:2px;justify-items:center;text-align:center;padding:10px;border-radius:12px;background:#fff;border:2px solid rgba(154,91,46,.22)}
+.kp-cell span{font-size:26px}
+.kp-cell small{font-size:11px;color:#6b5540}
+.kp-cell em{font-style:normal;font-weight:800;color:#0f93a6}
+.kp-list{display:grid;gap:6px;margin:6px 0}
+.kp-row{display:grid;grid-template-columns:32px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:#fff;border:1px solid rgba(154,91,46,.22)}
+.kp-row.off{background:#f6efe2;color:#7d6a55}
+.kp-row span{font-size:22px;text-align:center}
+.kp-row small{display:block;font-size:12px;color:#6b5540;line-height:1.35}
+.kp-row em{font-style:normal;font-weight:800;font-size:12px;color:#8a5a14}
+@media (max-width: 900px){.kp-panel{top:96px}}
+
+/* ---------- Musik latar (sejak 1.7): tombol ♪ melayang di semua fase ---------- */
+.music-ctl{position:fixed;right:14px;bottom:14px;z-index:40;display:flex;flex-direction:column;align-items:flex-end;gap:8px;font-family:var(--sans)}
+.music-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:99px;border:2px solid #9a5b2e;background:#fffaf0;color:#3b2a1a;font:600 12px var(--sans);cursor:pointer;box-shadow:0 4px 12px rgba(60,40,20,.22)}
+.music-btn[data-on="true"]{border-color:#1fc3d3}
+.music-btn[data-on="true"] span[aria-hidden]{color:#0e8f9c}
+.music-btn:focus-visible,.music-panel input:focus-visible{outline:3px solid #1fc3d3;outline-offset:2px}
+.music-panel{order:-1;width:min(290px,calc(100vw - 28px));background:#fffaf0;border:3px solid #f5b72b;border-radius:14px;padding:12px 14px;box-shadow:0 8px 22px rgba(60,40,20,.25);color:#3b2a1a;font-size:12px}
+.music-panel[hidden]{display:none}
+.music-now{margin:0 0 10px;display:grid;gap:2px}
+.music-now small{font:10px var(--mono);letter-spacing:.12em;color:#7a644e}
+.music-now b{font:700 16px var(--display);color:#7a3f1c}
+.music-now span{font-size:11px;color:#7a644e}
+.music-row{display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer}
+.music-vol{display:flex;justify-content:space-between;margin-top:8px;font-weight:600}
+.music-panel input[type=range]{width:100%;accent-color:#1fc3d3}
+.music-hint{margin:6px 0 0;color:#9a3b1c;font-size:11px}.music-hint:empty{display:none}
+.music-credit{margin:8px 0 0;font-size:10px;color:#7a644e}
+.music-pop{order:-2;padding:6px 12px;border-radius:99px;background:#3b2a1a;color:#fffaf0;font-size:12px;opacity:0;transform:translateY(6px);transition:opacity .3s,transform .3s;pointer-events:none}
+.music-pop.on{opacity:.92;transform:none}
+body.in-world .music-ctl{bottom:12px;right:14px}
+@media (pointer:coarse){body.in-world .music-ctl{top:64px;bottom:auto}body.in-world .music-panel{order:2}body.in-world .music-pop{order:3}}
+@media(prefers-reduced-motion:reduce){.music-pop{transition:none}}
+@media print{.music-ctl{display:none!important}}
+
+/* Panel guru · Rekap Jawaban Siswa (1.7): tampilan, filter, tabel bergulir dengan judul & kolom siswa menempel, cetak */
+.admin-controls a.button{text-decoration:none;display:inline-flex;align-items:center}
+.rk-views{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 6px}
+.rk-view{padding:8px 14px;border-radius:999px;border:2px solid rgba(154,91,46,.3);background:#fff;color:#4a3a2a;font:700 14px var(--display);cursor:pointer}
+.rk-view[aria-pressed="true"]{background:#0f93a6;color:#fff;border-color:var(--gold)}
+.rk-view:focus-visible,.rk-filters select:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.rk-filters{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
+.rk-filters label{display:grid;gap:3px;font:700 10px var(--mono,monospace);letter-spacing:.08em;color:#7a644e}
+.rk-filters label[hidden],#rk-more[hidden]{display:none}
+.rk-filters select{width:auto;min-width:140px;max-width:240px;padding:6px 8px;font-size:13px}
+.rk-count{font-size:12px;color:#5a4632;margin:6px 0 0}
+.rk-scroll{max-height:70vh;overflow:auto;margin-top:8px;border:1px solid rgba(154,91,46,.18);border-radius:10px;background:#fff}
+.rk-table{margin-top:0}
+.rk-table thead th{position:sticky;top:0;z-index:2;background:#e8f6f3;color:#3d5a55;white-space:nowrap}
+.rk-table tbody th{position:sticky;left:0;z-index:1;background:#fffdf8}
+.rk-table thead th:first-child{left:0;z-index:3}
+.rk-table td,.rk-table tbody th{vertical-align:top}
+.rk-table tbody tr:nth-child(even) td,.rk-table tbody tr:nth-child(even) th{background:#fbf7ef}
+.rk-long{min-width:220px;max-width:340px}
+.rk-mid{min-width:160px;max-width:260px;color:#5a4632}
+.rk-text{min-width:320px;max-width:560px;white-space:pre-line;line-height:1.45}
+.rk-nowrap{white-space:nowrap}
+.rk-hasil{display:inline-block;padding:1px 7px;border-radius:999px;font-weight:700;white-space:nowrap}
+.rk-hasil.ok{background:#e3f6ea;color:#1d6b40}
+.rk-hasil.no{background:#fde7e2;color:#a23a24}
+.rk-bar{display:inline-block;min-width:72px;padding:1px 6px;border-radius:6px;background:linear-gradient(90deg,rgba(31,195,211,.38) var(--p),#f1ece2 var(--p))}
+.rk-seb{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.rk-seb li.key{font-weight:700;color:#1d6b40}
+.rk-seb em{font-style:normal}
+#rk-more{margin-top:8px}
+.rekap-print{display:none}
+@media print{
+  body.cetak-rekap .shell,body.cetak-rekap dialog,body.cetak-rekap .toast{display:none!important}
+  body.cetak-rekap .rekap-print{display:block}
+  .rekap-print h1{font-size:18px;margin:0 0 4px}
+  .rekap-print p{font-size:11px;margin:0 0 6px}
+  .rekap-print table{width:100%;border-collapse:collapse;font-size:10px}
+  .rekap-print th,.rekap-print td{border:1px solid #999;padding:3px 4px;text-align:left;vertical-align:top}
+  .rekap-print thead{display:table-header-group}
+  .rekap-print tr{break-inside:avoid}
+  .rekap-print .rk-text{white-space:pre-line}
+  .rekap-print .rk-hasil,.rekap-print .rk-bar{background:none!important;padding:0}
+  .rekap-print .rk-seb{list-style:none;padding:0;margin:0}
+}
+
+/* ===== Atlas enam dunia pulau (islands.js + island-data.js) ===== */
+.isl-world{margin:0 0 18px;border:2px solid #e2cfa6;border-radius:18px;background:#fffaf0;overflow:hidden;box-shadow:0 6px 18px rgba(58,36,18,.08)}
+.isl-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:linear-gradient(90deg,#0f4c5c,#16697a);color:#fff}
+.isl-head strong{display:block;font-family:var(--display);font-size:1.15rem;line-height:1.1}
+.isl-head small{display:block;opacity:.9;font-size:.78rem}
+.isl-kicker{display:block;font-size:.68rem;letter-spacing:.12em;color:#f5d27a;font-weight:700}
+.isl-toggle{flex:none;background:#fff;color:#0f4c5c;border:0;border-radius:999px;padding:6px 14px;font-weight:700;cursor:pointer}
+.isl-toggle:focus-visible,.isl-spot:focus-visible,.isl-close:focus-visible,.isl-more summary:focus-visible{outline:3px solid #f5b72b;outline-offset:2px}
+.isl-stage{position:relative;aspect-ratio:1000/420;width:100%;max-width:820px;margin:0 auto;overflow:hidden}
+.isl-svg{display:block;width:100%;height:100%}
+.isl-spots{position:absolute;inset:0}
+.isl-spot{position:absolute;left:var(--x);top:var(--y);transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:#0f4c5c;color:#fff;font-weight:800;font-size:.8rem;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.35);display:grid;place-items:center}
+.isl-spot-fauna{background:#8b2f1d;border-radius:8px}
+.isl-spot[aria-expanded="true"]{background:#f5b72b;color:#3a2412;outline:3px solid #fff}
+.isl-info{margin:0;padding:12px 16px;border-top:2px dashed #e2cfa6;background:#fff}
+.isl-info-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.isl-info-head span{font-size:.7rem;letter-spacing:.1em;font-weight:700;color:#8b2f1d;text-transform:uppercase}
+.isl-info-head strong{font-family:var(--display);font-size:1.1rem;flex:1}
+.isl-close{border:0;background:#eee;border-radius:50%;width:28px;height:28px;font-size:1.1rem;cursor:pointer}
+.isl-info p{margin:4px 0}
+.isl-latin{font-size:.85rem;color:#555}
+.isl-status{display:inline-block;margin:2px 0;padding:2px 8px;border-radius:6px;font-size:.75rem;font-weight:700;border:1.5px solid currentColor}
+.isl-status-endemik::before{content:"★ "}.isl-status-subspesies::before{content:"◆ "}.isl-status-khas::before,.isl-status-kawasan::before{content:"○ "}
+.isl-status-endemik{color:#0b6b3a}.isl-status-subspesies{color:#7a3b12}.isl-status-khas,.isl-status-kawasan{color:#0f4c5c}
+.isl-more{padding:8px 16px 12px;font-size:.9rem}
+.isl-more summary{cursor:pointer;font-weight:700;color:#0f4c5c}
+.isl-more ul{margin:6px 0;padding-left:18px}.isl-foot{font-size:.8rem;color:#666}
+.isl-world[data-island="sumatra"] .isl-head{background:linear-gradient(90deg,#123a2c,#3e8a5f)}
+.isl-world[data-island="jawa"] .isl-head{background:linear-gradient(90deg,#4a2a18,#c0612a)}
+.isl-world[data-island="kalimantan"] .isl-head{background:linear-gradient(90deg,#1d2a18,#2f6e45)}
+.isl-world[data-island="sulawesi"] .isl-head{background:linear-gradient(90deg,#1f2b33,#3aa6c0)}
+.isl-world[data-island="papua"] .isl-head{background:linear-gradient(90deg,#1e1f3a,#5a4fa0)}
+.isl-world[data-island="bali-nusa-tenggara"] .isl-head{background:linear-gradient(90deg,#8b2f1d,#d9932b)}
+.node-island{display:block;font-style:normal;font-size:.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:rgba(15,76,92,.85);border-radius:6px;padding:1px 6px;margin-top:2px;white-space:nowrap}
+.card-island{margin:4px 0 8px}
+.card-island-art{border-radius:12px;overflow:hidden;aspect-ratio:1000/420;border:2px solid #e2cfa6}
+.card-island-art .isl-svg{height:100%}
+.card-island p{margin:6px 0 0;font-size:.82rem;font-weight:700;color:#0f4c5c}.card-island p span{color:#8b2f1d}
+/* animasi ringan */
+@keyframes isl-drift{from{transform:translateX(-30px)}to{transform:translateX(30px)}}
+@keyframes isl-sway{0%,100%{transform:rotate(-1.5deg)}50%{transform:rotate(1.5deg)}}
+@keyframes isl-dash{to{stroke-dashoffset:-88}}
+@keyframes isl-glow{0%,100%{opacity:1}50%{opacity:.7}}
+.isl-mist{animation:isl-drift 14s ease-in-out infinite alternate}
+.isl-sway{transform-box:fill-box;transform-origin:50% 100%;animation:isl-sway 5s ease-in-out infinite}
+.isl-flow,.isl-fall,.isl-beam path{animation:isl-dash 4s linear infinite}
+.isl-glow,.isl-pulse,.isl-smoke{animation:isl-glow 3s ease-in-out infinite}
+@media (max-width:700px){.isl-head{flex-wrap:wrap}.isl-spot{width:34px;height:34px}}
+@media (prefers-reduced-motion:reduce){.isl-mist,.isl-sway,.isl-flow,.isl-fall,.isl-beam path,.isl-glow,.isl-pulse,.isl-smoke{animation:none}}
+@media print{.isl-world,.card-island{display:none}}

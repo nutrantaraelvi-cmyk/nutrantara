@@ -30,6 +30,9 @@
 
   function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); else toast('Belum tersambung ke server.'); }
   const command = (action, extra = {}) => send({ type: 'admin', action, ...extra });
+  // Jembatan untuk modul panel lain (admin-rekap.js): kirim perintah, tampilkan toast, cek status masuk.
+  window.NutraAdmin = { command, toast: (m) => toast(m), isAuthed: () => authed };
+  const relay = (m) => window.dispatchEvent(new CustomEvent('nutra:admin', { detail: m }));
 
   function connect() {
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
@@ -57,17 +60,19 @@
           err.hidden = false;
           err.textContent = m.message;
         } else toast(m.message);
+        relay(m);
         break;
       case 'admin-ok': toast(m.message); break;
       case 'admin-password': window.alert(`Kata sandi sementara untuk ${m.alias}:\n\n${m.password}\n\nBerikan langsung kepada siswa. Siswa masuk dengan kata sandi ini.`); break;
       case 'admin-state': snapshot = m; render(); break;
+      case 'boss': if (snapshot) { snapshot.boss = m.boss; renderBoss(); } break;
       case 'positions': m.list.forEach(([id, x, y]) => positions.set(id, { x, y })); break;
       case 'chat': appendChat(m.entry); break;
       case 'chat-cleared': renderChat([]); break;
       case 'chat-deleted': { const li = $(`#admin-chat [data-id="${CSS.escape(m.id)}"]`); if (li) li.remove(); break; }
       case 'admin-detail': showDetail(m.player); break;
       case 'admin-export': exportData(m.data); break;
-      default: break;
+      default: relay(m); break;
     }
   }
 
@@ -100,6 +105,9 @@
     toggleBtn('#btn-move', settings.movementLocked, '↔ Bebaskan gerak', '⌑ Bekukan gerak');
     toggleBtn('#btn-chat', !settings.chatEnabled, '✉ Nyalakan obrolan', '✕ Matikan obrolan');
     toggleBtn('#btn-shop', settings.shopOpen === false, '🛍 Buka Butik Nusantara', '🛍 Tutup Butik Nusantara');
+    toggleBtn('#btn-rpg', settings.rpgVisible === false, '★ Tampilkan level & lencana', '★ Sembunyikan level & lencana');
+    toggleBtn('#btn-music', settings.musicOn === false, '♪ Nyalakan musik siswa', '♪ Bisukan musik siswa');
+    renderBoss();
 
     $('#post-toggles').innerHTML = MISSIONS.map((m) => {
       const open = settings.openPosts.includes(m.id);
@@ -110,6 +118,19 @@
     if (document.activeElement !== $('#class-code')) $('#class-code').value = settings.classCode || '';
     $('#ann-current').textContent = settings.announcement ? `Pengumuman aktif: “${settings.announcement}”` : 'Tidak ada pengumuman aktif.';
     renderPlayers();
+  }
+
+  /** Status event Bos Mitos Gizi (HP, waktu, penyerang terbaik). */
+  function renderBoss() {
+    const b = (snapshot && snapshot.boss) || { state: 'idle' };
+    const active = b.state === 'active';
+    $('#btn-boss-start').disabled = active;
+    $('#btn-boss-stop').disabled = !active;
+    const el = $('#boss-admin-status');
+    if (b.state === 'idle') { el.textContent = 'Belum ada event. HP bos dihitung dari jumlah siswa daring saat event dimulai.'; return; }
+    const left = Math.max(0, Math.ceil((b.endsAt - Date.now()) / 1000));
+    const state = active ? `Berlangsung · sisa ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : b.state === 'won' ? `Bos kalah ✦ · pukulan pamungkas ${esc(b.final || '—')}` : b.state === 'lost' ? 'Waktu habis, bos kabur' : 'Dihentikan guru';
+    el.innerHTML = `<b>${state}</b> · HP ${b.hp}/${b.maxHp} · ${b.players} siswa ikut · ${b.answers} jawaban${(b.top || []).length ? ` · Teratas: ${b.top.map((t) => `${esc(t.alias)} (${t.dmg})`).join(', ')}` : ''}`;
   }
 
   function toggleBtn(sel, active, onText, offText) {
@@ -146,7 +167,7 @@
       const flags = p.flags.length ? ` <span class="warn" title="${esc(p.flags.join('\n'))}">⚠</span>` : '';
       const tags = `${p.muted ? ' <span class="tag">bisu</span>' : ''}${p.blocked ? ' <span class="tag warn">dikeluarkan</span>' : ''}${!p.hasPassword ? ' <span class="tag warn">tanpa kata sandi</span>' : ''}${p.party ? ` <span class="tag" title="Regu proyek">🤝 ${esc(p.party)}</span>` : ''}${p.pjbl && (p.pjbl.total || p.pjbl.menu) ? ` <span class="tag" title="Skor analisis PjBL POS 1–5 (terpisah dari skor ekspedisi)${p.pjbl.presented ? '; menu POS 6 sudah disajikan' : ''}">PjBL ${p.pjbl.total}/${p.pjbl.max}${p.pjbl.presented ? ' · menu ✓' : ''}</span>` : ''}`;
       return `<tr data-id="${p.id}"${selected === p.id ? ' class="selected"' : ''}>
-        <th scope="row"><span class="roster-dot" style="background:${esc(p.color)}"></span> ${esc(p.alias)} <small class="${p.online ? 'on' : 'off'}">${p.online ? '● daring' : '○ luring'}</small>${flags}${tags}</th>
+        <th scope="row"><span class="roster-dot" style="background:${esc(p.color)}"></span> ${esc(p.alias)} <span class="tag" title="Level penjelajah (XP ${p.xp || 0})">Lv ${p.lv || 1}</span>${p.kampung && (p.kampung.quests || p.kampung.cooked) ? ` <span class="tag" title="Kampung: quest warga tuntas, resep dikuasai, bahan dipetik">🏡 ${p.kampung.quests} quest · 🍳 ${p.kampung.cooked} resep</span>` : ''} <small class="${p.online ? 'on' : 'off'}">${p.online ? '● daring' : '○ luring'}</small>${flags}${tags}</th>
         <td>${p.score}</td><td>${p.seals} / 6</td><td class="pcells">${cells}</td><td>${right}/${answered}</td>
         <td>${p.online ? (p.zone === 'world' ? `Dunia · ${(() => { const id = W.islandAt(p.x, p.y); return W.isPost(id) ? `Pos ${id}` : id >= 0 ? W.islands.find((i) => i.id === id).name : 'jembatan'; })()}` : 'Lobi') : '—'}</td><td>${p.online ? 'sekarang' : ago(p.lastSeen)}</td>
         <td class="row-actions">
@@ -184,10 +205,10 @@
       case 'mute': command('mute', { playerId: id, value: !p.muted }); break;
       case 'spawn': command('teleport', { playerId: id, x: W.spawn.x, y: W.spawn.y }); break;
       case 'reset-password': if (confirm(`Atur ulang kata sandi ${p.alias}? Siswa akan keluar dan harus masuk dengan kata sandi sementara yang ditampilkan.`)) command('reset-password', { playerId: id }); break;
-      case 'reset': if (confirm(`Atur ulang SELURUH progres ${p.alias}? Tindakan ini tidak dapat dibatalkan. Ekspor data terlebih dahulu bila perlu.`)) command('reset', { playerId: id }); break;
+      case 'reset': if (confirm(`Atur ulang SELURUH progres ${p.alias}? Tindakan ini tidak dapat dibatalkan. Unduh Rekap Jawaban (Excel) terlebih dahulu bila perlu.`)) command('reset', { playerId: id }); break;
       case 'kick': if (confirm(`Keluarkan ${p.alias} dari sesi? Siswa tidak bisa bergabung lagi sampai diizinkan kembali.`)) command('kick', { playerId: id }); break;
       case 'unblock': command('unblock', { playerId: id }); break;
-      case 'delete': if (confirm(`Hapus permanen data ${p.alias} dari server kelas? Ekspor data terlebih dahulu bila perlu.`)) command('delete', { playerId: id }); break;
+      case 'delete': if (confirm(`Hapus permanen data ${p.alias} dari server kelas? Unduh Rekap Jawaban (Excel) terlebih dahulu bila perlu.`)) command('delete', { playerId: id }); break;
       default: break;
     }
   });
@@ -223,6 +244,11 @@
   $('#btn-move').addEventListener('click', () => command('set-movement', { value: !snapshot.settings.movementLocked }));
   $('#btn-chat').addEventListener('click', () => command('set-chat', { value: !snapshot.settings.chatEnabled }));
   $('#btn-shop').addEventListener('click', () => command('set-shop', { value: snapshot.settings.shopOpen === false }));
+  $('#btn-music').addEventListener('click', () => command('set-music', { value: snapshot.settings.musicOn === false }));
+  $('#btn-rpg').addEventListener('click', () => command('set-rpg', { value: snapshot.settings.rpgVisible === false }));
+  $('#btn-boss-start').addEventListener('click', () => { if (window.confirm('Mulai event Bos Mitos Gizi untuk semua siswa daring?')) command('boss-start', { minutes: Number($('#boss-minutes').value), level: $('#boss-level').value }); });
+  $('#btn-boss-stop').addEventListener('click', () => { if (window.confirm('Hentikan event bos sekarang? Siswa tidak mendapat hadiah event.')) command('boss-stop'); });
+  setInterval(() => { if (snapshot && snapshot.boss && snapshot.boss.state === 'active') renderBoss(); }, 1000);
   $('#btn-gather').addEventListener('click', () => command('teleport', { playerId: 'all', x: W.nara.x + 30, y: W.nara.y + 30 }));
   $('#post-toggles').addEventListener('click', (e) => {
     const b = e.target.closest('[data-post]');
@@ -239,8 +265,7 @@
   });
   $('#btn-clear-ann').addEventListener('click', () => command('announce', { text: '' }));
   $('#btn-clear-chat').addEventListener('click', () => { if (confirm('Bersihkan seluruh obrolan kelas?')) command('clear-chat'); });
-  $('#btn-export-json').addEventListener('click', () => { exportFormat = 'json'; command('export'); });
-  $('#btn-export-csv').addEventListener('click', () => { exportFormat = 'csv'; command('export'); });
+  $('#btn-export-json').addEventListener('click', () => command('export'));
 
   // ---------- Obrolan ----------
 
@@ -324,7 +349,13 @@
         const d = s.revision && s.revision.savedAt ? s.revision : s.initial || {};
         return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2><p><b>Menu:</b> ${esc(d.menuName || '—')} · <b>Sasaran:</b> ${esc(d.target || '—')}</p><p><b>Alasan:</b> ${esc(d.rationale || '—')}</p><p><b>Telaah:</b> ${esc((s.review && s.review.notes) || '—')}</p><p><b>Refleksi:</b> ${esc((s.reflection && s.reflection.learned) || '—')}</p></article>`;
       }
-      const ch = (s.challenges || []).map((c, i) => `<li>Tantangan ${i + 1}: ${c.complete ? '✓' : '…'} · ${c.attempts || 0} percobaan · ${c.points || 0} poin</li>`).join('');
+      // Jawaban asli + kunci dari rekap server (kasus/varian milik siswa, jawaban regu sudah ditimpa).
+      const answers = ((p.rekap && p.rekap.jawaban) || []).filter((j) => j.bagian === 'Ekspedisi' && j.pos === m.id);
+      const ch = m.challenges.map((def, i) => {
+        const j = answers.find((x) => x.butir === `E${m.id}.${i + 1}`);
+        if (!j) return `<li>Tantangan ${i + 1} · ${esc(def.label)}: <i>belum dijawab</i></li>`;
+        return `<li>${esc(j.no)}: <b>${j.hasil === 'Benar' ? '✓ Benar' : '✗ Salah'}</b> · ${j.poin} poin${j.keterangan ? ` <small>(${esc(j.keterangan)})</small>` : ''}<br>Jawaban: ${esc(j.jawaban)}${j.hasil === 'Benar' ? '' : `<br>Kunci: ${esc(j.kunci)}`}</li>`;
+      }).join('');
       const kasus = m.variants ? `<p><b>Kasus:</b> varian ${(Number.isInteger(s.variant) ? s.variant : 0) + 1}/${m.variants.length} · ${esc((m.variants[s.variant] || m.variants[0]).name)}</p>` : '';
       return `<article class="passport-record"><h2>Pos ${m.id} · ${esc(m.title)} ${esc(m.titleEm)} ${s.sealed ? '✓' : ''}</h2>${kasus}<ul>${ch}</ul><p><b>Alasan:</b> ${esc(s.reason || '—')}</p></article>`;
     }).join('') : '<p>Belum ada progres.</p>';
@@ -334,7 +365,9 @@
     const itemName = (id) => { const it = SHOP && SHOP.byId(id); return it ? it.name : id; };
     const shop = p.shop ? `<article class="passport-record"><h2>Butik Nusantara</h2><p><b>Dibelanjakan:</b> ${p.shop.spent} poin · <b>Saldo:</b> ${p.shop.balance} poin (skor tetap ${p.score})</p><p><b>Busana milik:</b> ${p.shop.owned.length ? p.shop.owned.map((id) => esc(itemName(id))).join(', ') : '—'}</p><p><b>Sedang dipakai:</b> ${p.wear ? Object.values(p.wear).map((id) => esc(itemName(id))).join(', ') : '—'}</p></article>` : '';
     $('#detail-title').textContent = `DETAIL · ${p.alias.toUpperCase()} · ${p.score} POIN · ${p.seals}/6 SEGEL`;
-    $('#detail-body').innerHTML = `${flags}${pjblDetail(p)}${posts}${shop}`;
+    const sheet = `<div class="admin-controls"><button type="button" class="button button-primary admin-small" id="detail-sheet">📄 Lembar jawaban lengkap (bisa dicetak)</button></div>`;
+    $('#detail-body').innerHTML = `${sheet}${flags}${pjblDetail(p)}${posts}${shop}`;
+    $('#detail-sheet').addEventListener('click', () => { $('#detail-dialog').close(); if (window.NutraRekap) window.NutraRekap.focusStudent(p.id); });
     detailId = p.id;
     $('#detail-dialog').showModal();
   }
@@ -374,7 +407,6 @@
   });
   $('#detail-close').addEventListener('click', () => $('#detail-dialog').close());
 
-  let exportFormat = 'json';
   function download(name, text, type) {
     const url = URL.createObjectURL(new Blob([text], { type }));
     const a = document.createElement('a');
@@ -382,24 +414,11 @@
     URL.revokeObjectURL(url);
   }
 
+  // Cadangan lengkap data kelas (JSON) untuk arsip/pemulihan. Rekap yang mudah dibaca guru ada di admin-rekap.js.
   function exportData(data) {
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-    if (exportFormat === 'json') { download(`nutrantara-kelas-${stamp}.json`, JSON.stringify(data, null, 2), 'application/json'); toast('Data kelas diekspor (JSON).'); return; }
-    const cell = (v) => { const s = String(v ?? ''); return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const head = ['alias', 'skor', 'segel', 'selesai', ...MISSIONS.flatMap((m) => [`pos${m.id}_segel`, `pos${m.id}_benar`, `pos${m.id}_alasan`]), 'catatan_validasi', 'dibuat', 'terakhir_aktif', 'poin_dibelanjakan', 'busana_toko'];
-    const lines = data.players.map((p) => {
-      const posts = (p.progress && p.progress.posts) || {};
-      const per = MISSIONS.flatMap((m) => {
-        const s = posts[m.id] || {};
-        const benar = (s.challenges || []).filter((c) => c.complete && c.correct !== false).length;
-        const reason = m.type === 'project' ? ((s.reflection && s.reflection.learned) || '') : (s.reason || '');
-        return [s.sealed ? 'ya' : 'tidak', m.type === 'analysis' ? `${benar}/${m.challenges.length}` : '-', reason];
-      });
-      const shop = p.wardrobe || {};
-      return [p.alias, p.score, p.seals, p.finishedAt || '', ...per, (p.flags || []).join(' | '), p.createdAt, p.lastSeen, shop.spent || 0, (shop.owned || []).join(' | ')].map(cell).join(',');
-    });
-    download(`nutrantara-kelas-${stamp}.csv`, `﻿${[head.join(','), ...lines].join('\n')}`, 'text/csv');
-    toast('Data kelas diekspor (CSV).');
+    download(`nutrantara-kelas-${stamp}.json`, JSON.stringify(data, null, 2), 'application/json');
+    toast('Cadangan data kelas diunduh (JSON).');
   }
 
   setInterval(() => { if (authed) renderPlayers(); }, 15000);

@@ -17,10 +17,13 @@ window.NutraNet = (() => {
   let party = null; // { code, leaderId, max, members: [...], posts, log } — regu proyek (maks. 4)
   let pjblState = null; // PjBL POS 1–6: { mine, group, members, team, summary } dari server
   let wardrobe = null; // Butik Nusantara: { owned, wear, spent, balance } dari server
+  let rpg = null; // RPG (1.5): { xp, level, title, badges, parts, … } dihitung server
+  let boss = { state: 'idle' }; // event kelas Bos Mitos Gizi
+  let kampung = null; // Kampung (1.6): { state, now } tas bahan, resep, quest warga dari server
   let stopped = false;
   let chat = [];
   let leaderboard = [];
-  let settings = { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', shopOpen: true };
+  let settings = { paused: false, chatEnabled: true, movementLocked: false, openPosts: ALL_POSTS.slice(), announcement: '', shopOpen: true, musicOn: true };
   let progressTimer = null;
   let pendingProgress = null;
 
@@ -169,11 +172,31 @@ window.NutraNet = (() => {
       case 'pjbl-error':
         emit('pjbl-error', msg);
         break;
+      case 'rpg':
+        rpg = msg.rpg;
+        emit('rpg', rpg);
+        break;
+      case 'boss':
+        boss = msg.boss || { state: 'idle' };
+        emit('boss', boss);
+        break;
+      case 'boss-q':
+      case 'boss-result':
+      case 'boss-error':
+        emit(msg.type, msg);
+        break;
+      case 'kampung':
+        kampung = { state: msg.state, skew: Date.now() - (msg.now || Date.now()) };
+        emit('kampung', msg);
+        break;
+      case 'kampung-error':
+        emit('kampung-error', msg);
+        break;
       case 'positions':
-        msg.list.forEach(([id, x, y, seals, activePos, h, inWorld]) => {
+        msg.list.forEach(([id, x, y, seals, activePos, h, inWorld, lv]) => {
           if (me && id === me.id) { me.seals = seals; return; }
           const p = players.get(id);
-          if (p) { p.tx = x; p.ty = y; p.th = (h || 0) / 10; p.seals = seals; p.activePos = activePos; p.zone = inWorld ? 'world' : 'lobby'; }
+          if (p) { p.tx = x; p.ty = y; p.th = (h || 0) / 10; p.seals = seals; p.activePos = activePos; p.zone = inWorld ? 'world' : 'lobby'; if (lv) p.lv = lv; }
         });
         break;
       case 'spawned':
@@ -287,6 +310,13 @@ window.NutraNet = (() => {
   /** PjBL: { action: 'pick' | 'lock' | 'reread' | 'logbook' | 'menu' | 'present' | 'reflect', … }; jawabannya event 'pjbl' / 'pjbl-error'. */
   function pjbl(msg) { return joined && send({ type: 'pjbl', ...msg }); }
 
+  /** RPG: laporkan kepingan arsip & pulau jelajah yang ditemukan (server memvalidasi dan menghitung XP). */
+  function explore(shards, islands) { return joined && send({ type: 'explore', shards, islands }); }
+  /** Event Bos Mitos Gizi: { action: 'next' } atau { action: 'answer', id, a: 'mitos' | 'fakta' }. */
+  function bossAct(msg) { return joined && send({ type: 'boss', ...msg }); }
+  /** Kampung: { action: 'gather' | 'cook' | 'eat' | 'accept' | 'answer' | 'turnin', … }; jawabannya event 'kampung' / 'kampung-error'. */
+  function kampungAct(msg) { return joined && send({ type: 'kampung', ...msg }); }
+
   function status() { return { canConnect, connected, joined, online: joined }; }
 
   function isPostOpen(id) { return !joined || settings.openPosts.includes(Number(id)); }
@@ -345,7 +375,10 @@ window.NutraNet = (() => {
   return {
     on, join, pushProgress, sendMove, sendChat, isPostOpen, status,
     api, serverStatus, register, login, resume, logout, getSession, sendZone, spawn, emote,
-    spawnNear, partyCreate, partyJoin, partyLeave, isTeammate, teamOp, teamVote, shop, pjbl,
+    spawnNear, partyCreate, partyJoin, partyLeave, isTeammate, teamOp, teamVote, shop, pjbl, explore, bossAct, kampungAct,
+    get kampung() { return joined ? kampung : null; },
+    get rpg() { return joined ? rpg : null; },
+    get boss() { return joined ? boss : { state: 'idle' }; },
     get pjblState() { return joined ? pjblState : null; },
     get party() { return party; },
     get wardrobe() { return wardrobe; },

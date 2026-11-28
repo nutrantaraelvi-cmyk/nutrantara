@@ -79,6 +79,8 @@ export function buildRegion(ctx, id) {
   const place = (r, minD) => { for (let k = 0; k < 400; k += 1) { const p = randomPoint(r + 10); if (farFromAll(p, minD + r)) return p; } return null; };
   const camps = [];
   for (let i = 0; i < 3; i += 1) { const p = place(10, 30); if (p) { camps.push({ ...p, r: 10, kind: (id + i * 2) % CAMPS.length }); pois.push({ ...p, r: 12 }); } }
+  // Sejak 1.6: desa pusat & kampung budaya (area rata bersambung jalan) dipakai Kampung untuk warga dan titik bahan.
+  if (ctx.spots) ctx.spots[id] = { hub: { ...hub }, camps: camps.map((c) => ({ x: c.x, z: c.z })) };
   const hills = [];
   for (let i = 0; i < 3; i += 1) { const p = place(14, 30); if (p) { hills.push({ ...p, r: 14 }); pois.push({ ...p, r: 18 }); } }
   const ponds = [];
